@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountType {
+  MEMBER
+  AGENCY
+  AGENT
+}
+
+enum AuthProvider {
+  GOOGLE
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String?
+  phone               String               @default("")
+  passwordHash        String?
+  role                Role                 @default(USER)
+  accountType         AccountType          @default(MEMBER)
+  agencyName          String?
+  licenseNumber       String?
+  verificationStatus  VerificationStatus   @default(NONE)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  oauthAccounts       OAuthAccount[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// One row per external identity (e.g. a Google account) linked to a User.
+// Only the profile Google returns is stored — never Google's own access/refresh tokens.
+model OAuthAccount {
+  id                String       @id @default(cuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          AuthProvider
+  providerAccountId String
+  email             String
+  emailVerified     Boolean
+  name              String?
+  pictureUrl        String?
+  lastLoginAt       DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}

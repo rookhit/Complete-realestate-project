@@ -1,0 +1,179 @@
+### Auth API test requests
+### Requires the VS Code "REST Client" extension (humao.rest-client).
+### Click "Send Request" above each ### block. Run the dev server first: npm run dev
+###
+### The access token is returned in the response body, not a cookie. Capture it from a
+### register/login/refresh response and paste it into @accessToken below, then re-send.
+### The extension keeps cookies automatically within this file for the refresh_token cookie.
+
+@baseUrl = http://localhost:3000/api/v1
+@accessToken = REPLACE_ME
+
+### 1. Register a member
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "correcthorsebatterystaple",
+  "confirmPassword": "correcthorsebatterystaple",
+  "name": "Test User",
+  "phone": "9812345678"
+}
+
+### 2. Register an agency - missing agencyName/licenseNumber, expect 400 VALIDATION_FAILED
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "agency@example.com",
+  "password": "correcthorsebatterystaple",
+  "confirmPassword": "correcthorsebatterystaple",
+  "name": "Himalayan Homes",
+  "phone": "9812345679",
+  "type": "agency"
+}
+
+### 3. Register an agency - complete body, expect verificationStatus "PENDING"
+# @name registerAgency
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "agency@example.com",
+  "password": "correcthorsebatterystaple",
+  "confirmPassword": "correcthorsebatterystaple",
+  "name": "Himalayan Homes",
+  "phone": "9812345679",
+  "type": "agency",
+  "agencyName": "Himalayan Homes Pvt. Ltd.",
+  "licenseNumber": "NB-LIC-0001"
+}
+
+### 4. Register again with the same email - expect 409 CONFLICT
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "correcthorsebatterystaple",
+  "confirmPassword": "correcthorsebatterystaple",
+  "name": "Test User",
+  "phone": "9812345678"
+}
+
+### 5. Register with a role field in the body - should still come back as "role": "USER"
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "sneaky@example.com",
+  "password": "correcthorsebatterystaple",
+  "confirmPassword": "correcthorsebatterystaple",
+  "name": "Sneaky User",
+  "phone": "9812345680",
+  "role": "ADMIN",
+  "isAdmin": true
+}
+
+### 6. Login as the user from step 1 - copy accessToken from the response into @accessToken above
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "correcthorsebatterystaple"
+}
+
+### 7. Login with the wrong password - expect 401 UNAUTHENTICATED
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "totally-wrong-password"
+}
+
+### 8. Login with an email that doesn't exist - expect the SAME 401 message as step 7
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody-here@example.com",
+  "password": "whatever-password"
+}
+
+### 9. Missing Content-Type header - expect 400 VALIDATION_FAILED
+POST {{baseUrl}}/auth/login
+
+{
+  "email": "testuser@example.com",
+  "password": "correcthorsebatterystaple"
+}
+
+### 10. Who am I? (paste the accessToken from step 6 into @accessToken first)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+### 11. Refresh the access token (rotates the refresh token cookie too)
+# @name refresh
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+### 12. Confirm /me still works with the newly refreshed accessToken
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{refresh.response.body.accessToken}}
+
+### 13. Log out
+POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+
+### 14. Refresh after logout should be 401 UNAUTHENTICATED
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+###
+### --- Password reset ---
+
+### 15. Request a reset link - always 204, check the server console for the logged link
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com"
+}
+
+### 16. Reset the password using the token logged to the console
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PASTE_TOKEN_FROM_SERVER_CONSOLE",
+  "password": "a-brand-new-password"
+}
+
+###
+### --- Admin ---
+### Use the ADMIN_EMAIL / ADMIN_PASSWORD you put in .env when you ran `npm run db:seed`.
+### There is no separate admin login endpoint - same /auth/login as everyone else.
+
+### 17. Login as admin (fill in your real admin email/password first)
+# @name adminLogin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "your-admin-password"
+}
+
+### 18. Approve the agency registered in step 3 (paste the admin accessToken and the agency user id)
+PATCH {{baseUrl}}/admin/users/PASTE_AGENCY_USER_ID/verification
+Content-Type: application/json
+Authorization: Bearer {{adminLogin.response.body.accessToken}}
+
+{
+  "status": "APPROVED"
+}
