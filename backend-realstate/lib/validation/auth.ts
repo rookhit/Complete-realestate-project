@@ -22,9 +22,6 @@ export const registerSchema = z
     confirmPassword: z.string(),
     name: z.string().trim().min(1).max(255),
     phone,
-    type: z.enum(["member", "agency", "agent"]).default("member"),
-    agencyName: z.string().trim().min(1).max(255).optional(),
-    licenseNumber: z.string().trim().min(1).max(100).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.password !== data.confirmPassword) {
@@ -33,19 +30,6 @@ export const registerSchema = z
         path: ["confirmPassword"],
         message: "Passwords do not match",
       });
-    }
-
-    if (data.type === "agency") {
-      if (!data.agencyName) {
-        ctx.addIssue({ code: "custom", path: ["agencyName"], message: "Agency name is required" });
-      }
-      if (!data.licenseNumber) {
-        ctx.addIssue({ code: "custom", path: ["licenseNumber"], message: "License number is required" });
-      }
-    }
-
-    if (data.type === "agent" && !data.licenseNumber) {
-      ctx.addIssue({ code: "custom", path: ["licenseNumber"], message: "License number is required" });
     }
   });
 
@@ -63,8 +47,29 @@ export const resetPasswordSchema = z.object({
   password,
 });
 
-export const verificationStatusSchema = z.object({
-  status: z.enum(["APPROVED", "REJECTED"]),
+export const verifyResetTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
+export const mfaLoginSchema = z.object({
+  // From the /auth/login response; omitted after Google sign-in (it's in a cookie then).
+  mfaToken: z.string().min(1).optional(),
+  // 6-digit authenticator code or a recovery code (XXXX-XXXX).
+  code: z.string().trim().min(6).max(20),
+});
+
+// Current password, required when the account has one (Google-only accounts don't).
+export const totpSetupSchema = z.object({
+  password: z.string().max(200).optional(),
+});
+
+export const totpEnableSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your app"),
+});
+
+export const totpDisableSchema = z.object({
+  password: z.string().max(200).optional(),
+  code: z.string().trim().min(6).max(20),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -12,7 +12,10 @@ import {
   requireAllowedOrigin,
   requireJsonContentType,
 } from "@/lib/auth/guards";
+import { enforceRateLimit } from "@/lib/auth/rate-limit";
+import { logAuthEvent } from "@/lib/auth/audit";
 import { preflightResponse } from "@/lib/http/cors";
+import { getRequestContext } from "@/lib/http/request-context";
 import { registerSchema } from "@/lib/validation/auth";
 
 const USER_SELECT = {
@@ -21,13 +24,7 @@ const USER_SELECT = {
   name: true,
   phone: true,
   role: true,
-  accountType: true,
-  agencyName: true,
-  licenseNumber: true,
-  verificationStatus: true,
 } as const;
-
-const ACCOUNT_TYPE_MAP = { member: "MEMBER", agency: "AGENCY", agent: "AGENT" } as const;
 
 export async function OPTIONS(request: Request): Promise<Response> {
   return preflightResponse(request);
@@ -37,6 +34,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     requireJsonContentType(request);
     requireAllowedOrigin(request);
+
+    const context = getRequestContext(request);
+    await enforceRateLimit("register", context.ip);
 
     let body: unknown;
     try {
@@ -53,9 +53,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     }
 
-    const { email, password, name, phone, type, agencyName, licenseNumber } = parsed.data;
-    const accountType = ACCOUNT_TYPE_MAP[type];
-    const verificationStatus = accountType === "MEMBER" ? "NONE" : "PENDING";
+    const { email, password, name, phone } = parsed.data;
     const passwordHash = await hashPassword(password);
 
     const user = await prisma.user
@@ -65,10 +63,8 @@ export async function POST(request: Request): Promise<NextResponse> {
           passwordHash,
           name,
           phone,
-          accountType,
-          agencyName: accountType === "AGENCY" ? agencyName : undefined,
-          licenseNumber: accountType === "MEMBER" ? undefined : licenseNumber,
-          verificationStatus,
+          lastLoginAt: new Date(),
+          lastLoginIp: context.ip,
         },
         select: USER_SELECT,
       })
@@ -80,8 +76,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
 
     const accessToken = await signAccessToken({ sub: user.id, role: user.role });
-    const { token: refreshToken } = await createRefreshToken(user.id);
+    const { token: refreshToken } = await createRefreshToken(user.id, context);
     await setRefreshCookie(refreshToken);
+    await logAuthEvent("register", { userId: user.id, context });
 
     return jsonResponse(request, { user, accessToken });
   } catch (error) {

@@ -8,7 +8,10 @@ import {
   requireAllowedOrigin,
   requireJsonContentType,
 } from "@/lib/auth/guards";
+import { enforceRateLimit } from "@/lib/auth/rate-limit";
+import { logAuthEvent } from "@/lib/auth/audit";
 import { preflightResponse } from "@/lib/http/cors";
+import { getRequestContext } from "@/lib/http/request-context";
 import { forgotPasswordSchema } from "@/lib/validation/auth";
 
 export async function OPTIONS(request: Request): Promise<Response> {
@@ -19,6 +22,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     requireJsonContentType(request);
     requireAllowedOrigin(request);
+
+    const context = getRequestContext(request);
+    await enforceRateLimit("forgot-password", context.ip);
 
     let body: unknown;
     try {
@@ -32,13 +38,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new HttpError(400, "VALIDATION_FAILED", parsed.error.issues[0]?.message ?? "Invalid request body");
     }
 
-    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true, email: true },
+    });
     if (user) {
       const token = await createPasswordResetToken(user.id);
       const origin = process.env.FRONTEND_ORIGIN ?? "http://localhost:5173";
-      // Stub: no email provider is configured yet, so the reset link is logged
-      // instead of sent. Swap this for a real provider call when one is chosen.
-      console.log(`Password reset link for ${user.email}: ${origin}/reset-password?token=${token}`);
+      // Stub: no email provider is configured yet (email OTP is planned). The link is only
+      // logged in development: in production anyone who can read the logs could use it.
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`Password reset link for ${user.email}: ${origin}/reset-password?token=${token}`);
+      }
+      await logAuthEvent("password_reset_requested", { userId: user.id, context });
     }
 
     return noContentResponse(request);

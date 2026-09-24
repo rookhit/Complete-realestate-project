@@ -52,6 +52,19 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile): Promise<OA
       await tx.oAuthAccount.create({
         data: { ...accountDetails, provider: "GOOGLE", providerAccountId: profile.sub, userId: existing.id },
       });
+      // Registration doesn't verify email ownership, so this account (and its password) may
+      // have been created by someone else using this email ("pre-account hijacking"). Google
+      // has now proven who owns the email: drop the unverified password and sign out every
+      // existing session. The owner can set a password again via forgot-password.
+      // Revisit once email verification exists: only do this when the email was never verified.
+      await tx.user.update({
+        where: { id: existing.id },
+        data: { passwordHash: null, sessionsRevokedAt: new Date() },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId: existing.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       return existing;
     }
 

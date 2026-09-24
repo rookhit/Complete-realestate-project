@@ -22,10 +22,11 @@ async function main(): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
   const passwordHash = await hashPassword(password);
 
+  const name = "Nepal Bhoomi Admin";
   const admin = await prisma.user.upsert({
     where: { email: normalizedEmail },
-    update: { passwordHash, role: "ADMIN" },
-    create: { email: normalizedEmail, passwordHash, role: "ADMIN" },
+    update: { passwordHash, role: "ADMIN", name },
+    create: { email: normalizedEmail, passwordHash, role: "ADMIN", name },
     select: { id: true, email: true },
   });
 

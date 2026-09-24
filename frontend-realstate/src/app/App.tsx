@@ -13,12 +13,13 @@ import {
 import logoImg from "@/imports/image.png";
 import { DISTRICTS, PROVINCE_OF, searchDistricts } from "@/app/data/districts";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
+import { API_URL, ApiError, AuthProvider, authFetch, useAuth } from "@/app/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Page =
   | "home" | "buy" | "rent" | "property" | "hot" | "new-listings"
   | "about" | "blog" | "blog-post" | "services" | "emi" | "contact"
-  | "login" | "register" | "free-listing" | "area" | "videos" | "map";
+  | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "admin";
 
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
@@ -481,8 +482,10 @@ function LoadingScreen({ onDone }: { onDone:()=>void }) {
 
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 function Navbar({ page, go }: { page:Page; go:Go }) {
+  const { user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [menu, setMenu] = useState(false);
+  const signOut = () => { setMenu(false); void logout().then(()=>go("home")); };
   const [dropdown, setDropdown] = useState<string|null>(null);
   useEffect(()=>{ const fn=()=>setScrolled(window.scrollY>56); window.addEventListener("scroll",fn,{passive:true}); return ()=>window.removeEventListener("scroll",fn); },[]);
   useEffect(()=>{ document.body.style.overflow = menu ? "hidden" : ""; return ()=>{ document.body.style.overflow=""; }; },[menu]);
@@ -558,8 +561,14 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
           <div className="hidden lg:flex items-center gap-3 ml-auto">
             <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
               style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</button>
-            <button onClick={()=>go("login")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Login</button>
-            <button onClick={()=>go("register")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
+            {user ? (<>
+              {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page==="admin"?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin</button>}
+              <span className="flex items-center gap-1.5 px-2 text-[12px] max-w-[180px] truncate" title={user.email} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/>{user.name||user.email}</span>
+              <button onClick={signOut} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Logout</button>
+            </>) : (<>
+              <button onClick={()=>go("login")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Login</button>
+              <button onClick={()=>go("register")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
+            </>)}
           </div>
           <button onClick={()=>setMenu(!menu)} className="lg:hidden ml-auto p-1" style={{color:FG_DARK}}>
             {menu?<X size={20}/>:<Menu size={20}/>}
@@ -573,7 +582,7 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
             style={{background:"rgba(10,9,8,0.98)",backdropFilter:"blur(24px)"}}
             initial={{opacity:0,clipPath:"inset(0 0 100% 0)"}} animate={{opacity:1,clipPath:"inset(0 0 0% 0)"}} exit={{opacity:0,clipPath:"inset(0 0 100% 0)"}} transition={{duration:0.4}}>
             <div className="flex flex-col px-8 py-6 gap-0">
-              {[{l:"Buy",p:"buy"},{l:"Rent",p:"rent"},{l:"Blog",p:"blog"},{l:"Services",p:"services"},{l:"About",p:"about"},{l:"Contact",p:"contact"},{l:"EMI Calculator",p:"emi"}].map((n,i)=>(
+              {[{l:"Buy",p:"buy"},{l:"Rent",p:"rent"},{l:"Blog",p:"blog"},{l:"Services",p:"services"},{l:"About",p:"about"},{l:"Contact",p:"contact"},{l:"EMI Calculator",p:"emi"},...(user?.role==="ADMIN"?[{l:"Admin",p:"admin"}]:[])].map((n,i)=>(
                 <motion.button key={n.l} onClick={()=>{go(n.p as Page);setMenu(false);}} className="text-3xl py-5 border-b text-left flex items-center justify-between group"
                   style={{color:FG_DARK,borderColor:BORDER_D,...serif}} initial={{opacity:0,x:-12}} animate={{opacity:1,x:0}} transition={{delay:i*0.06+0.1}}>
                   {n.l}<ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{color:GOLD}}/>
@@ -581,8 +590,13 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
               ))}
             </div>
             <div className="px-8 py-6 flex gap-3 mt-auto border-t" style={{borderColor:BORDER_D}}>
-              <button onClick={()=>{go("login");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase border" style={{color:FG_DARK,borderColor:BORDER_D,...sans}}>Login</button>
-              <button onClick={()=>{go("register");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
+              {user ? (<>
+                <span className="flex-1 py-3 text-[13px] truncate" style={{color:FG_DARK,...sans}}>{user.name||user.email}</span>
+                <button onClick={signOut} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase border" style={{color:FG_DARK,borderColor:BORDER_D,...sans}}>Logout</button>
+              </>) : (<>
+                <button onClick={()=>{go("login");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase border" style={{color:FG_DARK,borderColor:BORDER_D,...sans}}>Login</button>
+                <button onClick={()=>{go("register");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
+              </>)}
             </div>
           </motion.div>
         )}
@@ -991,47 +1005,45 @@ type CompanyVideo = {
   captions?:VideoCaption[];
 };
 
-// Placeholder clips from test-videos.co.uk until the real company films exist.
-// Replace src/poster/duration in place; the player needs no changes. Supplying
-// several entries in `sources` is what makes the quality menu work — order them
-// highest first.
-const COMPANY_VIDEOS: CompanyVideo[] = [
-  { id:1, title:"Inside The Patan Residence", duration:"0:10",
-    poster:img("photo-1600596542815-ffad4c1539a9",1200,700),
-    sources:[
-      {label:"1080p",src:"https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_5MB.mp4",type:"video/mp4"},
-      {label:"720p", src:"https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_2MB.mp4",type:"video/mp4"},
-      {label:"360p", src:"https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4",type:"video/mp4"},
-    ],
-    captions:[
-      {start:"00:00:00.000",end:"00:00:04.000",text:"Welcome to The Patan Residence."},
-      {start:"00:00:04.000",end:"00:00:09.000",text:"Five bedrooms across three floors in Jawlakhel."},
-      {start:"00:00:09.000",end:"00:00:14.000",text:"Nepal Bhoomi — Nepal's finest addresses."},
-    ] },
-  { id:2, title:"Boudha Heights — A Walkthrough", duration:"0:10",
-    poster:img("photo-1613977257363-707ba9348227",1200,700),
-    sources:[
-      {label:"1080p",src:"https://test-videos.co.uk/vids/sintel/mp4/h264/1080/Sintel_1080_10s_5MB.mp4",type:"video/mp4"},
-      {label:"720p", src:"https://test-videos.co.uk/vids/sintel/mp4/h264/720/Sintel_720_10s_2MB.mp4",type:"video/mp4"},
-      {label:"360p", src:"https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4",type:"video/mp4"},
-    ],
-    captions:[
-      {start:"00:00:00.000",end:"00:00:05.000",text:"Above the Boudhanath stupa."},
-      {start:"00:00:05.000",end:"00:00:10.000",text:"Two hundred and seventy degrees of valley view."},
-    ] },
-  { id:3, title:"Meet the Nepal Bhoomi Advisory Team", duration:"0:10",
-    poster:img("photo-1600585154526-990dced4db0d",1200,700),
-    sources:[
-      {label:"1080p",src:"https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4",type:"video/mp4"},
-      {label:"720p", src:"https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_2MB.mp4",type:"video/mp4"},
-    ] },
-  { id:4, title:"Buying Property in Nepal: What to Expect", duration:"4:05",
-    poster:img("photo-1544735716-392fe2489ffa",1200,700),
-    youtubeId:"aqz-KE-bpKQ" },
-  { id:5, title:"Godavari Forest Estate from the Air", duration:"0:30",
-    poster:img("photo-1512917774080-9991f1c4c750",1200,700),
-    sources:[{label:"720p",src:"https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",type:"video/mp4"}] },
+// How a video is written in the list below. For YouTube, paste the normal share link as
+// `youtubeUrl` (youtu.be/..., youtube.com/watch?v=..., /shorts/...); `poster` can be left out
+// and the video's own YouTube thumbnail is used.
+type CompanyVideoInput = Omit<CompanyVideo,"poster"> & { poster?:string; youtubeUrl?:string };
+
+// Accepts any usual YouTube link or a bare 11-character video id; returns the id.
+function youtubeIdFrom(input?:string):string|undefined {
+  if(!input) return undefined;
+  if(/^[\w-]{11}$/.test(input)) return input;
+  try {
+    const u=new URL(input);
+    if(u.hostname.endsWith("youtu.be")) return u.pathname.slice(1,12)||undefined;
+    const v=u.searchParams.get("v");
+    if(v) return v;
+    return u.pathname.match(/\/(?:shorts|embed|live)\/([\w-]{11})/)?.[1];
+  } catch { return undefined; }
+}
+
+// maxresdefault is sharp but missing on some videos; hqdefault always exists (see onError below).
+const youtubeThumb=(id:string, q:"maxresdefault"|"hqdefault"="maxresdefault")=>`https://i.ytimg.com/vi/${id}/${q}.jpg`;
+
+// The first entry is the one shown in the centre when the page loads; the order here is the
+// order on the site. To add a video, paste its YouTube share link as `youtubeUrl`. A self-hosted
+// MP4 also works via `sources` (several entries make the quality menu work, highest first).
+const VIDEO_LIST: CompanyVideoInput[] = [
+  { id:6, title:"Sitapaila Elite Colony — 2 Minutes from Ring Road", duration:"1:19",
+    youtubeUrl:"https://youtu.be/gHsBz7OJDHk" },
+  { id:7, title:"Commercial Space for Rent — Kamaladi, Kathmandu", duration:"1:01",
+    youtubeUrl:"https://youtu.be/7wxOvLCa1BA" },
+  { id:8, title:"Buying Land Across Kathmandu? Talk to Nepal Bhoomi", duration:"0:52",
+    youtubeUrl:"https://youtu.be/qP_ZmzMgBlE" },
+  { id:9, title:"Stay Aware, Stay Alert — Property Awareness", duration:"0:34",
+    youtubeUrl:"https://youtu.be/_rU-4grC0k0" },
 ];
+
+const COMPANY_VIDEOS: CompanyVideo[] = VIDEO_LIST.map(({ youtubeUrl, ...v })=>{
+  const youtubeId=youtubeIdFrom(youtubeUrl ?? v.youtubeId);
+  return { ...v, youtubeId, poster: v.poster ?? (youtubeId ? youtubeThumb(youtubeId) : "") };
+});
 
 const fmtTime = (s:number) => {
   if(!isFinite(s)||s<0) return "0:00";
@@ -1140,7 +1152,7 @@ function VideoPlayer({ video, onClose }: { video:CompanyVideo; onClose:()=>void 
           <div style={{aspectRatio:"16/9"}}>
             <iframe
               className="w-full h-full"
-              src={`https://www.youtube-nocookie.com/embed/${video.youtubeId}?rel=0&modestbranding=1&cc_load_policy=1`}
+              src={`https://www.youtube-nocookie.com/embed/${video.youtubeId}?autoplay=1&playsinline=1&rel=0&modestbranding=1&cc_load_policy=1`}
               title={video.title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -1356,7 +1368,8 @@ function VideoSection() {
               }}
               transition={{duration:0.75,ease:[0.16,1,0.3,1]}}
            >
-              <img src={v.poster} alt="" className="w-full h-full object-cover"/>
+              <img src={v.poster} alt="" className="w-full h-full object-cover"
+                onError={e=>{ if(v.youtubeId && e.currentTarget.src.includes("maxresdefault")) e.currentTarget.src=youtubeThumb(v.youtubeId,"hqdefault"); }}/>
               <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.88) 0%, rgba(10,9,8,0.2) 55%, rgba(10,9,8,0.05) 100%)"}}/>
 
               {isCentre && (
@@ -2344,46 +2357,51 @@ function ContactPage() {
 }
 
 // ─── Login Page ────────────────────────────────────────────────────────────────
-type GoogleResult = "success" | "error" | null;
-const API_URL=(import.meta.env.VITE_API_URL as string|undefined) ?? "http://localhost:3000";
-
-// After the Google redirect the backend has set the httpOnly refresh cookie; trade it for an
-// access token, then load the user.
-async function finishGoogleSignIn(): Promise<{ email:string }> {
-  const refresh=await fetch(`${API_URL}/api/v1/auth/refresh`,{
-    method:"POST", credentials:"include", headers:{"Content-Type":"application/json"}, body:"{}",
-  });
-  if(!refresh.ok) throw new Error("refresh failed");
-  const { accessToken }=await refresh.json() as { accessToken:string };
-  const me=await fetch(`${API_URL}/api/v1/auth/me`,{ headers:{ Authorization:`Bearer ${accessToken}` } });
-  if(!me.ok) throw new Error("me failed");
-  const { user }=await me.json() as { user:{ email:string } };
-  return user;
-}
+type GoogleResult = "success" | "mfa" | "error" | null;
+const GOOGLE_ERROR="Google sign-in failed. Please try again.";
 
 function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResult }) {
   const [mode,setMode]=useState<"signin"|"forgot">("signin");
   const [email,setEmail]=useState("");
   const [pw,setPw]=useState("");
-  const [err,setErr]=useState(googleResult==="error" ? "Google sign-in failed. Please try again." : "");
-  const [done,setDone]=useState(false);
+  const { user, status, login, verifyMfa } = useAuth();
+  const [err,setErr]=useState(googleResult==="error" ? GOOGLE_ERROR : "");
+  const [busy,setBusy]=useState(false);
+  // Second step for accounts with 2FA. token is undefined after Google sign-in (it's in a cookie).
+  const [mfa,setMfa]=useState<{ token?:string }|null>(googleResult==="mfa" ? {} : null);
+  const [code,setCode]=useState("");
   const [resetSent,setResetSent]=useState(false);
-
-  useEffect(()=>{
-    if(googleResult!=="success") return;
-    let cancelled=false;
-    finishGoogleSignIn()
-      .then(user=>{ if(!cancelled){ setEmail(user.email); setDone(true); } })
-      .catch(()=>{ if(!cancelled) setErr("Google sign-in failed. Please try again."); });
-    return ()=>{ cancelled=true; };
-  },[googleResult]);
+  // The AuthProvider finishes Google sign-in on load (refresh cookie -> access token -> /me).
+  const googleFailed=googleResult==="success" && status==="anonymous";
+  const shownErr=err || (googleFailed ? GOOGLE_ERROR : "");
 
   const emailLooksValid=(v:string)=>/^\S+@\S+\.\S+$/.test(v.trim());
 
-  const submit=()=>{
-    if(!email.trim()||!pw.trim()){ setErr("Please enter your email and password."); return; }
+  const submit=async()=>{
+    if(busy) return;
+    if(!email.trim()||!pw){ setErr("Please enter your email and password."); return; }
     if(!emailLooksValid(email)){ setErr("Please enter a valid email address."); return; }
-    setErr(""); setDone(true);
+    setErr(""); setBusy(true);
+    try {
+      const r=await login(email.trim(), pw);
+      setPw("");
+      if("mfaRequired" in r){ setMfa({ token:r.mfaToken }); setCode(""); }
+    }
+    catch(e){ setErr(e instanceof ApiError ? e.message : "Sign in failed. Please try again."); }
+    finally { setBusy(false); }
+  };
+
+  const submitCode=async()=>{
+    if(busy||!mfa) return;
+    if(!code.trim()){ setErr("Enter the 6-digit code from your authenticator app."); return; }
+    setErr(""); setBusy(true);
+    try { await verifyMfa(code.trim(), mfa.token); setMfa(null); }
+    catch(e){
+      setErr(e instanceof ApiError ? e.message : "Verification failed. Please try again.");
+      // The 5-minute sign-in window ran out: start again from the password step.
+      if(e instanceof ApiError && e.message.startsWith("Your sign-in expired")) setMfa(null);
+    }
+    finally { setBusy(false); setCode(""); }
   };
 
   const sendReset=()=>{
@@ -2402,11 +2420,27 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
       <div className="w-full max-w-md border p-12" style={{background:WHITE,borderColor:BORDER_L}}>
         <div className="flex justify-center mb-8"><img src={logoImg} alt="NB" className="h-12 w-12 object-contain"/></div>
 
-        {done ? (
+        {status==="loading" && googleResult==="success" ? (
+          <p className="text-center text-[15px] py-10" style={{color:MUTED_L,...sans}}>Signing you in...</p>
+        ) : !user && mfa ? (
+          <>
+            <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Two-step verification</h2>
+            <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Code</label>
+              <input value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitCode()} inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" maxLength={20} className="border px-4 py-3 text-[18px] tracking-[0.3em] text-center outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
+            </div>
+            {err&&<p className="text-[14px] mt-2 mb-1" style={{color:MAROON,...sans}}>{err}</p>}
+            <button onClick={submitCode} disabled={busy} className="w-full py-4 mt-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Verifying...":"Verify"}</button>
+            <button onClick={()=>{ setMfa(null); setErr(""); }} className="w-full mt-5 flex items-center justify-center gap-2 text-[13px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>
+              <ChevronLeft size={14}/>Back to sign in
+            </button>
+          </>
+        ) : user ? (
           <div className="flex flex-col items-center text-center gap-4 py-6">
             <CheckCircle2 size={34} style={{color:GOLD}}/>
             <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Welcome back</h2>
-            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>You are signed in as {email}.</p>
+            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>You are signed in as {user.email}.</p>
             <button onClick={()=>go("home")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Continue Browsing</button>
           </div>
         ) : mode==="forgot" ? (
@@ -2451,8 +2485,8 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
               </div>
               <PasswordInput value={pw} onChange={setPw} onEnter={submit} autoComplete="current-password"/>
             </div>
-            {err&&<p className="text-[14px] mt-2 mb-1" style={{color:MAROON,...sans}}>{err}</p>}
-            <button onClick={submit} className="w-full py-4 mt-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Sign In</button>
+            {shownErr&&<p className="text-[14px] mt-2 mb-1" style={{color:MAROON,...sans}}>{shownErr}</p>}
+            <button onClick={submit} disabled={busy} className="w-full py-4 mt-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Signing In...":"Sign In"}</button>
             <div className="flex items-center gap-4 my-5">
               <span className="flex-1 h-px" style={{background:BORDER_L}}/>
               <span className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>or</span>
@@ -2480,9 +2514,10 @@ function RegisterPage({ go }: { go:Go }) {
   // Agency and agent sign-up were removed. They implied a licence-verification
   // and approval flow that does not exist on either side, and an unverified
   // "agent" listing property is a fraud vector. Members only for now.
+  const { user, register } = useAuth();
   const [vals,setVals]=useState<Record<string,string>>({});
   const [err,setErr]=useState("");
-  const [done,setDone]=useState(false);
+  const [busy,setBusy]=useState(false);
 
   const textFields=[
     {l:"Full Name",t:"text",ph:"Your full name",ac:"name"},
@@ -2491,24 +2526,34 @@ function RegisterPage({ go }: { go:Go }) {
   ];
   const set=(k:string,v:string)=>setVals(o=>({...o,[k]:v}));
 
-  const submit=()=>{
+  const submit=async()=>{
+    if(busy) return;
     const missing=[...textFields.map(f=>f.l),"Password","Confirm Password"].find(k=>!(vals[k]||"").trim());
     if(missing){ setErr(`Please fill in "${missing}".`); return; }
     if(!/^\S+@\S+\.\S+$/.test((vals["Email"]||"").trim())){ setErr("Please enter a valid email address."); return; }
+    // Same rule as the backend (lib/validation/auth.ts), so the user gets a clear message early.
+    if(!/^(?:\+977[- ]?)?9\d{9}$/.test((vals["Phone"]||"").trim())){ setErr("Please enter a valid Nepal mobile number, e.g. 98XXXXXXXX."); return; }
     if((vals["Password"]||"").length<8){ setErr("Password must be at least 8 characters."); return; }
     if(vals["Password"]!==vals["Confirm Password"]){ setErr("The two passwords do not match."); return; }
-    setErr(""); setDone(true);
+    setErr(""); setBusy(true);
+    try {
+      await register({
+        name:vals["Full Name"].trim(), email:vals["Email"].trim(), phone:vals["Phone"].trim(),
+        password:vals["Password"], confirmPassword:vals["Confirm Password"],
+      });
+    } catch(e){ setErr(e instanceof ApiError ? e.message : "Registration failed. Please try again."); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="min-h-screen pt-20 py-16" style={{background:BG_LIGHT}}>
       <div className="max-w-xl mx-auto px-6">
         <div className="flex justify-center mb-6"><img src={logoImg} alt="NB" className="h-12 w-12 object-contain"/></div>
-        {done?(
+        {user?(
           <div className="border p-10 flex flex-col items-center text-center gap-4" style={{background:WHITE,borderColor:BORDER_L}}>
             <CheckCircle2 size={34} style={{color:GOLD}}/>
-            <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Account created</h2>
-            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Welcome to Nepal Bhoomi, {vals["Full Name"]}.</p>
+            <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>{vals["Full Name"] ? "Account created" : "You are signed in"}</h2>
+            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Welcome to Nepal Bhoomi, {user.name||user.email}.</p>
             <button onClick={()=>go("home")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Start Browsing</button>
           </div>
         ):(<>
@@ -2530,8 +2575,98 @@ function RegisterPage({ go }: { go:Go }) {
               <PasswordInput value={vals["Confirm Password"]||""} onChange={v=>set("Confirm Password",v)} onEnter={submit} autoComplete="new-password"/>
             </div>
             {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>{err}</p>}
-            <button onClick={submit} className="py-4 mt-2 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Create Account</button>
+            <button onClick={submit} disabled={busy} className="py-4 mt-2 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Creating Account...":"Create Account"}</button>
             <p className="text-center text-[14px]" style={{color:MUTED_L,...sans}}>Already registered? <button onClick={()=>go("login")} className="transition-colors hover:text-[#8a2030]" style={{color:FG_LIGHT}}>Sign In</button></p>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Page ───────────────────────────────────────────────────────────────
+// First version: a read-only list of registered users. More admin tools (listings, enquiries,
+// moderation) will be added here later. The backend enforces access (ADMIN role + 2FA); the
+// role check below only decides what to show.
+type AdminUserRow = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; createdAt:string };
+
+function AdminPage({ go }: { go:Go }) {
+  const { user, status } = useAuth();
+  const [users,setUsers]=useState<AdminUserRow[]|null>(null);
+  const [err,setErr]=useState("");
+  const isAdmin=user?.role==="ADMIN";
+
+  useEffect(()=>{
+    if(!isAdmin) return;
+    let cancelled=false;
+    authFetch<{ users:AdminUserRow[] }>("/admin/users")
+      .then(r=>{ if(!cancelled) setUsers(r.users); })
+      .catch(e=>{ if(!cancelled) setErr(e instanceof ApiError ? e.message : "Could not load users."); });
+    return ()=>{ cancelled=true; };
+  },[isAdmin]);
+
+  const weekAgo=Date.now()-7*24*60*60*1000;
+  const joined=(iso:string)=>new Date(iso).toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric" });
+
+  if(status!=="loading" && !isAdmin) return (
+    <div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}>
+      <div className="text-center px-6">
+        <p className="text-2xl mb-3" style={{color:FG_LIGHT,...serif}}>Admins only</p>
+        <p className="text-[15px] mb-6" style={{color:MUTED_L,...sans}}>You need to be signed in as the administrator to view this page.</p>
+        <button onClick={()=>go(user?"home":"login")} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>{user?"Back to Home":"Sign In"}</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
+      <div className="px-6 md:px-12 lg:px-20 py-14 md:py-16 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
+        <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag c={GOLD}>Administration</Tag></div>
+        <h1 className="leading-[0.92]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.6vw,3.8rem)"}}>Admin Dashboard</h1>
+        <p className="text-[15px] mt-4" style={{color:MUTED_L,...sans}}>Signed in as {user?.name||user?.email}. More tools will be added here soon.</p>
+      </div>
+
+      <div className="px-6 md:px-12 lg:px-20 py-12">
+        {err ? (
+          <p className="text-[15px] border px-5 py-4" style={{color:MAROON,borderColor:BORDER_L,background:WHITE,...sans}}>{err}</p>
+        ) : !users ? (
+          <p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading users...</p>
+        ) : (<>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
+            {[
+              {l:"Registered users", v:users.length},
+              {l:"Members", v:users.filter(u=>u.role==="USER").length},
+              {l:"Joined this week", v:users.filter(u=>new Date(u.createdAt).getTime()>=weekAgo).length},
+            ].map(t=>(
+              <div key={t.l} className="border px-6 py-5" style={{borderColor:BORDER_L,background:WHITE}}>
+                <p className="text-[10px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>{t.l}</p>
+                <p className="text-3xl" style={{color:FG_LIGHT,...serif}}>{t.v}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 mb-4"><Users size={16} style={{color:GOLD}}/><h2 className="text-xl" style={{color:FG_LIGHT,...serif}}>Users</h2></div>
+          <div className="border overflow-x-auto" style={{borderColor:BORDER_L,background:WHITE}}>
+            <table className="w-full min-w-[640px] text-left">
+              <thead>
+                <tr className="border-b" style={{borderColor:BORDER_L}}>
+                  {["Name","Email","Phone","Role","Joined"].map(h=>(
+                    <th key={h} className="px-5 py-3 text-[10px] tracking-[0.28em] uppercase font-normal" style={{color:MUTED_L,...sans}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u=>(
+                  <tr key={u.id} className="border-b last:border-b-0" style={{borderColor:BORDER_L}}>
+                    <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.name||"—"}</td>
+                    <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.email}</td>
+                    <td className="px-5 py-3.5 text-[14px]" style={{color:MUTED_L,...sans}}>{u.phone||"—"}</td>
+                    <td className="px-5 py-3.5"><span className="text-[10px] tracking-[0.2em] uppercase px-2 py-1" style={{color:u.role==="ADMIN"?WHITE:FG_LIGHT,background:u.role==="ADMIN"?MAROON:BG_LIGHT,...sans}}>{u.role==="ADMIN"?"Admin":"Member"}</span></td>
+                    <td className="px-5 py-3.5 text-[14px] whitespace-nowrap" style={{color:MUTED_L,...sans}}>{joined(u.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>)}
       </div>
@@ -2714,7 +2849,8 @@ export default function App() {
   // The backend's Google callback lands back here with ?auth=google or ?auth_error=google.
   const [googleResult]=useState<GoogleResult>(()=>{
     const q=new URLSearchParams(window.location.search);
-    return q.get("auth")==="google" ? "success" : q.get("auth_error")==="google" ? "error" : null;
+    const auth=q.get("auth");
+    return auth==="google" ? "success" : auth==="google_mfa" ? "mfa" : q.get("auth_error")==="google" ? "error" : null;
   });
   useEffect(()=>{
     if(googleResult) window.history.replaceState(null,"",window.location.pathname);
@@ -2731,6 +2867,7 @@ export default function App() {
   },[]);
   const navKey=[nav.type,nav.district,nav.preset,nav.view,nav.scrollTo].join("|");
   return (
+    <AuthProvider>
     <div className="min-h-screen bg-background">
       <AnimatePresence>
         {loading&&<LoadingScreen key="loader" onDone={handleDone}/>}
@@ -2756,7 +2893,8 @@ export default function App() {
             {page==="login"&&<LoginPage go={go} googleResult={googleResult}/>}
             {page==="register"&&<RegisterPage go={go}/>}
             {page==="free-listing"&&<FreeListingPage/>}
-            {page==="videos"&&<HomePage go={go} setId={setSelId} scrollTo="videos"/>}            {page==="videos"&&<HomePage go={go} setId={setSelId}/>}
+            {page==="admin"&&<AdminPage go={go}/>}
+            {page==="videos"&&<HomePage go={go} setId={setSelId} scrollTo="videos"/>}
           </motion.div>
         </AnimatePresence>
         <Footer go={go}/>
@@ -2764,5 +2902,6 @@ export default function App() {
         <WhatsAppFloat/>
       </motion.div>
     </div>
+    </AuthProvider>
   );
 }

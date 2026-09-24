@@ -8,11 +8,14 @@
 
 @baseUrl = http://localhost:3000/api/v1
 @accessToken = REPLACE_ME
+# Must match FRONTEND_ORIGIN in .env: the backend rejects POSTs from any other Origin (CSRF check).
+@origin = http://localhost:5173
 
 ### 1. Register a member
 # @name register
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "testuser@example.com",
@@ -22,38 +25,10 @@ Content-Type: application/json
   "phone": "9812345678"
 }
 
-### 2. Register an agency - missing agencyName/licenseNumber, expect 400 VALIDATION_FAILED
+### 2. Register again with the same email - expect 409 CONFLICT
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
-
-{
-  "email": "agency@example.com",
-  "password": "correcthorsebatterystaple",
-  "confirmPassword": "correcthorsebatterystaple",
-  "name": "Himalayan Homes",
-  "phone": "9812345679",
-  "type": "agency"
-}
-
-### 3. Register an agency - complete body, expect verificationStatus "PENDING"
-# @name registerAgency
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
-
-{
-  "email": "agency@example.com",
-  "password": "correcthorsebatterystaple",
-  "confirmPassword": "correcthorsebatterystaple",
-  "name": "Himalayan Homes",
-  "phone": "9812345679",
-  "type": "agency",
-  "agencyName": "Himalayan Homes Pvt. Ltd.",
-  "licenseNumber": "NB-LIC-0001"
-}
-
-### 4. Register again with the same email - expect 409 CONFLICT
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "testuser@example.com",
@@ -63,9 +38,10 @@ Content-Type: application/json
   "phone": "9812345678"
 }
 
-### 5. Register with a role field in the body - should still come back as "role": "USER"
+### 3. Register with a role field in the body - should still come back as "role": "USER"
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "sneaky@example.com",
@@ -77,35 +53,38 @@ Content-Type: application/json
   "isAdmin": true
 }
 
-### 6. Login as the user from step 1 - copy accessToken from the response into @accessToken above
+### 4. Login as the user from step 1 - copy accessToken from the response into @accessToken above
 # @name login
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "testuser@example.com",
   "password": "correcthorsebatterystaple"
 }
 
-### 7. Login with the wrong password - expect 401 UNAUTHENTICATED
+### 5. Login with the wrong password - expect 401 UNAUTHENTICATED
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "testuser@example.com",
   "password": "totally-wrong-password"
 }
 
-### 8. Login with an email that doesn't exist - expect the SAME 401 message as step 7
+### 6. Login with an email that doesn't exist - expect the SAME 401 message as step 7
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "nobody-here@example.com",
   "password": "whatever-password"
 }
 
-### 9. Missing Content-Type header - expect 400 VALIDATION_FAILED
+### 7. Missing Content-Type header - expect 400 VALIDATION_FAILED
 POST {{baseUrl}}/auth/login
 
 {
@@ -113,41 +92,55 @@ POST {{baseUrl}}/auth/login
   "password": "correcthorsebatterystaple"
 }
 
-### 10. Who am I? (paste the accessToken from step 6 into @accessToken first)
+### 8. Who am I? (paste the accessToken from step 6 into @accessToken first)
 GET {{baseUrl}}/auth/me
 Authorization: Bearer {{accessToken}}
 
-### 11. Refresh the access token (rotates the refresh token cookie too)
+### 9. Refresh the access token (rotates the refresh token cookie too)
 # @name refresh
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
+Origin: {{origin}}
 
-### 12. Confirm /me still works with the newly refreshed accessToken
+### 10. Confirm /me still works with the newly refreshed accessToken
 GET {{baseUrl}}/auth/me
 Authorization: Bearer {{refresh.response.body.accessToken}}
 
-### 13. Log out
+### 11. Log out
 POST {{baseUrl}}/auth/logout
 Content-Type: application/json
+Origin: {{origin}}
 
-### 14. Refresh after logout should be 401 UNAUTHENTICATED
+### 12. Refresh after logout should be 401 UNAUTHENTICATED
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
+Origin: {{origin}}
 
 ###
 ### --- Password reset ---
 
-### 15. Request a reset link - always 204, check the server console for the logged link
+### 13. Request a reset link - always 204, check the server console for the logged link
 POST {{baseUrl}}/auth/forgot-password
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "testuser@example.com"
 }
 
-### 16. Reset the password using the token logged to the console
+### 13b. Check the link is still usable (204) without using it up - 400 once used or after 15 min
+POST {{baseUrl}}/auth/verify-reset-token
+Content-Type: application/json
+Origin: {{origin}}
+
+{
+  "token": "PASTE_TOKEN_FROM_SERVER_CONSOLE"
+}
+
+### 14. Reset the password using the token logged to the console
 POST {{baseUrl}}/auth/reset-password
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "token": "PASTE_TOKEN_FROM_SERVER_CONSOLE",
@@ -159,21 +152,69 @@ Content-Type: application/json
 ### Use the ADMIN_EMAIL / ADMIN_PASSWORD you put in .env when you ran `npm run db:seed`.
 ### There is no separate admin login endpoint - same /auth/login as everyone else.
 
-### 17. Login as admin (fill in your real admin email/password first)
+### 15. Login as admin (fill in your real admin email/password first)
 # @name adminLogin
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
+Origin: {{origin}}
 
 {
   "email": "admin@example.com",
   "password": "your-admin-password"
 }
 
-### 18. Approve the agency registered in step 3 (paste the admin accessToken and the agency user id)
-PATCH {{baseUrl}}/admin/users/PASTE_AGENCY_USER_ID/verification
-Content-Type: application/json
+### 16. List all users as admin (expect 200 with a users array)
+GET {{baseUrl}}/admin/users
 Authorization: Bearer {{adminLogin.response.body.accessToken}}
 
+### 17. List users with a normal user token (expect 403 FORBIDDEN)
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{accessToken}}
+
+###
+### --- Two-factor authentication (required for the admin) ---
+### Needs TOTP_ENCRYPTION_KEY in .env. Log in as the admin first and paste its accessToken
+### into @accessToken at the top.
+
+### 2FA-1. Start setup: returns { secret, otpauthUrl }. In Google Authenticator / Authy / 1Password
+### choose "Enter a setup key" and paste `secret` (time-based).
+POST {{baseUrl}}/auth/2fa/setup
+Content-Type: application/json
+Origin: {{origin}}
+Authorization: Bearer {{accessToken}}
+
 {
-  "status": "APPROVED"
+  "password": "YOUR_ADMIN_PASSWORD"
+}
+
+### 2FA-2. Turn it on with the 6-digit code the app shows. SAVE the recoveryCodes it returns
+### (shown only once) and paste the new accessToken into @accessToken.
+POST {{baseUrl}}/auth/2fa/enable
+Content-Type: application/json
+Origin: {{origin}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "code": "123456"
+}
+
+### 2FA-3. From now on, login returns { mfaRequired, mfaToken }. Finish with the app's code:
+POST {{baseUrl}}/auth/login/2fa
+Content-Type: application/json
+Origin: {{origin}}
+
+{
+  "mfaToken": "PASTE_mfaToken_FROM_LOGIN",
+  "code": "123456"
+}
+
+### 2FA-4. Turn 2FA off (code = app code or a recovery code). Admin endpoints stop working until it's back on.
+POST {{baseUrl}}/auth/2fa/disable
+Content-Type: application/json
+Origin: {{origin}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "password": "YOUR_CURRENT_PASSWORD",
+  "code": "123456"
 }

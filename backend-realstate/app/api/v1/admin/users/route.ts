@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { errorResponse, HttpError, jsonResponse, requireFreshAuth } from "@/lib/auth/guards";
+import { errorResponse, jsonResponse, requireAdmin } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 
 const USER_SELECT = {
@@ -9,7 +9,7 @@ const USER_SELECT = {
   name: true,
   phone: true,
   role: true,
-  totpEnabledAt: true,
+  createdAt: true,
 } as const;
 
 export async function OPTIONS(request: Request): Promise<Response> {
@@ -18,18 +18,14 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    const authUser = await requireFreshAuth(request);
-    const user = await prisma.user.findUnique({
-      where: { id: authUser.id },
+    await requireAdmin(request);
+
+    const users = await prisma.user.findMany({
       select: USER_SELECT,
+      orderBy: { createdAt: "desc" },
     });
 
-    if (!user) {
-      throw new HttpError(401, "UNAUTHENTICATED", "Login required");
-    }
-
-    const { totpEnabledAt, ...profile } = user;
-    return jsonResponse(request, { user: { ...profile, twoFactorEnabled: totpEnabledAt !== null } });
+    return jsonResponse(request, { users });
   } catch (error) {
     return errorResponse(request, error);
   }

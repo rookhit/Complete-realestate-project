@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { consumePasswordResetToken } from "@/lib/auth/password-reset";
-import { revokeAllRefreshTokensForUser } from "@/lib/auth/refresh-token";
+import { resetPasswordWithToken } from "@/lib/auth/password-reset";
+import { clearRefreshCookie } from "@/lib/auth/cookies";
+import { logAuthEvent } from "@/lib/auth/audit";
+import { clearAllFailedLoginsForEmail } from "@/lib/auth/login-lockout";
 import {
   HttpError,
   errorResponse,
@@ -11,6 +12,7 @@ import {
   requireJsonContentType,
 } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
+import { getRequestContext } from "@/lib/http/request-context";
 import { resetPasswordSchema } from "@/lib/validation/auth";
 
 export async function OPTIONS(request: Request): Promise<Response> {
@@ -34,11 +36,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new HttpError(400, "VALIDATION_FAILED", parsed.error.issues[0]?.message ?? "Invalid request body");
     }
 
-    const userId = await consumePasswordResetToken(parsed.data.token);
+    // Hash first (slow, ~250 ms) so the database transaction stays short.
     const passwordHash = await hashPassword(parsed.data.password);
-
-    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
-    await revokeAllRefreshTokensForUser(userId);
+    const { userId, email } = await resetPasswordWithToken(parsed.data.token, passwordHash);
+    await clearAllFailedLoginsForEmail(email);
+    await clearRefreshCookie();
+    await logAuthEvent("password_reset", { userId, context: getRequestContext(request) });
 
     return noContentResponse(request);
   } catch (error) {
