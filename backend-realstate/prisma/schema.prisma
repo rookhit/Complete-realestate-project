@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AuthProvider {
+  GOOGLE
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String?
+  phone               String               @default("")
+  passwordHash        String?
+  role                Role                 @default(USER)
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  // Access tokens issued before this moment are rejected by requireFreshAuth/requireAdmin.
+  sessionsRevokedAt   DateTime?
+  // TOTP 2FA. totpSecret is AES-256-GCM encrypted (lib/auth/totp.ts); it is set by /2fa/setup
+  // but only active once totpEnabledAt is set. totpLastUsedStep blocks replaying a code.
+  totpSecret          String?
+  totpEnabledAt       DateTime?
+  totpLastUsedStep    Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  oauthAccounts       OAuthAccount[]
+  auditLogs           AuditLog[]
+  mfaRecoveryCodes    MfaRecoveryCode[]
+}
+
+// One row per refresh token. A login creates one; every refresh revokes it and creates the next.
+// rotatedAt is set only when a token was replaced by /refresh, so presenting it again means it
+// was copied (reuse detection). ipAddress/userAgent are the client that received the token.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String    @default("unknown")
+  userAgent String    @default("unknown")
+  expiresAt DateTime
+  revokedAt DateTime?
+  rotatedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// One row per external identity (e.g. a Google account) linked to a User.
+// Only the profile Google returns is stored — never Google's own access/refresh tokens.
+model OAuthAccount {
+  id                String       @id @default(cuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          AuthProvider
+  providerAccountId String
+  email             String
+  emailVerified     Boolean
+  name              String?
+  pictureUrl        String?
+  lastLoginAt       DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Append-only log of security-relevant auth events. userId is null for events with no known
+// user (e.g. a login attempt for an unknown email) and is kept (set null) if the user is deleted.
+// Never store passwords, tokens or token hashes in metadata.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event     String
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Fixed-window rate-limit counters, one row per "<action>:<ip>" key. Postgres-backed so no
+// Redis is needed; old rows are deleted by the cleanup job.
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime
+}
+
+// Failed-login counter per (client IP, email). Keyed by "<ip>:<sha256(email)>" so the same
+// rules apply to unknown emails (no enumeration) and an attacker's IP can't lock the real
+// user out from theirs. See lib/auth/login-lockout.ts.
+model LoginLockout {
+  key         String    @id
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+// One-time 2FA recovery codes, stored as SHA-256 hashes.
+model MfaRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}

@@ -1,0 +1,36 @@
+# Dependencies — matches at any depth, so it covers backend-realstate and frontend-realstate
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Prisma generated client (backend-realstate regenerates it with npx prisma generate)
+generated/
+
+# Environment — never commit real values. Commit .env.example instead.
+.env
+.env.*
+!.env.example
+
+# Deploy
+.vercel
+
+# Claude Code personal overrides (project settings.json IS committed)
+.claude/settings.local.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
