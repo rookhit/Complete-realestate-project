@@ -9,6 +9,7 @@ const USER_SELECT = {
   name: true,
   phone: true,
   role: true,
+  emailVerifiedAt: true,
   createdAt: true,
 } as const;
 

@@ -51,6 +51,15 @@ export const verifyResetTokenSchema = z.object({
   token: z.string().min(1),
 });
 
+export const verifyEmailSchema = z.object({
+  email,
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from the email"),
+});
+
+export const resendVerificationSchema = z.object({
+  email,
+});
+
 export const mfaLoginSchema = z.object({
   // From the /auth/login response; omitted after Google sign-in (it's in a cookie then).
   mfaToken: z.string().min(1).optional(),

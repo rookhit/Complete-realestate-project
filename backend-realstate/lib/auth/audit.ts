@@ -17,7 +17,10 @@ export type AuditEvent =
   | "password_reset_requested"
   | "password_reset"
   | "refresh_token_reuse"
-  | "refresh_user_agent_mismatch";
+  | "refresh_user_agent_mismatch"
+  | "email_verification_sent"
+  | "email_verified"
+  | "email_verification_failed";
 
 type AuditInput = {
   userId?: string | null;

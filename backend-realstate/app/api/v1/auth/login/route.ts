@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth/password";
 import { signMfaToken } from "@/lib/auth/jwt";
 import { startSession } from "@/lib/auth/session";
+import { deleteExpiredUnverifiedUsers, sendVerificationCode } from "@/lib/auth/email-verification";
 import {
   assertNotLocked,
   clearFailedLogins,
@@ -31,6 +32,7 @@ const USER_SELECT = {
   role: true,
   passwordHash: true,
   totpEnabledAt: true,
+  emailVerifiedAt: true,
 } as const;
 
 // A valid bcrypt hash with no matching password, compared against when the
@@ -66,6 +68,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Same lockout for known and unknown emails, so a 429 doesn't reveal which exist.
     const key = lockoutKey(context.ip, email);
     await assertNotLocked(key);
+    // An unverified account past its deadline is gone: same 401 as any unknown email.
+    await deleteExpiredUnverifiedUsers(email);
 
     const found = await prisma.user.findUnique({ where: { email }, select: USER_SELECT });
     const passwordValid = await verifyPassword(password, found?.passwordHash ?? DUMMY_PASSWORD_HASH);
@@ -89,6 +93,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     await clearFailedLogins(key);
+
+    // Right password, but the email was never verified: no session. Email a fresh code (unless
+    // one went out in the last minute) and let the frontend show the code screen. Only reachable
+    // with the correct password, so this reveals nothing about which emails exist.
+    if (!found.emailVerifiedAt) {
+      if (await sendVerificationCode(found)) {
+        await logAuthEvent("email_verification_sent", { userId: found.id, context, metadata: { via: "login" } });
+      }
+      return jsonResponse(request, { verificationRequired: true, email: found.email });
+    }
 
     // Password is right but 2FA is on: no session yet, only a 5-minute token for
     // POST /auth/login/2fa.

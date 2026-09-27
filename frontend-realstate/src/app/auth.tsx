@@ -11,6 +11,9 @@ export const API_URL=(import.meta.env.VITE_API_URL as string|undefined) ?? "http
 export type AuthUser = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; twoFactorEnabled?:boolean };
 // Password was right but the account has 2FA: finish with verifyMfa(code, mfaToken).
 export type MfaChallenge = { mfaRequired:true; mfaToken:string };
+// The email isn't verified yet (new sign-up, or a login before verifying): a 6-digit code was
+// emailed; finish with verifyEmail(email, code).
+export type VerificationChallenge = { verificationRequired:true; email:string };
 type AuthStatus = "loading" | "authenticated" | "anonymous";
 
 export class ApiError extends Error {
@@ -28,7 +31,7 @@ let refreshing:Promise<string|null>|null=null;
 async function request<T>(path:string, init:RequestInit={}):Promise<T> {
   const headers=new Headers(init.headers);
   if(init.body!==undefined) headers.set("Content-Type","application/json");
-  if(accessToken) headers.set("Authorization",`Bearer ${accessToken}`);
+  if(accessToken) headers.set("Authorization",`Bearer ${accessToken}`); 
   let res:Response;
   try {
     res=await fetch(`${API_URL}/api/v1${path}`,{ ...init, headers, credentials:"include" });
@@ -75,15 +78,24 @@ export async function authFetch<T>(path:string, init:RequestInit={}):Promise<T> 
   }
 }
 
+// ─── Calls that don't change who is signed in ────────────────────────────────
+// All answer 204. forgotPassword and resendVerification say nothing about whether the email exists.
+export const resendVerification=(email:string)=>request<void>("/auth/resend-verification",{ method:"POST", body:JSON.stringify({ email }) });
+export const forgotPassword=(email:string)=>request<void>("/auth/forgot-password",{ method:"POST", body:JSON.stringify({ email }) });
+export const verifyResetToken=(token:string)=>request<void>("/auth/verify-reset-token",{ method:"POST", body:JSON.stringify({ token }) });
+export const resetPassword=(token:string, password:string)=>request<void>("/auth/reset-password",{ method:"POST", body:JSON.stringify({ token, password }) });
+
 // ─── React state ──────────────────────────────────────────────────────────────
 type RegisterInput = { name:string; email:string; phone:string; password:string; confirmPassword:string };
 type AuthContextValue = {
   user:AuthUser|null;
   status:AuthStatus;
-  login:(email:string, password:string)=>Promise<AuthUser|MfaChallenge>;
+  login:(email:string, password:string)=>Promise<AuthUser|MfaChallenge|VerificationChallenge>;
   // mfaToken comes from login(); after a Google redirect it is omitted (the backend keeps it in a cookie).
   verifyMfa:(code:string, mfaToken?:string)=>Promise<AuthUser>;
-  register:(input:RegisterInput)=>Promise<AuthUser>;
+  // Never signs in: the account needs its email verified first (verifyEmail).
+  register:(input:RegisterInput)=>Promise<VerificationChallenge>;
+  verifyEmail:(email:string, code:string)=>Promise<AuthUser|MfaChallenge>;
   logout:()=>Promise<void>;
 };
 
@@ -112,7 +124,12 @@ export function AuthProvider({ children }: { children:ReactNode }) {
   },[]);
 
   const login=useCallback(async(email:string, password:string)=>{
-    const r=await request<{ user:AuthUser; accessToken:string }|MfaChallenge>("/auth/login",{ method:"POST", body:JSON.stringify({ email, password }) });
+    const r=await request<{ user:AuthUser; accessToken:string }|MfaChallenge|VerificationChallenge>("/auth/login",{ method:"POST", body:JSON.stringify({ email, password }) });
+    return "mfaRequired" in r || "verificationRequired" in r ? r : signedIn(r);
+  },[signedIn]);
+
+  const verifyEmail=useCallback(async(email:string, code:string)=>{
+    const r=await request<{ user:AuthUser; accessToken:string }|MfaChallenge>("/auth/verify-email",{ method:"POST", body:JSON.stringify({ email, code }) });
     return "mfaRequired" in r ? r : signedIn(r);
   },[signedIn]);
 
@@ -120,9 +137,9 @@ export function AuthProvider({ children }: { children:ReactNode }) {
     await request<{ user:AuthUser; accessToken:string }>("/auth/login/2fa",{ method:"POST", body:JSON.stringify({ code, mfaToken }) }),
   ),[signedIn]);
 
-  const register=useCallback(async(input:RegisterInput)=>signedIn(
-    await request<{ user:AuthUser; accessToken:string }>("/auth/register",{ method:"POST", body:JSON.stringify(input) }),
-  ),[signedIn]);
+  const register=useCallback((input:RegisterInput)=>
+    request<VerificationChallenge>("/auth/register",{ method:"POST", body:JSON.stringify(input) }),
+  []);
 
   const logout=useCallback(async()=>{
     // Clear local state even if the server call fails; the cookie is revoked server-side when it succeeds.
@@ -130,7 +147,7 @@ export function AuthProvider({ children }: { children:ReactNode }) {
     accessToken=null; setUser(null); setStatus("anonymous");
   },[]);
 
-  const value=useMemo(()=>({ user, status, login, verifyMfa, register, logout }),[user,status,login,verifyMfa,register,logout]);
+  const value=useMemo(()=>({ user, status, login, verifyMfa, register, verifyEmail, logout }),[user,status,login,verifyMfa,register,verifyEmail,logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

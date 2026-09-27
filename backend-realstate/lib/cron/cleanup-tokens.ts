@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { deleteExpiredUnverifiedUsers } from "@/lib/auth/email-verification";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -15,6 +16,8 @@ export type CleanupResult = {
   rateLimits: number;
   loginLockouts: number;
   auditLogs: number;
+  emailVerificationCodes: number;
+  unverifiedUsers: number;
 };
 
 // Deletes auth rows that can never be used again. Safe to run as often as you like.
@@ -24,7 +27,7 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
   const resetCutoff = new Date(now - RESET_TOKEN_RETENTION_MS);
 
   const dayAgo = new Date(now - DAY_MS);
-  const [refreshTokens, passwordResetTokens, rateLimits, loginLockouts, auditLogs] = await Promise.all([
+  const [refreshTokens, passwordResetTokens, rateLimits, loginLockouts, auditLogs, emailVerificationCodes, unverifiedUsers] = await Promise.all([
     prisma.refreshToken.deleteMany({
       where: { OR: [{ expiresAt: { lt: refreshCutoff } }, { revokedAt: { lt: refreshCutoff } }] },
     }),
@@ -37,6 +40,11 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
       where: { updatedAt: { lt: dayAgo }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date(now) } }] },
     }),
     prisma.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now - AUDIT_LOG_RETENTION_MS) } } }),
+    // Not while locked: deleting the row would reset the wrong-code count.
+    prisma.emailVerificationCode.deleteMany({
+      where: { expiresAt: { lt: dayAgo }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date(now) } }] },
+    }),
+    deleteExpiredUnverifiedUsers(),
   ]);
 
   return {
@@ -45,5 +53,7 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
     rateLimits: rateLimits.count,
     loginLockouts: loginLockouts.count,
     auditLogs: auditLogs.count,
+    emailVerificationCodes: emailVerificationCodes.count,
+    unverifiedUsers,
   };
 }

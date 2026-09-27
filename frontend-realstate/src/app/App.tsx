@@ -13,13 +13,13 @@ import {
 import logoImg from "@/imports/image.png";
 import { DISTRICTS, PROVINCE_OF, searchDistricts } from "@/app/data/districts";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
-import { API_URL, ApiError, AuthProvider, authFetch, useAuth } from "@/app/auth";
+import { API_URL, ApiError, AuthProvider, authFetch, forgotPassword, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Page =
   | "home" | "buy" | "rent" | "property" | "hot" | "new-listings"
   | "about" | "blog" | "blog-post" | "services" | "emi" | "contact"
-  | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "admin";
+  | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "admin" | "reset-password";
 
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
@@ -2356,6 +2356,71 @@ function ContactPage() {
   );
 }
 
+// ─── Email verification ───────────────────────────────────────────────────────
+// New accounts (and logins before verifying) get a 6-digit code by email. Entering it verifies
+// the email and signs the user in; the parent re-renders its signed-in view once `user` is set.
+const RESEND_COOLDOWN_S=60;
+// Must match UNVERIFIED_ACCOUNT_TTL_DAYS in the backend (lib/auth/email-verification.ts).
+const UNVERIFIED_ACCOUNT_DAYS=7;
+
+function VerifyEmailForm({ email, onBack, onMfa }: { email:string; onBack:()=>void; onMfa:(mfaToken:string)=>void }) {
+  const { verifyEmail } = useAuth();
+  const [code,setCode]=useState("");
+  const [err,setErr]=useState("");
+  const [info,setInfo]=useState("");
+  const [busy,setBusy]=useState(false);
+  // A code was just sent, so resending waits out the backend's one-minute cooldown.
+  const [wait,setWait]=useState(RESEND_COOLDOWN_S);
+  useEffect(()=>{
+    if(wait<=0) return;
+    const t=setTimeout(()=>setWait(w=>w-1),1000);
+    return ()=>clearTimeout(t);
+  },[wait]);
+
+  const submit=async()=>{
+    if(busy) return;
+    if(!/^\d{6}$/.test(code.trim())){ setErr("Enter the 6-digit code from the email."); return; }
+    setErr(""); setInfo(""); setBusy(true);
+    try {
+      const r=await verifyEmail(email, code.trim());
+      if("mfaRequired" in r) onMfa(r.mfaToken);
+    }
+    catch(e){ setErr(e instanceof ApiError ? e.message : "Verification failed. Please try again."); setCode(""); }
+    finally { setBusy(false); }
+  };
+
+  const resend=async()=>{
+    if(busy||wait>0) return;
+    setErr(""); setInfo(""); setBusy(true);
+    try { await resendVerification(email); setInfo("A new code is on its way."); setWait(RESEND_COOLDOWN_S); }
+    catch(e){ setErr(e instanceof ApiError ? e.message : "Couldn't send a new code. Please try again."); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="flex justify-center mb-4"><Mail size={30} style={{color:GOLD}}/></div>
+      <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Verify your email</h2>
+      <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>We sent a 6-digit code to <span style={{color:FG_LIGHT}}>{email}</span>. It expires in 15 minutes.</p>
+      <div className="flex flex-col gap-1.5 mb-2">
+        <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Verification Code</label>
+        <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,""))} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" maxLength={6} className="border px-4 py-3 text-[18px] tracking-[0.3em] text-center outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
+      </div>
+      {err&&<p className="text-[14px] mt-2 mb-1" style={{color:MAROON,...sans}}>{err}</p>}
+      {info&&<p className="text-[14px] mt-2 mb-1" style={{color:MUTED_L,...sans}}>{info}</p>}
+      <button onClick={submit} disabled={busy} className="w-full py-4 mt-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Verifying...":"Verify Email"}</button>
+      <p className="text-center text-[14px] mt-5" style={{color:MUTED_L,...sans}}>
+        Didn&apos;t get it? Check your spam folder, or{" "}
+        {wait>0 ? <span>resend in {wait}s</span> : <button onClick={resend} disabled={busy} className="transition-colors hover:text-[#8a2030] disabled:opacity-60" style={{color:FG_LIGHT}}>send a new code</button>}
+      </p>
+      <p className="text-center text-[12px] mt-4" style={{color:MUTED_L,...sans}}>Accounts that aren&apos;t verified within {UNVERIFIED_ACCOUNT_DAYS} days are deleted.</p>
+      <button onClick={onBack} className="w-full mt-5 flex items-center justify-center gap-2 text-[13px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>
+        <ChevronLeft size={14}/>Back
+      </button>
+    </>
+  );
+}
+
 // ─── Login Page ────────────────────────────────────────────────────────────────
 type GoogleResult = "success" | "mfa" | "error" | null;
 const GOOGLE_ERROR="Google sign-in failed. Please try again.";
@@ -2370,6 +2435,8 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
   // Second step for accounts with 2FA. token is undefined after Google sign-in (it's in a cookie).
   const [mfa,setMfa]=useState<{ token?:string }|null>(googleResult==="mfa" ? {} : null);
   const [code,setCode]=useState("");
+  // Right password but the email isn't verified yet: the backend emailed a code.
+  const [verifying,setVerifying]=useState<string|null>(null);
   const [resetSent,setResetSent]=useState(false);
   // The AuthProvider finishes Google sign-in on load (refresh cookie -> access token -> /me).
   const googleFailed=googleResult==="success" && status==="anonymous";
@@ -2386,6 +2453,7 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
       const r=await login(email.trim(), pw);
       setPw("");
       if("mfaRequired" in r){ setMfa({ token:r.mfaToken }); setCode(""); }
+      else if("verificationRequired" in r) setVerifying(r.email);
     }
     catch(e){ setErr(e instanceof ApiError ? e.message : "Sign in failed. Please try again."); }
     finally { setBusy(false); }
@@ -2404,10 +2472,14 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
     finally { setBusy(false); setCode(""); }
   };
 
-  const sendReset=()=>{
+  const sendReset=async()=>{
+    if(busy) return;
     if(!email.trim()){ setErr("Please enter your email address."); return; }
     if(!emailLooksValid(email)){ setErr("Please enter a valid email address."); return; }
-    setErr(""); setResetSent(true);
+    setErr(""); setBusy(true);
+    try { await forgotPassword(email.trim()); setResetSent(true); }
+    catch(e){ setErr(e instanceof ApiError ? e.message : "Couldn't send the reset link. Please try again."); }
+    finally { setBusy(false); }
   };
 
   const switchMode=(next:"signin"|"forgot")=>{ setMode(next); setErr(""); setResetSent(false); };
@@ -2436,6 +2508,8 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
               <ChevronLeft size={14}/>Back to sign in
             </button>
           </>
+        ) : !user && verifying ? (
+          <VerifyEmailForm email={verifying} onBack={()=>{ setVerifying(null); setErr(""); }} onMfa={t=>{ setVerifying(null); setMfa({ token:t }); }}/>
         ) : user ? (
           <div className="flex flex-col items-center text-center gap-4 py-6">
             <CheckCircle2 size={34} style={{color:GOLD}}/>
@@ -2449,7 +2523,7 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
               <Mail size={30} style={{color:GOLD}}/>
               <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Check your inbox</h2>
               <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>
-                If an account exists for {email}, a password reset link is on its way. The link expires in one hour.
+                If an account exists for {email}, a password reset link is on its way. The link expires in 15 minutes. Check your spam folder if you don&apos;t see it.
               </p>
               <button onClick={()=>switchMode("signin")} className="mt-2 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase transition-colors hover:text-[#8a2030]" style={{color:MAROON,...sans}}>
                 <ChevronLeft size={14}/>Back to sign in
@@ -2464,7 +2538,7 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
                 <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendReset()} placeholder="your@email.com" className="border px-4 py-3 text-[15px] outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
               {err&&<p className="text-[14px] mb-2" style={{color:MAROON,...sans}}>{err}</p>}
-              <button onClick={sendReset} className="w-full py-4 mt-2 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Send Reset Link</button>
+              <button onClick={sendReset} disabled={busy} className="w-full py-4 mt-2 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Sending...":"Send Reset Link"}</button>
               <button onClick={()=>switchMode("signin")} className="w-full mt-5 flex items-center justify-center gap-2 text-[13px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>
                 <ChevronLeft size={14}/>Back to sign in
               </button>
@@ -2516,6 +2590,8 @@ function RegisterPage({ go }: { go:Go }) {
   // "agent" listing property is a fraud vector. Members only for now.
   const { user, register } = useAuth();
   const [vals,setVals]=useState<Record<string,string>>({});
+  // Registered; waiting for the emailed code (no session until the email is verified).
+  const [verifying,setVerifying]=useState<string|null>(null);
   const [err,setErr]=useState("");
   const [busy,setBusy]=useState(false);
 
@@ -2537,10 +2613,11 @@ function RegisterPage({ go }: { go:Go }) {
     if(vals["Password"]!==vals["Confirm Password"]){ setErr("The two passwords do not match."); return; }
     setErr(""); setBusy(true);
     try {
-      await register({
+      const r=await register({
         name:vals["Full Name"].trim(), email:vals["Email"].trim(), phone:vals["Phone"].trim(),
         password:vals["Password"], confirmPassword:vals["Confirm Password"],
       });
+      setVerifying(r.email);
     } catch(e){ setErr(e instanceof ApiError ? e.message : "Registration failed. Please try again."); }
     finally { setBusy(false); }
   };
@@ -2555,6 +2632,10 @@ function RegisterPage({ go }: { go:Go }) {
             <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>{vals["Full Name"] ? "Account created" : "You are signed in"}</h2>
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Welcome to Nepal Bhoomi, {user.name||user.email}.</p>
             <button onClick={()=>go("home")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Start Browsing</button>
+          </div>
+        ):verifying?(
+          <div className="border p-10" style={{background:WHITE,borderColor:BORDER_L}}>
+            <VerifyEmailForm email={verifying} onBack={()=>setVerifying(null)} onMfa={()=>go("login")}/>
           </div>
         ):(<>
           <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Create Account</h2>
@@ -2584,11 +2665,80 @@ function RegisterPage({ go }: { go:Go }) {
   );
 }
 
+// ─── Reset Password Page ──────────────────────────────────────────────────────
+// Opened from the emailed link (/reset-password?token=...). App reads the token and removes it
+// from the address bar on load, so it doesn't stay in the browser history.
+function ResetPasswordPage({ go, token }: { go:Go; token:string }) {
+  const [state,setState]=useState<"checking"|"invalid"|"form"|"done">(token ? "checking" : "invalid");
+  const [pw,setPw]=useState("");
+  const [pw2,setPw2]=useState("");
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  useEffect(()=>{
+    if(!token) return;
+    let cancelled=false;
+    verifyResetToken(token)
+      .then(()=>{ if(!cancelled) setState("form"); })
+      .catch(()=>{ if(!cancelled) setState("invalid"); });
+    return ()=>{ cancelled=true; };
+  },[token]);
+
+  const submit=async()=>{
+    if(busy) return;
+    if(pw.length<8){ setErr("Password must be at least 8 characters."); return; }
+    if(pw!==pw2){ setErr("The two passwords do not match."); return; }
+    setErr(""); setBusy(true);
+    try { await resetPassword(token, pw); setState("done"); }
+    catch(e){ setErr(e instanceof ApiError ? e.message : "Couldn't reset your password. Please try again."); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="min-h-screen pt-20 flex items-center justify-center py-16" style={{background:BG_LIGHT}}>
+      <div className="w-full max-w-md border p-12" style={{background:WHITE,borderColor:BORDER_L}}>
+        <div className="flex justify-center mb-8"><img src={logoImg} alt="NB" className="h-12 w-12 object-contain"/></div>
+        {state==="checking" ? (
+          <p className="text-center text-[15px] py-10" style={{color:MUTED_L,...sans}}>Checking your link...</p>
+        ) : state==="invalid" ? (
+          <div className="flex flex-col items-center text-center gap-4 py-6">
+            <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Link expired</h2>
+            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>This reset link is invalid, already used or older than 15 minutes. Request a new one from the sign-in page.</p>
+            <button onClick={()=>go("login")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Go to Sign In</button>
+          </div>
+        ) : state==="done" ? (
+          <div className="flex flex-col items-center text-center gap-4 py-6">
+            <CheckCircle2 size={34} style={{color:GOLD}}/>
+            <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Password updated</h2>
+            <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>You have been signed out everywhere. Sign in with your new password.</p>
+            <button onClick={()=>go("login")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Sign In</button>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Choose a new password</h2>
+            <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>At least 8 characters.</p>
+            <div className="flex flex-col gap-1.5 mb-4">
+              <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>New Password</label>
+              <PasswordInput value={pw} onChange={setPw} autoComplete="new-password"/>
+            </div>
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Confirm Password</label>
+              <PasswordInput value={pw2} onChange={setPw2} onEnter={submit} autoComplete="new-password"/>
+            </div>
+            {err&&<p className="text-[14px] mt-2 mb-1" style={{color:MAROON,...sans}}>{err}</p>}
+            <button onClick={submit} disabled={busy} className="w-full py-4 mt-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Saving...":"Set New Password"}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Page ───────────────────────────────────────────────────────────────
 // First version: a read-only list of registered users. More admin tools (listings, enquiries,
 // moderation) will be added here later. The backend enforces access (ADMIN role + 2FA); the
 // role check below only decides what to show.
-type AdminUserRow = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; createdAt:string };
+type AdminUserRow = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; emailVerifiedAt:string|null; createdAt:string };
 
 function AdminPage({ go }: { go:Go }) {
   const { user, status } = useAuth();
@@ -2632,11 +2782,12 @@ function AdminPage({ go }: { go:Go }) {
         ) : !users ? (
           <p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading users...</p>
         ) : (<>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
             {[
               {l:"Registered users", v:users.length},
               {l:"Members", v:users.filter(u=>u.role==="USER").length},
               {l:"Joined this week", v:users.filter(u=>new Date(u.createdAt).getTime()>=weekAgo).length},
+              {l:"Awaiting verification", v:users.filter(u=>!u.emailVerifiedAt).length},
             ].map(t=>(
               <div key={t.l} className="border px-6 py-5" style={{borderColor:BORDER_L,background:WHITE}}>
                 <p className="text-[10px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>{t.l}</p>
@@ -2650,7 +2801,7 @@ function AdminPage({ go }: { go:Go }) {
             <table className="w-full min-w-[640px] text-left">
               <thead>
                 <tr className="border-b" style={{borderColor:BORDER_L}}>
-                  {["Name","Email","Phone","Role","Joined"].map(h=>(
+                  {["Name","Email","Email Status","Phone","Role","Joined"].map(h=>(
                     <th key={h} className="px-5 py-3 text-[10px] tracking-[0.28em] uppercase font-normal" style={{color:MUTED_L,...sans}}>{h}</th>
                   ))}
                 </tr>
@@ -2660,6 +2811,8 @@ function AdminPage({ go }: { go:Go }) {
                   <tr key={u.id} className="border-b last:border-b-0" style={{borderColor:BORDER_L}}>
                     <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.name||"—"}</td>
                     <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.email}</td>
+                    {/* Unverified accounts are deleted UNVERIFIED_ACCOUNT_DAYS after sign-up. */}
+                    <td className="px-5 py-3.5 text-[13px] whitespace-nowrap" style={{color:u.emailVerifiedAt?MUTED_L:MAROON,...sans}}>{u.emailVerifiedAt?"Verified":`Pending · deleted ${joined(new Date(new Date(u.createdAt).getTime()+UNVERIFIED_ACCOUNT_DAYS*864e5).toISOString())}`}</td>
                     <td className="px-5 py-3.5 text-[14px]" style={{color:MUTED_L,...sans}}>{u.phone||"—"}</td>
                     <td className="px-5 py-3.5"><span className="text-[10px] tracking-[0.2em] uppercase px-2 py-1" style={{color:u.role==="ADMIN"?WHITE:FG_LIGHT,background:u.role==="ADMIN"?MAROON:BG_LIGHT,...sans}}>{u.role==="ADMIN"?"Admin":"Member"}</span></td>
                     <td className="px-5 py-3.5 text-[14px] whitespace-nowrap" style={{color:MUTED_L,...sans}}>{joined(u.createdAt)}</td>
@@ -2855,7 +3008,14 @@ export default function App() {
   useEffect(()=>{
     if(googleResult) window.history.replaceState(null,"",window.location.pathname);
   },[googleResult]);
-  const [page, setPage]=useState<Page>(googleResult ? "login" : "home");
+  // The password reset email links to /reset-password?token=... Take the token, then drop it
+  // from the address bar (and history) right away.
+  const [resetToken]=useState<string|null>(()=>
+    window.location.pathname==="/reset-password" ? new URLSearchParams(window.location.search).get("token") ?? "" : null);
+  useEffect(()=>{
+    if(resetToken!==null) window.history.replaceState(null,"","/");
+  },[resetToken]);
+  const [page, setPage]=useState<Page>(resetToken!==null ? "reset-password" : googleResult ? "login" : "home");
   const [selId, setSelId]=useState(1);
   const [blogId, setBlogId]=useState(1);
   const [nav, setNav]=useState<NavOpts>({});
@@ -2894,6 +3054,7 @@ export default function App() {
             {page==="register"&&<RegisterPage go={go}/>}
             {page==="free-listing"&&<FreeListingPage/>}
             {page==="admin"&&<AdminPage go={go}/>}
+            {page==="reset-password"&&<ResetPasswordPage go={go} token={resetToken??""}/>}
             {page==="videos"&&<HomePage go={go} setId={setSelId} scrollTo="videos"/>}
           </motion.div>
         </AnimatePresence>

@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/auth/password";
-import { signAccessToken } from "@/lib/auth/jwt";
-import { createRefreshToken } from "@/lib/auth/refresh-token";
-import { setRefreshCookie } from "@/lib/auth/cookies";
+import { deleteExpiredUnverifiedUsers, sendVerificationCode } from "@/lib/auth/email-verification";
 import {
   HttpError,
   errorResponse,
@@ -17,14 +15,6 @@ import { logAuthEvent } from "@/lib/auth/audit";
 import { preflightResponse } from "@/lib/http/cors";
 import { getRequestContext } from "@/lib/http/request-context";
 import { registerSchema } from "@/lib/validation/auth";
-
-const USER_SELECT = {
-  id: true,
-  email: true,
-  name: true,
-  phone: true,
-  role: true,
-} as const;
 
 export async function OPTIONS(request: Request): Promise<Response> {
   return preflightResponse(request);
@@ -54,6 +44,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const { email, password, name, phone } = parsed.data;
+    // Expired unverified sign-ups (including one for this email) are deleted first, so the email
+    // can be registered again. Doing it here keeps them purged even while the cron job is off.
+    await deleteExpiredUnverifiedUsers();
     const passwordHash = await hashPassword(password);
 
     const user = await prisma.user
@@ -63,24 +56,26 @@ export async function POST(request: Request): Promise<NextResponse> {
           passwordHash,
           name,
           phone,
-          lastLoginAt: new Date(),
-          lastLoginIp: context.ip,
         },
-        select: USER_SELECT,
+        select: { id: true, email: true },
       })
       .catch((error: unknown) => {
+        // Also for an existing account that never verified its email: its owner signs in (which
+        // re-sends the code) or, if someone else registered it, resets the password (the reset
+        // link proves the inbox and verifies the email).
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          throw new HttpError(409, "CONFLICT", "Email already registered");
+          throw new HttpError(409, "CONFLICT", "This email is already registered. Sign in instead, or reset your password.");
         }
         throw error;
       });
 
-    const accessToken = await signAccessToken({ sub: user.id, role: user.role });
-    const { token: refreshToken } = await createRefreshToken(user.id, context);
-    await setRefreshCookie(refreshToken);
+    // No session yet: the account is unusable until the emailed code is entered
+    // (POST /auth/verify-email), which then signs the user in.
+    await sendVerificationCode(user);
     await logAuthEvent("register", { userId: user.id, context });
+    await logAuthEvent("email_verification_sent", { userId: user.id, context, metadata: { via: "register" } });
 
-    return jsonResponse(request, { user, accessToken });
+    return jsonResponse(request, { verificationRequired: true, email: user.email });
   } catch (error) {
     return errorResponse(request, error);
   }
