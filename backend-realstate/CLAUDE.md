@@ -20,10 +20,11 @@ rules below (see "Authentication design" and "Implementation status").
 
 In scope now:
 
-Endpoints: register, login, refresh, logout, current user (me), forgot-password, reset-password, Google sign-in (start + callback).
+Endpoints: register, login, refresh, logout, current user (me), forgot-password, reset-password, verify-email, resend-verification, Google sign-in (start + callback).
 One admin-only endpoint to list users (not a dashboard).
 Password hashing with bcryptjs, JWT access tokens with jose, refresh tokens stored hashed in Postgres.
-Password reset tokens stored hashed in Postgres (email delivery is stubbed — see below).
+Password reset tokens stored hashed in Postgres, the reset link emailed via Gmail SMTP.
+Email verification with a 6-digit emailed code before the first login (added by explicit request on 2026-09-26).
 Two authorization roles, USER and ADMIN, with exactly one ADMIN.
 Reusable server-side guards: getAuthUser(), requireAuth(), requireAdmin().
 A seed script that creates the single admin.
@@ -32,8 +33,7 @@ Out of scope. Do NOT build these unless I ask:
 
 Middleware / proxy route protection (I will add it later).
 Reactions, comments, inquiries (the inquiry channel, WhatsApp or email, is not decided yet).
-Email verification, OAuth / social login other than Google, admin dashboard. (TOTP 2FA was added by explicit request on 2026-09-24.)
-Real email delivery for password reset (currently logs the reset link to the console — no provider chosen yet).
+OAuth / social login other than Google, admin dashboard. (TOTP 2FA was added by explicit request on 2026-09-24; email verification + real email delivery on 2026-09-26.)
 Any business tables (properties, comments, inquiries).
 
 Reactions, comments and inquiries will later call requireAuth() on the server. Keep the guards generic and easy to reuse.
@@ -55,7 +55,9 @@ Refresh token cookie: httpOnly, secure in production, sameSite: "strict" (change
 Logout: revoke the refresh token row and clear the refresh cookie. Responds 204 (frontend contract), no body.
 The role inside the access token is trusted by requireAuth until it expires (15 minutes). requireFreshAuth and requireAdmin instead read role + sessionsRevokedAt from the database and reject tokens whose iat (whole seconds) is before User.sessionsRevokedAt. sessionsRevokedAt is set by password reset, refresh-token reuse (revokeAllSessionsForUser), Google linking to an existing account, and enabling 2FA.
 2FA (TOTP, lib/auth/totp.ts + lib/auth/mfa.ts, no package): RFC 6238, SHA1, 6 digits, 30 s, ±1 step. Secret AES-256-GCM encrypted with TOTP_ENCRYPTION_KEY, user id as AAD. totpLastUsedStep blocks replay. 8 recovery codes (MfaRecoveryCode, SHA-256 hashed, single use). Login with 2FA on returns { mfaRequired, mfaToken } (JWT, same secret, audience "realstate-mfa", 5 min) instead of a session; POST /auth/login/2fa finishes. Google sign-in for a 2FA account puts the mfaToken in an httpOnly mfa_pending cookie (path /api/v1/auth/login/2fa) and redirects to ?auth=google_mfa. setup/disable re-check the current password (skipped for Google-only accounts). Limits: 10 tries/15 min per IP ("mfa"), 5 wrong codes/passwords per 15 min per user. The ADMIN must have 2FA on: requireAdmin returns 403 otherwise.
-Password reset: 32 random bytes hashed with SHA-256 in a PasswordResetToken table (same pattern as refresh tokens), 15 minute expiry, single-use. The reset (mark token used + new password + lockout reset + revoke all refresh tokens) is one transaction in lib/auth/password-reset.ts. forgot-password always responds 204 regardless of whether the email exists. Resetting the password revokes all of that user's refresh tokens. Email delivery is stubbed: the reset link is logged to the server console, not emailed — no provider is configured yet.
+Password reset: 32 random bytes hashed with SHA-256 in a PasswordResetToken table (same pattern as refresh tokens), 15 minute expiry, single-use. The reset (mark token used + new password + lockout reset + revoke all refresh tokens) is one transaction in lib/auth/password-reset.ts. forgot-password always responds 204 regardless of whether the email exists. Resetting the password revokes all of that user's refresh tokens and marks the email verified (the link arrived by email). The link (FRONTEND_ORIGIN/reset-password?token=...) is emailed after the response (lib/email/send-later.ts, next/server after()) so timing doesn't reveal which emails exist.
+Email verification (lib/auth/email-verification.ts): User.emailVerifiedAt; one EmailVerificationCode row per user (userId unique, SHA-256 of "userId:code", 15 min, 5 tries right or wrong via a conditional increment, resend cooldown 60 s; failures counts wrong codes across resends and 10 set lockedUntil = 24 h: no code sent or accepted, 429, current code killed; the next send after the lock resets the count). Register creates the user unverified and returns { verificationRequired, email } with NO session. Login with the right password on an unverified account re-sends a code (cooldown permitting) and returns the same shape. POST /auth/verify-email { email, code } verifies and starts the session. Google sign-in creates/marks users verified. Register on an existing email (verified or not) is 409; an unverified squatter's account is reclaimed by the owner through forgot-password. Users created before 2026-09-26 were backfilled as verified by the migration. Unverified USER accounts are deleted UNVERIFIED_ACCOUNT_TTL_DAYS (7) after createdAt by deleteExpiredUnverifiedUsers: all of them on every register and in the cron job, and the one for the email on login (then a normal 401). Frontend constant UNVERIFIED_ACCOUNT_DAYS in App.tsx must match.
+Email (lib/email/mailer.ts, nodemailer): Gmail SMTP with an App Password. Without GMAIL_USER/GMAIL_APP_PASSWORD: in development the message is printed to the server console; in production sending throws (logged, never the body).
 Security headers: next.config.ts sends nosniff, X-Frame-Options DENY, Referrer-Policy no-referrer, CSP "default-src 'none'; frame-ancestors 'none'", CORP same-site, Permissions-Policy on every response, Cache-Control: no-store on /api/*, HSTS in production only; poweredByHeader off.
 CORS: lib/http/cors.ts sets Access-Control-Allow-Origin (only when it matches FRONTEND_ORIGIN), -Credentials and -Headers; every route exports an OPTIONS handler. This is done per-route, not in middleware, since middleware stays out of scope.
 Roles
@@ -75,8 +77,10 @@ API endpoints
 Base path /api/v1. All accept and return JSON.
 
 Method	Path	Who	Behavior
-POST	/api/v1/auth/register	anyone	Validate, create a USER, issue tokens, return { user, accessToken }. 409 if the email exists.
-POST	/api/v1/auth/login	anyone	Verify credentials, issue tokens, return { user, accessToken } — or { mfaRequired, mfaToken } when 2FA is on. Same 401 for wrong password and unknown email. Lockout is per (client IP, email), applied to unknown emails too: 5 wrong → 429 for 15 min, doubling (max 24 h); 50 failures/day on one account only raises a login_attack_suspected audit event. See lib/auth/login-lockout.ts.
+POST	/api/v1/auth/register	anyone	Validate, create an unverified USER, email a 6-digit code, return { verificationRequired: true, email }. No session. 409 if the email exists.
+POST	/api/v1/auth/verify-email	anyone	{ email, code } → { user, accessToken } + refresh cookie. Same 400 for every failure; 429 while the account is locked (10 wrong codes across resends, 24 h). 20 failures/15 min per IP.
+POST	/api/v1/auth/resend-verification	anyone	{ email } → always 204; emails a new code only to an unverified account, max once a minute. 10/h per IP.
+POST	/api/v1/auth/login	anyone	Verify credentials, issue tokens, return { user, accessToken } — or { verificationRequired, email } when the email isn't verified (code re-sent), or { mfaRequired, mfaToken } when 2FA is on. Same 401 for wrong password and unknown email. Lockout is per (client IP, email), applied to unknown emails too: 5 wrong → 429 for 15 min, doubling (max 24 h); 50 failures/day on one account only raises a login_attack_suspected audit event. See lib/auth/login-lockout.ts.
 POST	/api/v1/auth/login/2fa	has mfaToken (body or mfa_pending cookie)	{ code } = TOTP or recovery code → { user, accessToken } + refresh cookie.
 POST	/api/v1/auth/2fa/setup	logged in (fresh)	{ password? } → { secret, otpauthUrl }.
 POST	/api/v1/auth/2fa/enable	logged in (fresh)	{ code } → { recoveryCodes, accessToken }; revokes all other sessions.
@@ -84,18 +88,19 @@ POST	/api/v1/auth/2fa/disable	logged in (fresh)	{ password?, code } → 204.
 POST	/api/v1/auth/refresh	has refresh cookie	Rotate the refresh token, return { accessToken }. 401 if invalid.
 POST	/api/v1/auth/logout	anyone	Revoke the refresh token, clear the cookie. 204.
 GET	/api/v1/auth/me	logged in (Bearer)	Return { user }.
-POST	/api/v1/auth/forgot-password	anyone	Always 204. Logs a reset link to the console if the email matches a user.
+POST	/api/v1/auth/forgot-password	anyone	Always 204. Emails a reset link if the email matches a user.
 POST	/api/v1/auth/verify-reset-token	anyone	204 if the reset token is still usable, else 400. Does not consume it.
 POST	/api/v1/auth/reset-password	has valid reset token	Set the new password, revoke all refresh tokens for that user. 204.
-GET	/api/v1/admin/users	admin only	Return { users } (id, email, name, phone, role, createdAt), newest first.
-GET	/api/cron/cleanup-tokens	scheduler (Bearer CRON_SECRET)	Deletes dead refresh/reset tokens, old RateLimit rows, audit logs > 180 days. 404 while CRON_SECRET is unset.
+GET	/api/v1/admin/users	admin only	Return { users } (id, email, name, phone, role, emailVerifiedAt, createdAt), newest first.
+GET	/api/cron/cleanup-tokens	scheduler (Bearer CRON_SECRET)	Deletes dead refresh/reset tokens and email codes, old RateLimit rows, audit logs > 180 days, unverified accounts > 7 days. 404 while CRON_SECRET is unset.
 GET	/api/v1/auth/google	anyone (browser navigation)	303 to Google with state + PKCE; the state/verifier live in a short-lived httpOnly cookie.
 GET	/api/v1/auth/google/callback	Google	Verify state + ID token, find/link/create the user, record the login in OAuthAccount, set the refresh cookie, 303 to FRONTEND_ORIGIN/?auth=google (or ?auth_error=google).
 Data model (auth only)
 Role enum: USER, ADMIN. AuthProvider enum: GOOGLE.
-User: id (cuid), email (unique, stored lowercase), name, phone, passwordHash (optional — null for Google-only users), role (default USER), lastLoginAt, lastLoginIp, sessionsRevokedAt, totpSecret (encrypted), totpEnabledAt, totpLastUsedStep, createdAt, updatedAt.
+User: id (cuid), email (unique, stored lowercase), name, phone, passwordHash (optional — null for Google-only users), role (default USER), emailVerifiedAt, lastLoginAt, lastLoginIp, sessionsRevokedAt, totpSecret (encrypted), totpEnabledAt, totpLastUsedStep, createdAt, updatedAt.
 LoginLockout: key ("<ip>:<sha256(email)>", primary key), failedCount, lockedUntil, updatedAt.
 MfaRecoveryCode: id, userId (cascade), codeHash (unique), usedAt, createdAt. Index on userId.
+EmailVerificationCode: id, userId (unique, cascade), codeHash, attempts, expiresAt, sentAt. Index on expiresAt.
 RefreshToken: id, tokenHash (unique), userId, ipAddress, userAgent, expiresAt, revokedAt (optional), rotatedAt (optional, set only by /refresh rotation), createdAt. Relation to User with cascade delete. Indexes on userId, expiresAt, revokedAt.
 AuditLog: id, userId (optional, SetNull on user delete), event, ipAddress, userAgent, metadata (Json), createdAt. Indexes on userId, createdAt.
 RateLimit: key ("<action>:<ip>", primary key), count, windowStart.
@@ -119,6 +124,12 @@ lib/auth/login-lockout.ts      per-(IP, email) lockout (LoginLockout table), acc
 lib/auth/session.ts            startSession (access token + refresh cookie + last login + audit)
 lib/auth/totp.ts               TOTP, base32, secret encryption, recovery code generation/hashing
 lib/auth/mfa.ts                verifySecondFactor, begin/completeTotpSetup, disableTotp, assertCurrentPassword
+lib/auth/email-verification.ts sendVerificationCode (cooldown), verifyEmailCode
+lib/email/mailer.ts            sendEmail (Gmail SMTP via nodemailer; console fallback in dev)
+lib/email/send-later.ts        sendEmailAfterResponse (next/server after())
+lib/email/templates.ts         verification code + password reset emails
+app/api/v1/auth/verify-email/route.ts
+app/api/v1/auth/resend-verification/route.ts
 lib/http/body.ts               readJsonBody (Content-Type + Origin checks + zod parse) for newer routes
 app/api/v1/auth/login/2fa/route.ts
 app/api/v1/auth/2fa/{setup,enable,disable}/route.ts
@@ -154,6 +165,8 @@ FRONTEND_ORIGIN: the frontend's origin, used for CORS, the Origin check, and the
 CRON_SECRET: at least 32 random characters; enables GET /api/cron/cleanup-tokens (optional).
 TOTP_ENCRYPTION_KEY: 32 random bytes, base64 (encrypts 2FA secrets). Read lazily; required as soon as anyone uses 2FA. Changing it makes every stored 2FA secret unreadable (users would need recovery codes / re-setup).
 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI: Google OAuth web client. Read lazily, so the rest of the API starts without them.
+GMAIL_USER, GMAIL_APP_PASSWORD: the Gmail address that sends mail and a Google App Password for it (needs 2-Step Verification on that Google account). Read lazily. Required in production.
+EMAIL_FROM_NAME: optional sender display name (default "Nepal Bhoomi").
 Security rules
 Validate every request body with zod. Only pick known fields.
 Normalize email with trim and lowercase.
@@ -161,13 +174,13 @@ Login returns the same generic error for a wrong password and an unknown email. 
 NEVER return passwordHash, token hashes or tokens from any endpoint. Use an explicit Prisma select and never return a full User row.
 Never log passwords, tokens or secrets.
 Require Content-Type: application/json on POST routes. Reject state-changing requests whose Origin header does not match FRONTEND_ORIGIN. If FRONTEND_ORIGIN is missing: skipped in development, 500 in production (fail closed).
-forgot-password logs the reset link only when NODE_ENV !== "production" (until email OTP exists, forgot-password does nothing visible in production).
+Reset links and verification codes are only ever printed to the console by the dev fallback (GMAIL_* unset, NODE_ENV !== "production").
 Handle errors in one place. Return { "error": { "code", "message", "fields"?, "requestId" } } with the right status (400, 401, 403, 404, 409, 500), per the frontend's error envelope contract. No stack traces or database errors in responses.
 Supabase REST API lockout: every table has RLS enabled with no policies, and anon/authenticated have no privileges (migration 20260924160000_enable_rls). The backend connects as postgres (table owner, bypasses RLS) so it is unaffected. EVERY new table's migration must add `ALTER TABLE "X" ENABLE ROW LEVEL SECURITY;` (Prisma can't express it) — otherwise Supabase's REST API exposes it.
-Google linking to an existing account (same email) clears that account's passwordHash and revokes its refresh tokens, because registration doesn't verify email ownership (pre-account hijacking). Relax this to "only if the email was never verified" once email OTP verification exists.
+Google linking to an existing account (same email) clears that account's passwordHash, revokes its refresh tokens and marks it verified only if its email was never verified (pre-account hijacking); a verified account is just linked.
 A successful password reset also invalidates every other unused reset token of that user.
-Rate limiting: per-IP fixed windows in the Postgres RateLimit table (lib/auth/rate-limit.ts, no Redis), sized for shared IPs (carrier NAT, cybercafés): failed logins 30/15 min and failed 2FA 20/15 min (assertUnderFailureLimit + recordRateLimitFailure: successes never count), register 20/h, forgot-password 10/h (enforceRateLimit: every request counts) → 429 RATE_LIMITED with Retry-After. The IP comes from x-forwarded-for / x-real-ip, which are only trustworthy behind a proxy that overwrites them (Vercel etc.). Never use the IP as proof of identity.
-Audit log: lib/auth/audit.ts logAuthEvent() writes to AuditLog (register, login, login_failed, login_locked, login_attack_suspected, mfa_challenge, mfa_failed, mfa_enabled, mfa_disabled, google_login, logout, password_reset_requested, password_reset, refresh_token_reuse, refresh_user_agent_mismatch). Best-effort (never throws). Never put passwords, tokens or token hashes in metadata. Routine refreshes are deliberately NOT logged (one row per user per 15 min would flood the free-tier database).
+Rate limiting: per-IP fixed windows in the Postgres RateLimit table (lib/auth/rate-limit.ts, no Redis), sized for shared IPs (carrier NAT, cybercafés): failed logins 30/15 min and failed 2FA 20/15 min (assertUnderFailureLimit + recordRateLimitFailure: successes never count), failed email codes 20/15 min (failure-only), register 20/h, forgot-password 10/h, resend-verification 10/h (enforceRateLimit: every request counts) → 429 RATE_LIMITED with Retry-After. The IP comes from x-forwarded-for / x-real-ip, which are only trustworthy behind a proxy that overwrites them (Vercel etc.). Never use the IP as proof of identity.
+Audit log: lib/auth/audit.ts logAuthEvent() writes to AuditLog (register, login, login_failed, login_locked, login_attack_suspected, mfa_challenge, mfa_failed, mfa_enabled, mfa_disabled, google_login, logout, password_reset_requested, password_reset, refresh_token_reuse, refresh_user_agent_mismatch, email_verification_sent, email_verified, email_verification_failed). Best-effort (never throws). Never put passwords, tokens or token hashes in metadata. Routine refreshes are deliberately NOT logged (one row per user per 15 min would flood the free-tier database).
 Code conventions
 TypeScript strict mode. No any. Explicit return types on exported functions.
 Use the @/ import alias.
@@ -186,7 +199,7 @@ Implementation status
 
 The authentication foundation described above is built and has been manually verified end to end against the real Supabase database (register, login, refresh, logout, me, duplicate-email 409, wrong/unknown-login 401, missing Content-Type 400, role/isAdmin body fields ignored). All files listed under "File layout" exist. Notes for picking this up again:
 
-Dependencies actually installed (pinned, not "latest", because prisma's "latest" npm tag currently points to an 8.0.0 release candidate): prisma@7.10.0, @prisma/client@7.10.0, @prisma/adapter-pg@7.10.0, pg, @types/pg, bcryptjs@3.0.3, jose@6.2.12, zod@4.6.5, tsx.
+Dependencies actually installed (pinned, not "latest", because prisma's "latest" npm tag currently points to an 8.0.0 release candidate): prisma@7.10.0, @prisma/client@7.10.0, @prisma/adapter-pg@7.10.0, pg, @types/pg, bcryptjs@3.0.3, jose@6.2.12, zod@4.6.5, tsx, nodemailer@10 + @types/nodemailer (2026-09-26).
 
 Prisma 7 specifics (this is not the Prisma you know, same spirit as the Next.js warning in AGENTS.md):
 - The generator in prisma/schema.prisma is `provider = "prisma-client"` (the new default, not the old "prisma-client-js") with `output = "../generated/prisma"`. It generates plain .ts source files (not precompiled js+d.ts), imported as `@/generated/prisma/client`. That folder is gitignored and regenerated with `npx prisma generate`.
@@ -217,4 +230,18 @@ Not yet updated: the frontend repo's own CLAUDE.md (a different repo, not checke
 2026-09-24 — closed the remaining review items, by explicit request (migration 20260924170000_lockout_per_ip_sessions_2fa; also made 20260924160000_enable_rls shadow-database safe and synced its checksum). Lockout moved from User.failedLoginCount/lockedUntil to LoginLockout per (IP, email) — fixes lock-anyone-out DoS and the 429 email-enumeration leak. Added sessionsRevokedAt + requireFreshAuth (admin, /me, 2FA routes). Added TOTP 2FA with recovery codes; admin endpoints require it; Google sign-in honours it. FRONTEND_ORIGIN missing in production now fails closed; reset link only logged outside production. next.config.ts pins turbopack.root (stray package-lock.json in the user's home dir). Verified end to end (lockout from two IPs, unknown-email lockout, 2FA setup/enable/login/replay/recovery/limits/disable, stale token after reset and after enabling 2FA, lockout cleared by reset), test data deleted. Still open by decision: 15-min validity of a copied access token on routes using plain requireAuth; register's 409 reveals existing emails and the reset link is console-only until email OTP; admin 2FA must be enrolled once via requests.http (no settings UI yet).
 
 2026-09-24 — final-review fixes, by explicit request: (1) two tabs refreshing at once no longer log the user out (409 instead of 401 + cookie wipe; frontend auth.tsx retries once); (2) rate limits made shared-IP friendly (failure-only counting for login/2FA, higher register/forgot limits); (5) security headers on the API (next.config.ts) and a production-only Content-Security-Policy meta tag in the frontend build (frontend-realstate/vite.config.ts; every external host the site loads must be listed there). Verified: race + limits end to end (10/10), headers via curl, CSP via headless Chrome on the production build (no violations; only the home page was exercised). Still open from the final report: forgot-password timing leak and register 409 (fix with email OTP), X-Forwarded-For only trustworthy behind a proxy, dev server reachable on the LAN, CRON_SECRET unset (no cleanup), frontend has no type-check/lint step, Google+2FA redirect untested live, rotate secrets shared in chat before production.
+
+2026-09-24 — admin, videos, repo uploads (by explicit request):
+- Admin display name set to "Nepal Bhoomi Admin" (DB row + prisma/seed.ts). Admin TOTP 2FA enrolled (via the /2fa/setup + /2fa/enable API); admin endpoints require it.
+- Frontend (frontend-realstate): first admin page (user list from GET /api/v1/admin/users, navbar link only for ADMIN), and "Explore in Video" now plays the 4 Nepal Bhoomi YouTube videos (details in FRONTEND_CLAUDE.md §7 "Company videos").
+- requests.http: every POST sends `Origin: {{origin}}` (@origin = http://localhost:5173) — without it the backend's Origin/CSRF check answers 403. Passwords in it are placeholders (YOUR_ADMIN_PASSWORD); never commit a real one.
+- Uploaded snapshots (fresh single-commit history, secret-scanned, no .env): rookhit/Realstate-Backend- (backend at root + frontend/ folder; superseded) and rookhit/Complete-realestate-project (backend-realstate/ + frontend-realstate/ + README). This repo's own history was pushed to Prajjwalgautam/Nepal-Bhoomi-Real-Estate-website- as branch `feat/auth-2fa-admin-videos` (main untouched), committed by explicit request.
+- Verified a fresh clone runs on another machine with only the .env added: needs Node 20.19+ / 22.12+ / 24+ (Prisma 7), `npm install`, `npx prisma generate`, `npm run dev`. On a brand-new clone `npx tsc --noEmit` reports LayoutProps missing until `next dev`/`next build` (or `next typegen`) has run once.
+
+2026-09-26 — email verification + emailed password reset, by explicit request ("Gmail OTP send, verification before login, keep the link for forgot password"). Migration 20260926090353_email_verification (User.emailVerifiedAt, EmailVerificationCode + RLS, existing users backfilled as verified). Gmail SMTP via nodemailer, emails sent with after(). Frontend: shared VerifyEmailForm (register + login), forgot-password form now calls the API, new /reset-password page (App reads ?token= then replaceState to "/"; production hosting must serve index.html for /reset-password). Verified against Supabase with throwaway users (register → no session, 409 on repeat, unverified login → code, wrong/unknown/reused code 400, 5-try limit, resend cooldown, correct code → session, forgot → link → reset verifies an unverified account) and the reset page in Chrome; test data deleted. Real Gmail delivery not yet tested (GMAIL_* not set at the time).
+
+Open items (none block running the app):
+- Needs a decision: the enquiry/contact/free-listing forms send nothing (need an API or a WhatsApp link); register's 409 still reveals registered emails; real page URLs in the frontend; reconcile this backend with apps/api on feat/monorepo-and-auth-hardening (FRONTEND_CLAUDE.md §7.4/§12).
+- Before production: rotate DATABASE/DIRECT password, GOOGLE_CLIENT_SECRET, JWT_ACCESS_SECRET and TOTP_ENCRYPTION_KEY (all appeared in a chat transcript) and re-enrol admin 2FA; change the weak admin password; set CRON_SECRET and schedule /api/cron/cleanup-tokens; deploy behind a proxy that sets X-Forwarded-For; set VITE_API_URL for the frontend build; keep frontend and API on the same site (SameSite=Strict cookie); consider Supabase transaction pooler (6543) for serverless and hosting near the DB (ap-northeast-2); Supabase free tier pauses when idle and has limited backups.
+- Small: log requestId with server errors (guards.ts errorResponse); remove spaces before "=" in .env keys; upgrade frontend Vite 6.3.5 → 6.4.3; add a `typecheck` script (next typegen && tsc --noEmit); restrict `next dev` to localhost (it listens on the LAN).
 

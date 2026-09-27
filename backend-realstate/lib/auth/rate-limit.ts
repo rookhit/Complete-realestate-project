@@ -9,13 +9,16 @@ import { HttpError } from "@/lib/auth/guards";
 // Sized for shared IPs: many people in Nepal reach the internet through one public IP
 // (mobile carrier NAT, offices, cybercafés), so the limits must not trip on ordinary use.
 // Login and 2FA therefore count only FAILED attempts (successful logins never add up);
-// register and forgot-password count every request, with room for a busy shared IP.
+// register, forgot-password and resend-verification count every request, with room for a busy shared IP.
 const LIMITS = {
   "login-failure": { max: 30, windowMs: 15 * 60 * 1000 },
   // 2FA code guessing; a 6-digit code has 1,000,000 values (plus a per-user cap in mfa.ts).
   "mfa-failure": { max: 20, windowMs: 15 * 60 * 1000 },
   register: { max: 20, windowMs: 60 * 60 * 1000 },
   "forgot-password": { max: 10, windowMs: 60 * 60 * 1000 },
+  // Wrong email verification codes (each code also dies after 5 tries, email-verification.ts).
+  "verify-email-failure": { max: 20, windowMs: 15 * 60 * 1000 },
+  "resend-verification": { max: 10, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type RateLimitedAction = keyof typeof LIMITS;

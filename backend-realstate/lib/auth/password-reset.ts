@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/auth/guards";
 
 const RESET_TOKEN_BYTES = 32;
-const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+export const RESET_TOKEN_TTL_MINUTES = 15;
+const RESET_TOKEN_TTL_MS = RESET_TOKEN_TTL_MINUTES * 60 * 1000;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -32,7 +33,8 @@ export async function isPasswordResetTokenValid(token: string): Promise<boolean>
 // Uses the token and sets the new password in one transaction: the token is marked used
 // (a conditional update, so two concurrent submits can't both succeed), every other unused
 // reset token of the user is invalidated, the password is set, and every session of the user
-// is revoked (refresh tokens + access tokens via sessionsRevokedAt). Returns the user's id and
+// is revoked (refresh tokens + access tokens via sessionsRevokedAt). The link arrived by email,
+// so it also marks the email verified (if it wasn't yet) and drops any pending code. Returns the user's id and
 // email (so the caller can clear login lockouts).
 export async function resetPasswordWithToken(
   token: string,
@@ -64,6 +66,11 @@ export async function resetPasswordWithToken(
       where: { id: existing.userId },
       data: { passwordHash, sessionsRevokedAt: now },
     });
+    await tx.user.updateMany({
+      where: { id: existing.userId, emailVerifiedAt: null },
+      data: { emailVerifiedAt: now },
+    });
+    await tx.emailVerificationCode.deleteMany({ where: { userId: existing.userId } });
     await tx.refreshToken.updateMany({
       where: { userId: existing.userId, revokedAt: null },
       data: { revokedAt: now },

@@ -44,7 +44,7 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile): Promise<OA
 
     const existing = await tx.user.findUnique({
       where: { email: profile.email },
-      select: { id: true, role: true },
+      select: { id: true, role: true, emailVerifiedAt: true },
     });
 
     if (existing) {
@@ -52,20 +52,23 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile): Promise<OA
       await tx.oAuthAccount.create({
         data: { ...accountDetails, provider: "GOOGLE", providerAccountId: profile.sub, userId: existing.id },
       });
-      // Registration doesn't verify email ownership, so this account (and its password) may
-      // have been created by someone else using this email ("pre-account hijacking"). Google
-      // has now proven who owns the email: drop the unverified password and sign out every
-      // existing session. The owner can set a password again via forgot-password.
-      // Revisit once email verification exists: only do this when the email was never verified.
-      await tx.user.update({
-        where: { id: existing.id },
-        data: { passwordHash: null, sessionsRevokedAt: new Date() },
-      });
-      await tx.refreshToken.updateMany({
-        where: { userId: existing.id, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-      return existing;
+      if (!existing.emailVerifiedAt) {
+        // Never verified, so this account (and its password) may have been created by someone
+        // else using this email ("pre-account hijacking"). Google has now proven who owns the
+        // email: drop the unverified password, sign out every session and mark it verified.
+        // The owner can set a password again via forgot-password.
+        const now = new Date();
+        await tx.user.update({
+          where: { id: existing.id },
+          data: { passwordHash: null, sessionsRevokedAt: now, emailVerifiedAt: now },
+        });
+        await tx.refreshToken.updateMany({
+          where: { userId: existing.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await tx.emailVerificationCode.deleteMany({ where: { userId: existing.id } });
+      }
+      return { id: existing.id, role: existing.role };
     }
 
     // Public sign-up path: always a plain USER, no password.
@@ -73,6 +76,7 @@ export async function findOrCreateGoogleUser(profile: GoogleProfile): Promise<OA
       data: {
         email: profile.email,
         name: profile.name,
+        emailVerifiedAt: new Date(),
         oauthAccounts: {
           create: { ...accountDetails, provider: "GOOGLE", providerAccountId: profile.sub },
         },

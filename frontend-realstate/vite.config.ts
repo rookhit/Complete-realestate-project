@@ -28,7 +28,7 @@ function contentSecurityPolicy(apiUrl) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://images.unsplash.com https://i.ytimg.com",
-    "media-src 'self' blob: https://test-videos.co.uk https://interactive-examples.mdn.mozilla.net",
+    "media-src 'self' blob:",
     "frame-src https://www.youtube-nocookie.com",
     `connect-src 'self' ${apiOrigin}`,
     "object-src 'none'",

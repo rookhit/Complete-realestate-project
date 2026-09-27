@@ -107,15 +107,41 @@ Creates a new user. `role` is always `USER` — the API never accepts a `role` f
 }
 ```
 
-**Success — `200`**, sets the `refresh_token` cookie:
+**Success — `200`**, **no session yet** (no cookie, no token). A 6-digit code has been emailed:
 ```json
-{
-  "user": { "id": "cmub...", "email": "ram@example.com", "name": "Ram Thapa", "phone": "9812345678", "role": "USER" },
-  "accessToken": "eyJhbGciOi..."
-}
+{ "verificationRequired": true, "email": "ram@example.com" }
 ```
+Show a code screen and call `POST /auth/verify-email`.
 
-**Errors:** `400 VALIDATION_FAILED` (bad JSON, failed validation), `409 CONFLICT` (email already registered).
+**Errors:** `400 VALIDATION_FAILED` (bad JSON, failed validation), `409 CONFLICT` (email already
+registered — also when it was registered but never verified: sign in to get a new code, or reset
+the password).
+
+**Unverified accounts are deleted 7 days after sign-up.** After that, logging in answers the usual
+`401` and the email can be registered again.
+
+---
+
+## `POST /auth/verify-email`
+
+**Request body:** `{ "email": string, "code": "123456" }`
+
+**Success — `200`**, sets the `refresh_token` cookie: `{ "user": {...}, "accessToken": "..." }`
+(same as login). A code expires after 15 minutes or 5 tries and works once. 10 wrong codes for one
+account (counted across resends) lock its verification for 24 hours: no code is sent or accepted
+until then. A password reset link or Google sign-in still verifies the email.
+
+**Errors:** `400 VALIDATION_FAILED` (`"This code is invalid or has expired. Request a new one."` —
+the same for every failure), `429 RATE_LIMITED` (20 wrong codes per 15 min per IP, or the account's
+verification is locked: show the message, it points to "Forgot password").
+
+---
+
+## `POST /auth/resend-verification`
+
+**Request body:** `{ "email": string }`. **Always `204`.** Emails a new code only if the account
+exists and isn't verified, and at most once a minute (the previous code stays valid meanwhile).
+`429 RATE_LIMITED` after 10 requests per hour per IP.
 
 ---
 
@@ -129,6 +155,9 @@ Works for the seeded admin too — there is no separate admin login endpoint.
 ```json
 { "user": { "...": "same shape as register" }, "accessToken": "eyJhbGciOi..." }
 ```
+
+**Email not verified yet — `200`**, no cookie, no token: `{ "verificationRequired": true, "email": "..." }`.
+A new code was emailed (unless one went out in the last minute). Continue with `POST /auth/verify-email`.
 
 **Success with 2FA on — `200`**, no cookie, no token yet:
 ```json
@@ -233,9 +262,9 @@ and retry once, or send the user to login.
 **Request body:** `{ "email": string }`
 
 **Success — `204`, always** — regardless of whether the email exists, so the response can't be
-used to enumerate accounts. If the email matches a user, a reset link is generated (currently
-logged to the server console; no email provider is wired up yet). The link is
-`FRONTEND_ORIGIN/reset-password?token=...` and is valid for **15 minutes**.
+used to enumerate accounts. If the email matches a user, a reset link is emailed:
+`FRONTEND_ORIGIN/reset-password?token=...`, valid for **15 minutes**. Resetting also marks the
+email verified (the link proves the user owns the inbox).
 
 **Errors:** `400 VALIDATION_FAILED` (malformed email), `429 RATE_LIMITED`.
 
@@ -269,9 +298,9 @@ new password.
 ## Google sign-in and existing accounts
 
 If someone signs in with Google using an email that already has an email+password account,
-the Google identity is linked to it, **the old password is removed and all its sessions are
-signed out** (registration doesn't verify email ownership yet, so that password may not
-belong to the email's owner). The user can set a password again with forgot-password.
+the Google identity is linked to it. If that account never verified its email, **the old password
+is removed and all its sessions are signed out** (it may have been registered by someone else);
+the user can set a password again with forgot-password. Google accounts count as verified.
 
 ---
 
@@ -283,7 +312,7 @@ the `ADMIN` user. There is exactly one admin: it is seeded from `ADMIN_EMAIL`/`A
 
 **Success — `200`:**
 ```json
-{ "users": [ { "id": "cmub...", "email": "ram@example.com", "name": "Ram Thapa", "phone": "9812345678", "role": "USER", "createdAt": "2026-09-24T10:00:00.000Z" } ] }
+{ "users": [ { "id": "cmub...", "email": "ram@example.com", "name": "Ram Thapa", "phone": "9812345678", "role": "USER", "emailVerifiedAt": "2026-09-24T10:05:00.000Z", "createdAt": "2026-09-24T10:00:00.000Z" } ] }
 ```
 
 **Errors:** `401 UNAUTHENTICATED` (not logged in, or a token from before a password reset),

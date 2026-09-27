@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createPasswordResetToken } from "@/lib/auth/password-reset";
+import { RESET_TOKEN_TTL_MINUTES, createPasswordResetToken } from "@/lib/auth/password-reset";
+import { sendEmailAfterResponse } from "@/lib/email/send-later";
+import { passwordResetEmail } from "@/lib/email/templates";
 import {
   HttpError,
   errorResponse,
@@ -45,11 +47,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (user) {
       const token = await createPasswordResetToken(user.id);
       const origin = process.env.FRONTEND_ORIGIN ?? "http://localhost:5173";
-      // Stub: no email provider is configured yet (email OTP is planned). The link is only
-      // logged in development: in production anyone who can read the logs could use it.
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`Password reset link for ${user.email}: ${origin}/reset-password?token=${token}`);
-      }
+      const link = `${origin}/reset-password?token=${token}`;
+      // Sent after the response, so answering for a real account takes as long as for an unknown one.
+      sendEmailAfterResponse(passwordResetEmail(user.email, link, RESET_TOKEN_TTL_MINUTES));
       await logAuthEvent("password_reset_requested", { userId: user.id, context });
     }
 

@@ -453,7 +453,27 @@ Serve video with CORS **or** from the same origin. The player deliberately does 
 outright when it is set. Captions are built client-side into a `blob:` URL, so they are always
 same-origin and never need CORS.
 
-Current entries point at test-videos.co.uk placeholders until the real films exist.
+**How entries are written now (2026-09-24).** The list in `App.tsx` is `VIDEO_LIST:
+CompanyVideoInput[]`; each YouTube entry is just `{ id, title, duration, youtubeUrl }` with the
+normal share link (`youtu.be/…`, `watch?v=…`, `/shorts/…`, `/embed/…`, `?si=` is fine).
+`youtubeIdFrom()` extracts the id; when `poster` is omitted the card uses YouTube's own thumbnail
+(`i.ytimg.com/vi/<id>/maxresdefault.jpg`, falling back to `hqdefault.jpg` on error). The popup
+embed uses `youtube-nocookie.com` with `autoplay=1`, so one click plays. Order in the list =
+order on the site; the first entry is centred on load. The placeholder test clips were removed.
+
+Current videos (all from the Nepal Bhoomi YouTube channel, embedding checked as allowed):
+
+| # | Card title | Link | Length |
+|---|---|---|---|
+| 1 | Sitapaila Elite Colony — 2 Minutes from Ring Road | https://youtu.be/gHsBz7OJDHk | 1:19 |
+| 2 | Commercial Space for Rent — Kamaladi, Kathmandu | https://youtu.be/7wxOvLCa1BA | 1:01 |
+| 3 | Buying Land Across Kathmandu? Talk to Nepal Bhoomi (YouTube title is Nepali) | https://youtu.be/qP_ZmzMgBlE | 0:52 |
+| 4 | Stay Aware, Stay Alert — Property Awareness (YouTube title is Nepali) | https://youtu.be/_rU-4grC0k0 | 0:34 |
+
+Card titles are English because the heading font (Gloock) has no Devanagari glyphs.
+The production Content-Security-Policy (`vite.config.ts`) allows `i.ytimg.com` for thumbnails and
+`www.youtube-nocookie.com` for the player; self-hosted MP4s would need their host added to
+`media-src`. A future step is managing this list from the admin dashboard instead of code.
 
 ### 7.4 Auth — BUILT, and the scheme changed
 
@@ -998,6 +1018,18 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-09-24 · frontend · Real YouTube videos, pushed as branch `feat/auth-2fa-admin-videos`.** "Explore in
+  Video" now shows the 4 Nepal Bhoomi YouTube videos listed in §7 "Company videos"; the
+  test-video placeholders are gone and their hosts were removed from the CSP. Entries take a
+  pasted `youtubeUrl`; thumbnails come from YouTube; the popup autoplays. Everything in this
+  change log dated 2026-09-24 (real login/register/logout, session restore, 2FA code step, admin
+  page, refresh-race retry, CSP, removed react-router) is on that branch, which builds on
+  `feat/be-google-auth`. **Known frontend gaps (not fixed yet):** the callback, property-enquiry,
+  contact, free-listing and forgot-password forms only show a success message and send nothing;
+  every page lives at `/` (Back leaves the site, links can't be shared); `index.html` still has
+  the Figma title/description and `robots: noindex, nofollow`; favourites are lost on reload;
+  Vite 6.3.5 has dev-server advisories (upgrade to 6.4.3); there is no type-check/lint script.
 
 - **2026-09-24 · both · Refresh race + CSP.** `POST /auth/refresh` now answers `409` (not 401)
   when another tab refreshed the same cookie at the same moment; `auth.tsx` waits ~0.5 s and
