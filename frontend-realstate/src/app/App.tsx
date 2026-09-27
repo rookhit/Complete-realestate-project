@@ -8,12 +8,24 @@ import {
   Instagram, Facebook, Youtube, Linkedin, Globe, MessageSquare, ZoomIn,
   SlidersHorizontal, RotateCcw, User, Users, FileText, PlusCircle,
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
-  Settings, Subtitles, Check,
+  Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
+  Tag as TagIcon,
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
 import { DISTRICTS, PROVINCE_OF, searchDistricts } from "@/app/data/districts";
+import { reviewsFor } from "@/app/data/reviews";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
 import { API_URL, ApiError, AuthProvider, authFetch, useAuth } from "@/app/auth";
+import {
+  BG_LIGHT, FG_DARK, FG_LIGHT, CREAM, WHITE, MAROON, GOLD, GOLD_DIM,
+  MUTED_D, MUTED_L, BORDER_L, BORDER_D, serif, sans, img,
+} from "@/app/components/ui/brand";
+import { StatusBadge, VerifiedChip } from "@/app/components/ui/status-badge";
+import { AmenityStrip } from "@/app/components/ui/amenity-strip";
+import { FavButton, ReactionButton } from "@/app/components/ui/reaction-button";
+import { FloatingDock } from "@/app/components/ui/floating-dock";
+import { RatingLink, ReviewsSection } from "@/app/components/ui/property-reviews";
+import { ResultsToolbar, type SortKey } from "@/app/components/ui/results-toolbar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Page =
@@ -24,28 +36,11 @@ type Page =
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
   preset?: "hot"|"new"; scrollTo?: string; blog?: number;
+  q?: string;                             // free-text search on the Buy/Rent page
 };
 type Go = (p: Page, o?: NavOpts) => void;
 
-// ─── Brand ────────────────────────────────────────────────────────────────────
-const BG_DARK   = "#0e0d0b";
-const BG_LIGHT  = "#f7f3ed";
-const FG_DARK   = "#f0ebe0";
-const FG_LIGHT  = "#1a1611";
-const CREAM     = "#f7f3ed";
-const WHITE     = "#ffffff";
-const MAROON    = "#8a2030";
-const GOLD      = "#b08848";
-const GOLD_DIM  = "rgba(176,136,72,0.45)";
-const MUTED_D   = "#7a7060";
-const MUTED_L   = "#6b6154";
-const BORDER_L  = "rgba(26,22,17,0.1)";
-const BORDER_D  = "rgba(240,235,224,0.08)";
-
-const serif = { fontFamily: "'Gloock', Georgia, serif" } as const;
-const sans  = { fontFamily: "'Jost', system-ui, sans-serif" } as const;
-const img   = (id: string, w = 1200, h = 800) =>
-  `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&auto=format`;
+// Brand colours and fonts live in components/ui/brand.ts.
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 interface Prop {
@@ -163,8 +158,10 @@ const ALL_PROPS: Prop[] = [
     location:"Sauraha, Chitwan", district:"Chitwan", price:"NPR 3.2 Cr", priceNum:32000000,
     listing:"For Sale", type:"House/Bungalow", beds:4, baths:3, builtArea:"3,200 sq.ft", landArea:"15 Ropani",
     roadAccess:"Graveled 14ft", facing:"South", buildYear:2021, floors:2, verified:false, featured:false,
-    hero:img("photo-1507003211169-0a1dd7228f2d",1920,1080),
-    gallery:[img("photo-1507003211169-0a1dd7228f2d"),img("photo-1500382017468-9049fed747ef")],
+    // Was photo-1507003211169, a studio portrait of a man (also used as a
+    // testimonial avatar), so this listing led with a stranger's face.
+    hero:img("photo-1520250497591-112f2f40a3f4",1920,1080),
+    gallery:[img("photo-1520250497591-112f2f40a3f4"),img("photo-1582719478250-c89cae4dc85b"),img("photo-1500382017468-9049fed747ef")],
     description:"An extraordinary riverside retreat at the edge of the Chitwan National Park. Wake up to jungle sounds and sunset river views every day.",
     features:["River Frontage","Private Garden","Nature Trails","Open Verandah","Jungle Views","Earthquake Resistant","Drinking Water","Parking","Terrace","Living Room","Dining Room","Kitchen","Bathroom"],
     mapX:45, mapY:65 },
@@ -187,7 +184,7 @@ const BLOGS = [
 
 const TESTIMONIALS = [
   { name:"Bijay Shrestha", role:"Property Buyer, Kathmandu", rating:5, text:"Nepal Bhoomi helped us find our dream home in Lalitpur within 3 weeks. Their knowledge of the market and genuine care for our needs was exceptional.", img:img("photo-1560250097-0b93528c311a",200,200) },
-  { name:"Anita Gurung", role:"Property Investor, Pokhara", rating:5, text:"As an NRN investing from abroad, Nepal Bhoomi's advisory team guided us through every legal and financial step. Complete transparency throughout.", img:img("photo-1580489944761-15a19d674349",200,200) },
+  { name:"Anita Gurung", role:"Property Investor, Pokhara", rating:5, text:"As an NRN investing from abroad, Nepal Bhoomi's advisory team guided us through every legal and financial step. Complete transparency throughout.", img:img("photo-1573497019940-1c28c88b4f3e",200,200) },
   { name:"Dr. Ramesh Poudel", role:"Commercial Buyer, Lalitpur", rating:5, text:"Purchased a commercial property through Nepal Bhoomi. Their valuation was spot-on and the transaction was completed without a single hitch. Highly recommended.", img:img("photo-1507003211169-0a1dd7228f2d",200,200) },
 ];
 
@@ -234,12 +231,6 @@ const PillBtn = ({ active, onClick, children }: { active?:boolean; onClick?:()=>
     style={{ borderRadius:"9999px", borderColor:active?"transparent":BORDER_L, background:active?"#1a1611":"transparent", color:active?WHITE:FG_LIGHT, ...sans }}>
     {children}
   </button>
-);
-const StatusBadge = ({ verified, featured }: { verified:boolean; featured:boolean }) => (
-  <div className="flex gap-1.5">
-    {featured && <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{ background:MAROON, color:WHITE, ...sans }}>Featured</span>}
-    {verified && <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] tracking-[0.2em] uppercase" style={{ background:"rgba(176,136,72,0.15)", color:GOLD, ...sans }}><CheckCircle2 size={11}/>Verified</span>}
-  </div>
 );
 
 // ─── Shared inputs ────────────────────────────────────────────────────────────
@@ -693,8 +684,9 @@ function CallbackForm({ onClose }: { onClose?: () => void }) {
 // ─── Float Elements ───────────────────────────────────────────────────────────
 // The AI concierge was removed: it only ever returned one canned reply, so it
 // promised a conversation it could not hold. Its slot now opens the real
-// callback form, which reaches an actual advisor.
-function QuickEnquiryFloat() {
+// callback form, which reaches an actual advisor. The buttons themselves are
+// the FloatingDock in components/ui/floating-dock.tsx.
+function QuickEnquiryFloat({ overHero=false }: { overHero?:boolean }) {
   const [open,setOpen]=useState(false);
 
   useEffect(()=>{
@@ -707,19 +699,7 @@ function QuickEnquiryFloat() {
 
   return (
     <>
-      <motion.button
-        onClick={()=>setOpen(true)}
-        aria-label="Quick enquiry"
-        className="fixed bottom-24 right-6 z-40 flex items-center gap-2.5 pl-4 pr-5 py-3 shadow-lg"
-        style={{background:MAROON,color:WHITE,...sans}}
-        animate={{ opacity:[1,0.66,1] }}
-        transition={{ duration:1.9, repeat:Infinity, ease:"easeInOut" }}
-        whileHover={{ scale:1.04 }}
-        whileTap={{ scale:0.98 }}
-      >
-        <Phone size={15}/>
-        <span className="text-[11px] tracking-[0.22em] uppercase whitespace-nowrap">Quick Enquiry</span>
-      </motion.button>
+      <FloatingDock onEnquire={()=>setOpen(true)} overHero={overHero}/>
 
       <AnimatePresence>
         {open && (
@@ -760,13 +740,6 @@ function QuickEnquiryFloat() {
   );
 }
 
-const WhatsAppFloat = () => (
-  <a href="https://wa.me/9779800000000" target="_blank" rel="noopener noreferrer"
-    aria-label="Chat on WhatsApp" className="fixed bottom-6 right-6 z-40 w-12 h-12 flex items-center justify-center transition-all hover:scale-105 shadow-lg" style={{background:"#25D366"}}>
-    <MessageCircle size={18} style={{color:"#fff"}}/>
-  </a>
-);
-
 // ─── PropertyCard ─────────────────────────────────────────────────────────────
 function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:number)=>void; light?:boolean }) {
   const [hov,setHov]=useState(false);
@@ -779,7 +752,9 @@ function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:
         <div className="absolute top-3 left-3 flex gap-1.5">
           <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
         </div>
-        <div className="absolute top-3 right-3"><StatusBadge verified={p.verified} featured={p.featured}/></div>
+        {/* The corner badge already says "Featured" when that is the badge, so
+            the status chip must not repeat it. */}
+        <div className="absolute top-3 right-3"><StatusBadge verified={p.verified} featured={p.featured && p.badge!=="Featured"} onImage/></div>
         <motion.div className="absolute bottom-3 left-3 right-3 flex gap-3" animate={{opacity:hov?1:0,y:hov?0:6}} transition={{duration:0.25}}>
           {p.beds>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:"rgba(240,235,224,0.8)",...sans}}><Bed size={12}/>{p.beds}</span>}
           {p.baths>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:"rgba(240,235,224,0.8)",...sans}}><Bath size={12}/>{p.baths}</span>}
@@ -793,25 +768,14 @@ function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:
           <MapPin size={12} style={{color:GOLD,flexShrink:0}}/>
           <span className="text-[13px] truncate" style={{color:light?MUTED_L:MUTED_D,...sans}}>{p.location}</span>
         </div>
+        <div className="mb-4"><AmenityStrip features={p.features} muted={light?MUTED_L:MUTED_D}/></div>
         <span className="text-[17px] font-medium tracking-[0.01em]" style={{color:light?MAROON:GOLD,...sans}}>{p.price}</span>
       </div>
     </div>
   );
 }
 
-// ─── Favourites ───────────────────────────────────────────────────────────────
-const FAVS = new Set<number>();
-function FavButton({ id, light=false }: { id:number; light?:boolean }) {
-  const [on,setOn]=useState(FAVS.has(id));
-  const toggle=(e:React.MouseEvent)=>{ e.stopPropagation(); const n=!on; if(n)FAVS.add(id); else FAVS.delete(id); setOn(n); };
-  return (
-    <button aria-label={on?"Remove from saved":"Save property"} onClick={toggle}
-      className="p-2 border transition-all hover:border-[#8a2030]"
-      style={{borderColor:on?MAROON:(light?"rgba(255,255,255,0.6)":BORDER_L),color:on?MAROON:MUTED_L,background:light?"rgba(255,255,255,0.9)":"transparent"}}>
-      <Heart size={15} fill={on?MAROON:"none"}/>
-    </button>
-  );
-}
+// Favourites and reactions (FavButton, ReactionButton) live in components/ui/reaction-button.tsx.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME PAGE SECTIONS
@@ -901,7 +865,7 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
         {/* Horizontal scroll */}
         <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
           {hot.map(p=>(
-            <div key={p.id} className="shrink-0 flex flex-col gap-4 cursor-pointer group" style={{width:"clamp(300px,30vw,380px)"}} onClick={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}>
+            <div key={p.id} className="shrink-0 flex flex-col gap-5 cursor-pointer group" style={{width:"clamp(300px,30vw,380px)"}} onClick={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}>
               {/* Video thumbnail style */}
               <div className="relative overflow-hidden" style={{aspectRatio:"4/3"}}>
                 <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]"/>
@@ -915,10 +879,13 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
                 <div className="absolute top-3 left-3"><span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span></div>
                 {p.verified&&<div className="absolute top-3 right-3"><CheckCircle2 size={16} style={{color:"rgba(176,136,72,0.9)"}}/></div>}
               </div>
-              <div>
-                <p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{p.price}</p>
-                <p className="text-[14px] leading-snug" style={{color:FG_LIGHT,...sans}}>{p.title}</p>
-                <p className="text-[12px] mt-0.5" style={{color:MUTED_L,...sans}}>{p.location}</p>
+              {/* Same caption rhythm as the New Listings cards beside it. */}
+              <div className="flex flex-col gap-1.5 px-0.5">
+                <p className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</p>
+                <p className="text-[19px] leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</p>
+                <p className="flex items-center gap-1.5 text-[13px]" style={{color:MUTED_L,...sans}}><MapPin size={12} style={{color:GOLD}}/>{p.location}</p>
+                <div className="mt-1.5"><AmenityStrip features={p.features}/></div>
+                <p className="text-[16px] font-medium mt-1" style={{color:MAROON,...sans}}>{p.price}</p>
               </div>
             </div>
           ))}
@@ -961,11 +928,14 @@ function LocationStripsSection({ go }: { go:Go }) {
   // scroll, and the partly visible last tile is what signals there is more.
   const share = 100 / locs.length;
   const tileH = `clamp(340px, ${share.toFixed(2)}vw, 520px)`;
+  // Top padding matches the other home sections (py-36). No bottom padding:
+  // the full-bleed image strip ends the section.
   return (
-    <section className="py-20 border-t" style={{background:WHITE,borderColor:BORDER_L}}>
-      <div className="px-6 md:px-12 lg:px-20 mb-10">
-        <h2 className="leading-tight" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.1rem,4vw,3.4rem)"}}>Prestige Properties Across Nepal</h2>
-        <p className="mt-1.5 text-[15px]" style={{color:MUTED_L,...sans}}>Major cities or exclusive destinations. Choose the location that suits you.</p>
+    <section className="pt-28 md:pt-36 border-t" style={{background:WHITE,borderColor:BORDER_L}}>
+      <div className="px-6 md:px-12 lg:px-20 mb-14">
+        <div className="flex items-center gap-3 mb-3"><GoldLine/><Tag c={GOLD}>By Location</Tag></div>
+        <h2 className="leading-[0.93]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.2vw,3.4rem)"}}>Prestige Properties Across Nepal</h2>
+        <p className="mt-3 text-[15px] max-w-xl leading-relaxed" style={{color:MUTED_L,...sans}}>Major cities or exclusive destinations. Choose the location that suits you.</p>
       </div>
       {/* Full-bleed horizontal image strip (Image 3 style) */}
       <div className="flex overflow-x-auto" style={{scrollbarWidth:"none"}}>
@@ -1422,7 +1392,7 @@ function VideoSection() {
       </div>
 
       {/* Position markers */}
-      <div className="flex items-center justify-center gap-3 mt-10">
+      <div className="flex items-center justify-center gap-3 mt-12 -mb-6">
         {COMPANY_VIDEOS.map((v,i)=>(
           <button key={v.id} onClick={()=>setIndex(i)} aria-label={`Go to ${v.title}`} className="py-2">
             <motion.div
@@ -1492,7 +1462,10 @@ function BlogSection({ go }: { go:Go }) {
               <img src={feat.image} alt={feat.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
               <div className="absolute top-4 left-4"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{feat.cat}</span></div>
             </div>
-            <p className="text-[11px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>{feat.date} · {feat.read}</p>
+            <p className="flex items-center gap-4 text-[11px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>
+              <span className="flex items-center gap-1.5"><Calendar size={12} style={{color:GOLD}}/>{feat.date}</span>
+              <span className="flex items-center gap-1.5"><Clock size={12} style={{color:GOLD}}/>{feat.read}</span>
+            </p>
             <h3 className="text-xl leading-snug mb-2 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{feat.title}</h3>
             <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>{feat.excerpt}</p>
           </button>
@@ -1579,10 +1552,24 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
   const [distF,setDistF]=useState(nav.district??"All");
   const [priceF,setPriceF]=useState("Any Price");
   const [showFilters,setShowFilters]=useState(false);
+  // Free-text search and sort (see components/ui/results-toolbar.tsx).
+  const [query,setQuery]=useState(nav.q??"");
+  const [sortBy,setSortBy]=useState<SortKey>("newest");
   const resultsRef=useRef<HTMLDivElement>(null);
   const preset=nav.preset;
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
+  // Match the fields someone would actually type: title, location, district,
+  // type and the reference ("NB-004"). Not the description: a match buried in
+  // a paragraph gives results the user cannot see the reason for.
+  const q=query.trim().toLowerCase();
+  const matchesQuery=(p:Prop)=>
+    !q ||
+    p.title.toLowerCase().includes(q) ||
+    p.location.toLowerCase().includes(q) ||
+    p.district.toLowerCase().includes(q) ||
+    p.propId.toLowerCase().includes(q) ||
+    p.type.toLowerCase().includes(q);
   const props=ALL_PROPS.filter(p=>{
     if(p.listing!==listing) return false;
     if(preset==="hot"&&!(p.badge==="Hot"||p.featured)) return false;
@@ -1590,12 +1577,20 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
     if(typeF!=="All Types"&&p.type!==typeF) return false;
     if(distF!=="All"&&p.district!==distF) return false;
     if(range&&(p.priceNum<range.min||p.priceNum>range.max)) return false;
+    if(!matchesQuery(p)) return false;
     return true;
+  }).sort((a,b)=>{
+    if(sortBy==="price_asc")  return a.priceNum-b.priceNum;
+    if(sortBy==="price_desc") return b.priceNum-a.priceNum;
+    // "Newest" has no date to sort on yet, so it uses the badge and then the id.
+    // Replace with the listing's createdAt once the API sends it.
+    const rank=(p:Prop)=>p.badge==="New"?0:p.badge==="Prime"?1:p.featured?2:3;
+    return rank(a)-rank(b) || b.id-a.id;
   });
   const types=PROP_TYPES;
   const dists=["All",...AREAS.filter(a=>ALL_PROPS.some(x=>x.district===a&&x.listing===listing))];
-  const dirty=typeF!=="All Types"||distF!=="All"||priceF!=="Any Price";
-  const reset=()=>{ setTypeF("All Types"); setDistF("All"); setPriceF("Any Price"); };
+  const dirty=typeF!=="All Types"||distF!=="All"||priceF!=="Any Price"||q!=="";
+  const reset=()=>{ setTypeF("All Types"); setDistF("All"); setPriceF("Any Price"); setQuery(""); };
   const heading=preset==="hot"?"Hot Properties":preset==="new"?"New Listings":(listing==="For Sale"?"Properties for Sale":"Properties for Rent");
   const scrollToResults=()=>resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
   return (
@@ -1689,10 +1684,15 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
       </div>
       {/* Results */}
       <div ref={resultsRef} className="px-6 md:px-12 lg:px-20 py-14" style={{scrollMarginTop:"13rem"}}>
+        <ResultsToolbar count={props.length} query={query} onQuery={setQuery} sort={sortBy} onSort={setSortBy}/>
         {props.length===0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-2xl" style={{color:FG_LIGHT,...serif}}>No properties match these filters</p>
-            <p className="text-[15px]" style={{color:MUTED_L,...sans}}>Try widening your price range or choosing a different district.</p>
+            <p className="text-[15px]" style={{color:MUTED_L,...sans}}>
+              {q
+                ? <>Nothing matches &ldquo;{query.trim()}&rdquo;. Try a district, a property name, or a reference like NB-004.</>
+                : <>Try widening your price range or choosing a different district.</>}
+            </p>
             <button onClick={reset} className="mt-2 flex items-center gap-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}><RotateCcw size={14}/>Reset Filters</button>
           </div>
         ) : view==="map" ? (
@@ -1710,7 +1710,8 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                   <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]"/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
-                    {p.verified&&<span className="flex items-center gap-1 px-2 py-0.5 text-[10px]" style={{background:"rgba(176,136,72,0.15)",color:GOLD,...sans}}><CheckCircle2 size={11}/>Verified</span>}
+                    {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
+                    {p.verified&&<VerifiedChip onImage/>}
                   </div>
                 </div>
                 <div className="flex-1 p-8 flex flex-col justify-between">
@@ -1730,6 +1731,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                       {p.builtArea!=="—"&&<span className="flex items-center gap-1.5 text-[12px]" style={{color:MUTED_L,...sans}}><Square size={14}/>{p.builtArea}</span>}
                       {p.landArea!=="—"&&<span className="flex items-center gap-1.5 text-[12px]" style={{color:MUTED_L,...sans}}><Landmark size={14}/>{p.landArea}</span>}
                     </div>
+                    <div className="mb-3"><AmenityStrip features={p.features} max={6} labels/></div>
                     <p className="text-[14px] leading-relaxed line-clamp-2" style={{color:MUTED_L,...sans}}>{p.description}</p>
                   </div>
                   <div className="flex items-center justify-between pt-3 mt-3 border-t" style={{borderColor:BORDER_L}}>
@@ -1739,7 +1741,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                     </div>
                     <div className="flex gap-2">
                       <button aria-label="Enquire" className="p-2 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}} onClick={e=>{e.stopPropagation();setId(p.id);go("property");}}><Mail size={15}/></button>
-                      <FavButton id={p.id}/>
+                      <ReactionButton id={p.id} size="sm"/>
                     </div>
                   </div>
                 </div>
@@ -1782,6 +1784,7 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
                 {p.beds>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Bed size={11}/>{p.beds}</span>}
                 {p.baths>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Bath size={11}/>{p.baths}</span>}
               </div>
+              <div className="mt-3"><AmenityStrip features={p.features} max={6}/></div>
             </div>
           </div>
         ))}
@@ -1853,7 +1856,6 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
   const [form,setForm]=useState({name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
-  const [fav,setFav]=useState(false);
   const [shared,setShared]=useState(false);
   useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setShared(false); },[propId]);
   useEffect(()=>{
@@ -1882,12 +1884,20 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
     {id:"bath",label:"Bathroom",x:83,y:59,w:13,h:30,dims:"3.0×4.2m"},
     {id:"dining",label:"Dining",x:44,y:63,w:14,h:28,dims:"4.0×4.8m"},
   ];
+  // Same facts as the results list, so the same icons.
   const details=[
-    {l:"Property ID",v:p.propId},{l:"Property Type",v:p.type},{l:"Listing",v:p.listing},
-    {l:"Built Area",v:p.builtArea},{l:"Land Area",v:p.landArea},{l:"Floors",v:p.floors>0?String(p.floors):"—"},
-    {l:"Bedrooms",v:p.beds>0?String(p.beds):"—"},{l:"Bathrooms",v:p.baths>0?String(p.baths):"—"},
-    {l:"Road Access",v:p.roadAccess},{l:"Facing",v:p.facing},{l:"Build Year",v:p.buildYear>0?String(p.buildYear):"—"},
-    {l:"Verified",v:p.verified?"Yes":"No"},
+    {l:"Property ID",v:p.propId,i:<FileText size={14}/>},
+    {l:"Property Type",v:p.type,i:<Home size={14}/>},
+    {l:"Listing",v:p.listing,i:<TagIcon size={14}/>},
+    {l:"Built Area",v:p.builtArea,i:<Square size={14}/>},
+    {l:"Land Area",v:p.landArea,i:<Landmark size={14}/>},
+    {l:"Floors",v:p.floors>0?String(p.floors):"—",i:<Layers size={14}/>},
+    {l:"Bedrooms",v:p.beds>0?String(p.beds):"—",i:<Bed size={14}/>},
+    {l:"Bathrooms",v:p.baths>0?String(p.baths):"—",i:<Bath size={14}/>},
+    {l:"Road Access",v:p.roadAccess,i:<Route size={14}/>},
+    {l:"Facing",v:p.facing,i:<Compass size={14}/>},
+    {l:"Build Year",v:p.buildYear>0?String(p.buildYear):"—",i:<Calendar size={14}/>},
+    {l:"Verified",v:p.verified?"Yes":"No",i:<CheckCircle2 size={14}/>},
   ];
   return (
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
@@ -1925,8 +1935,9 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
         {[p.type,p.builtArea,p.landArea].filter(v=>v!=="—").map(v=><span key={v} className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}>{v}</span>)}
         {p.beds>0&&<span className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}><Bed size={14}/>{p.beds} Beds</span>}
         {p.baths>0&&<span className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}><Bath size={14}/>{p.baths} Baths</span>}
+        <RatingLink propId={p.id}/>
         <div className="ml-auto flex gap-2.5">
-          <button aria-label={fav?"Remove from saved":"Save property"} onClick={()=>setFav(f=>!f)} className="p-2.5 border transition-all hover:border-[#8a2030]" style={{borderColor:fav?MAROON:BORDER_L,color:fav?MAROON:MUTED_L}}><Heart size={14} fill={fav?MAROON:"none"}/></button>
+          <ReactionButton id={p.id}/>
           <button aria-label="Share property" onClick={share} className="relative p-2.5 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}}>
             <Share2 size={14}/>
             {shared&&<span className="absolute -top-8 right-0 whitespace-nowrap px-2 py-1 text-[11px]" style={{background:"#1a1611",color:WHITE,...sans}}>Link copied</span>}
@@ -1950,8 +1961,10 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
             <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Property Details</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_L}}>
               {details.map(d=>(
-                <div key={d.l} className="border-b border-r px-5 py-4" style={{borderColor:BORDER_L}}>
-                  <p className="text-[10px] tracking-[0.25em] uppercase mb-0.5" style={{color:MUTED_L,...sans}}>{d.l}</p>
+                <div key={d.l} className="border-b border-r px-5 py-5" style={{borderColor:BORDER_L}}>
+                  <p className="flex items-center gap-2 text-[10px] tracking-[0.25em] uppercase mb-1.5" style={{color:MUTED_L,...sans}}>
+                    <span style={{color:GOLD}}>{d.i}</span>{d.l}
+                  </p>
                   <p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{d.v}</p>
                 </div>
               ))}
@@ -2001,6 +2014,11 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
                 </svg>
               </div>
             </div>
+          </>}
+          {reviewsFor(p.id).length>0&&<>
+            <div className="h-px" style={{background:BORDER_L}}/>
+            {/* Reviews: social proof after the facts, before "You May Also Like". */}
+            <ReviewsSection propId={p.id}/>
           </>}
         </div>
         {/* Right — sticky enquiry */}
@@ -2297,7 +2315,10 @@ function BlogPostPage({ id, go }: { id:number; go:Go }) {
               </div>
               <span className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{color:GOLD,...sans}}>{b.cat}</span>
               <h3 className="text-[1.05rem] leading-snug group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{b.title}</h3>
-              <span className="text-[11px] mt-2" style={{color:MUTED_L,...sans}}>{b.date} &middot; {b.read}</span>
+              <span className="flex items-center gap-4 text-[11px] mt-2" style={{color:MUTED_L,...sans}}>
+                <span className="flex items-center gap-1.5"><Calendar size={12} style={{color:GOLD}}/>{b.date}</span>
+                <span className="flex items-center gap-1.5"><Clock size={12} style={{color:GOLD}}/>{b.read}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -2365,18 +2386,21 @@ function ContactPage() {
             </div>
           )}
         </div>
-        <div className="px-8 md:px-12 py-16 flex flex-col gap-10" style={{background:CREAM}}>
-          <div><p className="text-[10px] tracking-[0.32em] uppercase mb-3" style={{color:GOLD,...sans}}>Our Office</p><p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Jhamsikhel Road, Lalitpur<br/>Kathmandu Valley, Nepal</p></div>
-          {[{i:<Phone size={14}/>,l:"Telephone",v:"+977 1 400 0000"},{i:<Mail size={14}/>,l:"Email",v:"info@nepalbhoomi.com"},{i:<MessageCircle size={14}/>,l:"WhatsApp",v:"+977 980 000 0000"}].map(c=>(
-            <div key={c.l} className="flex items-start gap-4 border-t pt-6" style={{borderColor:BORDER_L}}>
-              <span style={{color:GOLD,marginTop:1}}>{c.i}</span>
-              <div><p className="text-[10px] tracking-[0.28em] uppercase mb-1" style={{color:MUTED_L,...sans}}>{c.l}</p><p className="text-[15px]" style={{color:FG_LIGHT,...sans}}>{c.v}</p></div>
+        <div className="px-8 md:px-12 py-16 flex flex-col gap-8" style={{background:CREAM}}>
+          {/* One list, so every row carries an icon and the same rule above it.
+              Office and Office Hours used to be bare headings between iconned rows. */}
+          {[
+            {i:<MapPin size={15}/>,        l:"Our Office",   v:<>Jhamsikhel Road, Lalitpur<br/>Kathmandu Valley, Nepal</>},
+            {i:<Phone size={15}/>,         l:"Telephone",    v:"+977 1 400 0000"},
+            {i:<Mail size={15}/>,          l:"Email",        v:"info@nepalbhoomi.com"},
+            {i:<MessageCircle size={15}/>, l:"WhatsApp",     v:"+977 980 000 0000"},
+            {i:<Clock size={15}/>,         l:"Office Hours", v:<>Sunday–Friday: 9:00 AM – 6:00 PM<br/>Saturday: By Appointment</>},
+          ].map((c,i)=>(
+            <div key={c.l} className={`flex items-start gap-4 ${i>0?"border-t pt-8":""}`} style={{borderColor:BORDER_L}}>
+              <span className="w-5 shrink-0 flex justify-center" style={{color:GOLD,marginTop:2}}>{c.i}</span>
+              <div><p className="text-[10px] tracking-[0.28em] uppercase mb-1.5" style={{color:MUTED_L,...sans}}>{c.l}</p><p className="text-[15px] leading-relaxed" style={{color:FG_LIGHT,...sans}}>{c.v}</p></div>
             </div>
           ))}
-          <div className="border-t pt-6" style={{borderColor:BORDER_L}}>
-            <p className="text-[10px] tracking-[0.32em] uppercase mb-3" style={{color:GOLD,...sans}}>Office Hours</p>
-            {["Sunday–Friday: 9:00 AM – 6:00 PM","Saturday: By Appointment"].map(t=><p key={t} className="text-[15px] mb-1" style={{color:MUTED_L,...sans}}>{t}</p>)}
-          </div>
         </div>
       </div>
     </div>
@@ -2925,8 +2949,7 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
         <Footer go={go}/>
-        <QuickEnquiryFloat/>
-        <WhatsAppFloat/>
+        <QuickEnquiryFloat overHero={page==="home"||page==="videos"}/>
       </motion.div>
     </div>
     </AuthProvider>
