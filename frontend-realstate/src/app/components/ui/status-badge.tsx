@@ -1,13 +1,8 @@
 import { CheckCircle2 } from "lucide-react";
 import { GOLD, MAROON, WHITE, sans } from "./brand";
 
-/**
- * Featured / Verified chips shown on property cards.
- *
- * `onImage` swaps the Verified chip's 15%-opacity gold tint for an opaque dark
- * plate. The tint is legible on white but not over a photograph, where the
- * word sat in whatever the picture happened to be behind it.
- */
+// Featured / Verified labels. Use onImage when the label sits on a photo:
+// it gets a dark background so the text stays readable.
 export function StatusBadge({ verified, featured, onImage = false }: {
   verified: boolean;
   featured: boolean;

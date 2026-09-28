@@ -8,6 +8,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export const API_URL=(import.meta.env.VITE_API_URL as string|undefined) ?? "http://localhost:3000";
 
+// Must match UNVERIFIED_ACCOUNT_TTL_DAYS in the backend (lib/auth/email-verification.ts).
+// Used by the verify-email screen and the admin Users page.
+export const UNVERIFIED_ACCOUNT_DAYS=7;
+
 export type AuthUser = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; twoFactorEnabled?:boolean };
 // Password was right but the account has 2FA: finish with verifyMfa(code, mfaToken).
 export type MfaChallenge = { mfaRequired:true; mfaToken:string };

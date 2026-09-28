@@ -12,6 +12,126 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 0. Backend handoff: quick reference (updated 2026-09-28)
+
+Start here. Everything the backend needs from the frontend is on this page; the numbered
+sections below go into detail. **Older sections say `apps/web` and `apps/api`: in this repo those
+are `frontend-realstate/` and `backend-realstate/`.** Where an older section disagrees with this
+one, this one is current.
+
+### 0.1 Run it
+
+```bash
+cd backend-realstate && npm install && npx prisma generate && npm run dev     # http://localhost:3000
+cd frontend-realstate && npm install && npm run dev -- --port 5175 --strictPort
+npm run typecheck      # frontend: strict TypeScript, unused code is an error
+npm run build          # frontend production build
+```
+
+`FRONTEND_ORIGIN` in the backend `.env` must equal the frontend's address exactly (here
+`http://localhost:5175`), or the browser's requests are refused.
+
+### 0.2 Environment variables
+
+| Where | Name | What |
+|---|---|---|
+| Frontend | `VITE_API_URL` | Backend origin. Default `http://localhost:3000`. The only frontend variable (read in `src/app/auth.tsx`). Anything `VITE_` is public: never a secret |
+| Backend | `DATABASE_URL`, `DIRECT_URL` | Supabase pooler / direct connection (`DIRECT_URL` is only used by Prisma migrations) |
+| Backend | `JWT_ACCESS_SECRET`, `TOTP_ENCRYPTION_KEY` | Token signing, 2FA secret encryption |
+| Backend | `FRONTEND_ORIGIN` | CORS, CSRF origin check, Google redirect, reset-link host |
+| Backend | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google sign-in |
+| Backend | `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_FROM_NAME` | Verification codes and reset links |
+| Backend | `CRON_SECRET`, `NODE_ENV`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Cleanup cron auth, mode, seeded admin |
+
+### 0.3 Endpoints already built (frontend call sites)
+
+All under `/api/v1`, error envelope as in §7.1.
+
+| Method | Path | Called from |
+|---|---|---|
+| POST | `/auth/login` | `auth.tsx` `login()` → may return `{ mfaRequired, mfaToken }` or `{ verificationRequired, email }` |
+| POST | `/auth/login/2fa` | `auth.tsx` `verifyMfa()` |
+| POST | `/auth/register` | `auth.tsx` `register()` → always `{ verificationRequired, email }` |
+| POST | `/auth/verify-email`, `/auth/resend-verification` | `auth.tsx` `verifyEmail()`, `resendVerification()` |
+| POST | `/auth/refresh`, `/auth/logout` | `auth.tsx` (on load, on 401, Logout) |
+| GET | `/auth/me` | `auth.tsx` on load |
+| POST | `/auth/forgot-password`, `/auth/verify-reset-token`, `/auth/reset-password` | `auth.tsx`, used by LoginPage and ResetPasswordPage |
+| GET | `/auth/google` → `/auth/google/callback` | LoginPage redirects to it; callback returns to `?auth=google` / `?auth=google_mfa` / `?auth_error=google` |
+| GET | `/admin/users` | `admin/AdminUsers.tsx`. Please add `lastLoginAt` to its select |
+| POST | `/auth/2fa/setup`, `/enable`, `/disable` | **No frontend screen yet** (built on the backend only) |
+
+### 0.4 Endpoints the frontend is waiting for
+
+The frontend already sends or expects these shapes; mock data stands in until they exist. Each
+row names the exact function to replace.
+
+| Method | Path | Auth | Replaces (file → function / variable) |
+|---|---|---|---|
+| GET | `/properties?listing&type&district&minPrice&maxPrice&preset&q&sort&page&limit` | public | `data/properties.ts` → `ALL_PROPS` (filtering is in `BuyRentPage`) |
+| GET | `/properties/:id` | public | `ALL_PROPS.find(...)` in `PropertyDetailPage` |
+| POST / PATCH / DELETE | `/admin/properties[/:id]` | ADMIN | `saveProperty()`, `deleteProperty()`, `restoreProperty()` (Undo) |
+| PATCH | `/admin/properties/:id` `{ reactionCount }` | ADMIN | `data/reviews.ts` → `setReactionCount()` |
+| POST | `/admin/uploads` (multipart, image ≤ 8 MB) → `{ url }` | ADMIN | every `blob:` URL from `components/ui/photo-picker.tsx` |
+| GET / POST | `/properties/:id/reviews` | public | `reviewsFor()`; `ReviewForm` submit in `components/ui/property-reviews.tsx` |
+| GET / DELETE | `/admin/reviews[/:id]` | ADMIN | `admin/AdminReviews.tsx` → `deleteReview()`, `restoreReview()` |
+| POST / DELETE | `/properties/:id/reaction` | public | `components/ui/reaction-button.tsx` → `FAVS` |
+| GET | `/articles`, `/articles/:slug` | public | `data/content.ts` → `BLOGS` |
+| POST / PATCH / DELETE | `/admin/articles[/:id]`, `PUT /admin/articles/order` | ADMIN | `upsert(BLOGS…)`, `removeById`, `moveById` |
+| GET | `/team` | public | `TEAM` |
+| POST / PATCH / DELETE | `/admin/team[/:id]`, `PUT /admin/team/order` | ADMIN | `upsert(TEAM…)` etc. |
+| GET | `/testimonials` | public | `TESTIMONIALS` |
+| POST / PATCH / DELETE | `/admin/testimonials[/:id]`, `PUT …/order` | ADMIN | `upsert(TESTIMONIALS…)` etc. |
+| GET | `/videos` | public | `VIDEO_LIST` / `companyVideos()` |
+| POST / PATCH / DELETE | `/admin/videos[/:id]`, `PUT /admin/videos/order` | ADMIN | `upsert(VIDEO_LIST…)` etc. |
+| GET | `/site` → `{ stats, featuredDistricts }` | public | `STATS`, `FEATURED_DISTRICTS` |
+| PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | `HomePageSection` save buttons in `admin/ContentEditors.tsx` |
+| POST | `/enquiries`, `/callbacks`, `/contact`, `/listings` | public | the four lead forms (§7.5). Nothing is sent today |
+| GET/PUT/DELETE | `/me/favourites[/:propertyId]` | signed in | `FAVS` (hearts, lost on reload today) |
+
+Every `upsert` / `removeById` / `moveById` call is in `data/content.ts`; order matters for
+articles (first = featured on home), team (first 6 on About), testimonials and videos (first = centre).
+
+**Undo after delete.** Deleting a property or review shows an "Undo" button for a few seconds.
+Undo puts back the same record (same `id`, same ref, same position). Either soft-delete
+(`deletedAt`, cleared on undo, e.g. `POST /admin/properties/:id/restore`) or delay the real
+DELETE until the Undo notice closes. Don't hand out a new id on restore.
+
+### 0.5 Shapes and exact vocabularies
+
+Types: `Prop`, `FloorPlan`, `FloorPlanRoom` in `data/properties.ts`; `BlogPost`, `Testimonial`,
+`TeamMember`, `Stat`, `FeaturedDistrict`, `CompanyVideoInput` in `data/content.ts`; `Review` in
+`data/reviews.ts`; `AuthUser` in `auth.tsx`. Suggested Prisma models: §7.8.
+
+Store these **exact strings** (they are filter keys and dropdown values):
+
+| Constant | File | Values |
+|---|---|---|
+| `DISTRICTS` | `data/districts.ts` | the 77 districts |
+| `AMENITIES` | `icons/amenities.tsx` | 69 amenity names in 3 groups (store names, never icons) |
+| `PROPERTY_TYPES` | `data/properties.ts` | House/Bungalow, Land, Apartment, Commercial, Flat |
+| `BADGES` | ″ | Hot, Featured, New, Prime, Rare, Verified, Exclusive |
+| `FACINGS`, `ROAD_SURFACES` | ″ | 8 directions; Black-topped, Concrete, Graveled, Earthen |
+| `LAND_UNITS`, `BUILT_UNITS` | ″ | Ropani, Aana, Bigha, Kattha, Dhur, sq.ft; sq.ft, sq.m |
+| `FLOOR_LABELS`, `ROOM_NAMES` | ″ | Basement … Rooftop; 21 room names |
+| `BLOG_CATEGORIES`, `TEAM_ROLES` | `data/content.ts` | suggestions; the admin may type others |
+| `DEPARTMENTS`, `LANGUAGES`, `SPECIALITIES` | ″ | team profile fields |
+
+Prices: `priceNum` is whole rupees (per month for rent); the display string comes from
+`formatPrice()` in `data/properties.ts`.
+
+### 0.6 Pages and browser storage
+
+`Page` values (`App.tsx`): home, buy, rent, hot, new-listings, map, area, property, about, team,
+blog, blog-post, services, emi, contact, login, register, reset-password, free-listing, videos,
+admin, admin-users, admin-reviews. There are still no URLs per page (§5); only `/reset-password`
+is read from the address bar.
+
+The only thing the frontend stores in the browser: admin drafts in `localStorage` under
+`nb-admin-draft:property:<id|new>`, removed when saved or discarded. Tokens are never stored
+(access token in memory, refresh token in an httpOnly cookie).
+
+---
+
 ## 1. What this project is, in one paragraph
 
 **Nepal Bhoomi** is a luxury real-estate marketing site for the Nepalese market: property
@@ -28,24 +148,27 @@ authentication only. The remaining work is to replace those frontend constants w
 
 | Thing | Status |
 |---|---|
-| Backend | **Exists** — `apps/api`, Next.js 15 App Router. Auth endpoints only so far |
-| Database | **Exists** — Postgres on Supabase via Prisma. Models: User, RefreshToken, RateLimit |
-| Network calls | Still zero **from the frontend**. No `fetch`, no API client in `apps/web` yet |
-| Auth | Real on the backend (bcrypt, rotating refresh tokens). Still fake in the frontend UI |
-| Data | Hardcoded arrays in `apps/web/src/app/App.tsx` |
-| Images | Hotlinked from Unsplash + one local PNG logo |
-| TypeScript in `apps/api` | **Checked.** `next build` runs tsc. Only `apps/web` is unchecked |
-| Routing | Hand-rolled. A `page` string in React state. **The URL never changes** |
-| Tests | None |
-| TypeScript in `apps/web` | **Types are written but never checked.** No `tsconfig.json` there, TypeScript is not installed. Vite strips types with esbuild and never validates them |
-| Linting / formatting | Configured in `apps/api` only |
+| Backend | **Exists** — `backend-realstate`, Next.js App Router, `/api/v1`. Auth, email verification, 2FA and `GET /admin/users` so far |
+| Database | **Exists** — Postgres on Supabase via Prisma. Auth models only (User, tokens, audit, rate limits). **No property/content tables yet** |
+| Network calls | Auth only: `src/app/auth.tsx` (login, register, verify email, 2FA, Google, forgot/reset password) and the admin Users page |
+| Admin panel | **Built, frontend only (2026-09-28).** Dashboard, Users, Reviews under `src/app/admin/`. Edits change in-memory data until reload; §7.8 lists every endpoint it needs |
+| Data | Mock arrays in `src/app/data/` (properties, content, reviews). Each save/delete function there is the exact spot for its API call |
+| Images | Hotlinked from Unsplash + one local PNG logo. Admin uploads are temporary `blob:` URLs until `POST /admin/uploads` exists |
+| TypeScript in `backend-realstate` | **Checked.** `next build` runs tsc |
+| Routing | Hand-rolled. A `page` string in React state. **The URL never changes.** An in-app Back button exists on property and article pages |
+| Tests | None committed |
+| TypeScript in `frontend-realstate` | **Checked in the editor** via `tsconfig.json` (added 2026-09-28). Run `npx tsc -p tsconfig.json` to check from the terminal |
+| Linting / formatting | Configured in the backend only |
 
-The whole **frontend** is still one 1,927-line file: `apps/web/src/app/App.tsx`. That single
-fact is the biggest practical risk to two people working at once. See §10.
+`src/app/App.tsx` is still the public site (~2,800 lines), but data, the admin area and shared
+components now live in their own files (§4.2). Two people editing `App.tsx` at once is still the
+biggest merge risk. See §10.
 
 ---
 
 ## 3. Commands
+
+> **In this repo use §0.1.** The commands below are for the other repo's `apps/` layout.
 
 Run everything from the repository root. The two apps are independent; the root scripts delegate.
 
@@ -138,12 +261,30 @@ Two independent applications, deliberately **not** npm workspaces (see §3).
    │                     └────────────────────┬─────────────────────┘
    │                                          │ reads
    │                     ┌────────────────────▼─────────────────────┐
-   └─────────────────────┤  MODULE-SCOPE CONSTANTS  (the "database")│
-                         │  ALL_PROPS  BLOGS  TESTIMONIALS  FAVS    │
-                         │  SERVICES_LIST  AREAS  PROP_TYPES        │
+   └─────────────────────┤  src/app/data/   (the mock "database")   │
+                         │  properties.ts  ALL_PROPS + vocabularies │
+                         │  content.ts     BLOGS TESTIMONIALS TEAM  │
+                         │                 STATS FEATURED_DISTRICTS │
+                         │                 VIDEO_LIST               │
+                         │  reviews.ts     reviews + REACTIONS      │
+                         │  store.ts       change signal for admin  │
+                         └────────────────────▲─────────────────────┘
+                                              │ saves / deletes
+                         ┌────────────────────┴─────────────────────┐
+                         │  src/app/admin/  Dashboard, Users,       │
+                         │  Reviews, PropertyEditor, ContentEditors │
                          └──────────────────────────────────────────┘
-            No fetch anywhere yet. Replacing these is the open work.
 ```
+
+Other folders:
+
+| Path | What |
+|---|---|
+| `src/app/auth.tsx` | Auth client and `useAuth()` — the only real network code besides the Users page |
+| `src/app/admin/` | The admin area (§5, §7.8). `suggestions.ts` = template-based writing help, no AI or network |
+| `src/app/components/ui/` | Shared components in the site's style: `brand.ts` (colours, fonts), `property-cards.tsx` (the two card designs, also used by the admin live preview), `form-controls.tsx`, `photo-picker.tsx`, `district-combobox.tsx`, `floor-plan.tsx`, `back-button.tsx`, `list-pagination.tsx`, `confirm-dialog.tsx`, `team-profile.tsx` |
+| `src/app/icons/amenities.tsx` | The 69 canonical amenities and their icons (§6) |
+| `src/app/data/districts.ts` | The 77 districts |
 
 ### 4.3 The backend, today
 
@@ -212,6 +353,11 @@ currently unused) and is the single highest-value frontend change.
 | `register` | `RegisterPage` | See §8 |
 | `free-listing` | `FreeListingPage` | Seller submits a property |
 | `videos` | `HomePage scrollTo="videos"` | Anchor, not a real page |
+| `reset-password` | `ResetPasswordPage` | Opened from the emailed link `/reset-password?token=…` |
+| `team` | `TeamPage` | Everyone on the team, department chips + search; cards open a profile pop-up. About shows the first 6 (`ABOUT_TEAM_LIMIT`) |
+| `admin` | `admin/AdminDashboard` | ADMIN only. Overview + editors for properties, journal, team, testimonials, videos, home page |
+| `admin-users` | `admin/AdminUsers` | ADMIN only. Live `GET /admin/users`, search/filter/pagination |
+| `admin-reviews` | `admin/AdminReviews` | ADMIN only. Reviews grouped by property; delete |
 
 The home page no longer has a search strip under the hero. It was removed as visual noise; the
 filter bar on the results page does the same job. `SearchStrip` no longer exists.
@@ -277,8 +423,32 @@ interface Prop {
   features:   string[];      // amenity chips
   mapX:       number;        // 0-100, % position on a FAKE decorative grid
   mapY:       number;        // 0-100. NOT latitude/longitude
+  floorPlans?: FloorPlan[];  // added 2026-09-28, set in the admin; optional
 }
+
+interface FloorPlan     { id: string; label: string; image?: string; rooms: FloorPlanRoom[] }
+                          // label: "Basement" | "Ground Floor" | "First Floor" | … | "Rooftop"
+interface FloorPlanRoom { name: string; dims: string }   // dims "5.2 × 4.8 m", or "" if unknown
 ```
+
+Source of truth: `src/app/data/properties.ts`. It also holds every dropdown vocabulary the admin
+offers (`BADGES`, `FACINGS`, `ROAD_SURFACES`, `LAND_UNITS`, `BUILT_UNITS`, `FLOOR_LABELS`,
+`ROOM_NAMES`, `PROPERTY_TYPES`) and `formatPrice(priceNum, listing)`, which produces the display
+price ("NPR 8.5 Cr", "NPR 1.2 L/mo", "NPR 85,000/mo").
+
+How the admin form maps onto these fields (so the API can store the parts, not just the strings):
+
+| Form | Stored today as | Suggested API field |
+|---|---|---|
+| Amount + Crore/Lakh/Rupees | `priceNum` (rupees) + `price` via `formatPrice` | `priceNum` int; format on the client or send both |
+| Built area number + unit | `builtArea` "4,850 sq.ft" or "—" | `builtAreaValue` decimal? + `builtAreaUnit` enum, null when absent |
+| Land area number + unit | `landArea` "12 Ropani" or "—" | `landAreaValue` + `landAreaUnit` (Ropani, Aana, Bigha, Kattha, Dhur, sq.ft) |
+| Road surface + width | `roadAccess` "Black-topped 20ft" | `roadSurface` enum + `roadWidthFt` int |
+| Amenity tiles | canonical names inside `features` | **`amenities: string[]`** (canonical only, filterable) |
+| Highlights (free text) | the other entries of `features` | **`highlights: string[]`** |
+| Photos (first = cover) | `hero` = `gallery[0]` | `gallery: string[]` ordered; drop `hero` or derive it |
+| Map pin | `mapX`, `mapY` 0–100 | keep until real `lat`/`lng` |
+| Reactions | `REACTIONS[id]` in data/reviews.ts | `reactionCount` int on the property (§7.7) |
 
 **Backend notes on this shape — please read.**
 
@@ -296,14 +466,35 @@ interface Prop {
 
 ### Other collections
 
-```ts
-// BLOGS
-{ id:number; cat:string; date:string;   // "May 2025" — NOT a parseable date. Send ISO 8601
-  read:string;                          // "6 min" — precomputed. Better: reading_minutes:number
-  title:string; excerpt:string; image:string; author:string }
+All in `src/app/data/content.ts`:
 
-// TESTIMONIALS
-{ name:string; role:string; rating:number /*1-5*/; text:string; img:string }
+```ts
+// BLOGS  (BlogPost)
+{ id:number; cat:string; date:string;   // "May 2025" — NOT a parseable date. Send ISO 8601
+  read:string;                          // "6 min" — the admin computes it from the text (200 wpm)
+  title:string; excerpt:string; image:string;
+  author:string;                        // a team member's name (or free text)
+  body?:string }                        // full article, paragraphs split by a blank line. NEW 2026-09-28
+
+// TESTIMONIALS  (Testimonial)
+{ id:number; name:string; role:string; rating:number /*1-5*/; text:string; img:string }
+
+// TEAM  (TeamMember) — About page (first 6) and the Team page, in display order. NEW 2026-09-28
+{ id:number; name:string; role:string; img:string;          // the card
+  department?:string;        // one of DEPARTMENTS; the Team page filters on it
+  bio?:string; experienceYears?:number;
+  specialities?:string[];    // SPECIALITIES or free text
+  languages?:string[];       // LANGUAGES
+  phone?:string; whatsapp?:string /* digits incl. 977 */; email?:string }   // the profile pop-up
+
+// STATS  (Stat) — home page statistics band, exactly 4 today. NEW
+{ id:number; value:string /* "180+" */; label:string /* "Properties Sold" */ }
+
+// FEATURED_DISTRICTS  (FeaturedDistrict) — home page district tiles, 1–5. NEW
+{ id:number; name:string /* one of the 77 */; count:number; img:string }
+
+// VIDEO_LIST  (CompanyVideoInput) — see "Company videos" in §7.3
+{ id:number; title:string; duration:string /* "1:19" */; youtubeUrl?:string; poster?:string; sources?:…; captions?:… }
 
 // SERVICES_LIST
 { icon:ReactNode;   // a lucide-react element, NOT serialisable. Send an icon NAME string
@@ -335,13 +526,18 @@ it does not loosen what the API must return.
 
 ### Amenities — a canonical vocabulary now exists
 
-`apps/web/src/app/icons/amenities.tsx` defines 22 canonical amenities in three groups (Main
-Features, Rooms, Furnished), each with an icon. `features: string[]` on a property is unchanged,
-but a string that matches a canonical name renders with its icon; anything else falls back to the
-old gold dot. The seeded properties now carry a mix of both.
+`src/app/icons/amenities.tsx` defines **69 canonical amenities** in three groups (Main Features,
+Rooms, Furnished), each with an icon: 44 custom drawings in lucide's style plus 24 lucide icons
+(added 2026-09-28: Air Conditioning, CCTV, Fire Safety, Boring Water, Solar Water Heater, Gated
+Community, Kids Play Area, Pet Friendly, Wheelchair Access, EV Charging, Corner Plot, Puja Room,
+Study Room, Store Room, Laundry Room, Guest Room, Attached Bathroom, Refrigerator, Washing
+Machine, Microwave, Television, Water Purifier, Curtains & Blinds, Ceiling Fans). An alias table
+maps marketing phrases ("Infinity Pool", "Deep boring") onto them for display.
 
-**For the API:** send canonical names where they apply. A dedicated `amenities: string[]` field
-separate from free-text `features` would be cleaner — raise it in §12 if you want to split them.
+**For the API:** store only the amenity **name**, never an icon; the frontend picks the icon. The
+exact list is `AMENITIES` in that file (`contract/amenities.json` in the other repo is older, 45).
+The admin keeps amenities (tile picks) and highlights (free text) apart — store them as two
+fields (table above). Icons appear on the property page only; listing cards no longer show them.
 
 ---
 
@@ -349,7 +545,7 @@ separate from free-text `features` would be cleaner — raise it in §12 if you 
 
 **Nothing here is built yet. This is the proposal — amend it in this file, then implement.**
 
-- Base URL: `/api/v1`, injected as `VITE_API_BASE_URL` (see §9.3)
+- Base URL: `${VITE_API_URL}/api/v1` (see §0.2, §9.3)
 - Content type: `application/json; charset=utf-8`
 - Dates: ISO 8601 UTC (`2025-05-14T09:00:00Z`)
 - Money: **integer rupees**, never floats
@@ -569,6 +765,138 @@ captcha, and server-side validation that does not trust the client.
 | `POST` | `/uploads` | Multipart. **Free Listing has no image upload yet** — a real gap |
 | `POST` | `/concierge/messages` | The floating chat. Canned reply today |
 
+### 7.7 Reviews and reactions — UI built, API not
+
+Mock data and the call sites: `src/app/data/reviews.ts`. Shown on the property page ("Resident
+Reviews", rating link in the info bar, heart with a count on rows and the page).
+
+```ts
+interface Review { id:number; author:string; avatar:string; rating:number /*1-5*/;
+                   date:string /* send ISO 8601 */; text:string; verified:boolean }
+```
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/properties/:id/reviews` | Published reviews, newest first, paginated |
+| `POST` | `/properties/:id/reviews` | `{ rating, name, text }`. Rate-limit; goes to **moderation**, not straight live |
+| `POST` / `DELETE` | `/properties/:id/reaction` | The visitor's heart. Anonymous visitors: decide how to de-duplicate |
+| `GET` | `/admin/reviews` | ADMIN. All reviews with `propertyId`, filterable by property / rating |
+| `DELETE` | `/admin/reviews/:reviewId` | ADMIN. The Reviews page's delete button |
+
+- `verified` ("Verified Visit") must be decided by the server, never accepted from the client.
+- The property carries `reactionCount` and `reviewCount`. `reactionCount` should **exclude the
+  caller's own reaction**; the frontend adds one locally so the heart updates instantly.
+- The admin can set `reactionCount` directly (editor stepper and the −/+ on each list row), so it
+  is an editable field, not only a derived count. Store it on the property.
+
+### 7.8 Admin panel — every endpoint and field it needs
+
+The admin area is complete on the frontend (`src/app/admin/`). Today each save edits the mock
+arrays in memory; every one of those functions (in `src/app/data/*.ts`) names the endpoint that
+replaces it. All routes below are **ADMIN only** (same guard as `GET /admin/users`: ADMIN role + 2FA)
+and use the §7.1 envelope.
+
+**Properties** — `admin/PropertyEditor.tsx`, `data/properties.ts`
+
+| Method | Path | Body / notes |
+|---|---|---|
+| `GET` | `/admin/properties` | Paginated, `q`, `listing`, `type`, `sort` (`price_desc` \| `price_asc` \| `reactions`) |
+| `POST` | `/admin/properties` | Full property (§6 + table there). Server assigns `id` and `propId` ("NB-013") |
+| `PATCH` | `/admin/properties/:id` | Any subset, including `reactionCount` |
+| `DELETE` | `/admin/properties/:id` | The UI refuses to delete the last property; the API may enforce the same |
+
+**Uploads** — `components/ui/photo-picker.tsx`
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/admin/uploads` | Multipart, images only, ≤ 8 MB each (the UI checks the same). Returns `{ url }` |
+
+On save the frontend must upload every `blob:` URL (property gallery, floor-plan drawings, article
+covers, team portraits, testimonial photos, district tiles) and replace it with the returned URL.
+Keep property media and people photos in separate folders/validation paths (a portrait was once
+used as a listing hero). Add the storage host to the CSP in `vite.config.ts`.
+
+**Content** — `admin/ContentEditors.tsx`, `data/content.ts`
+
+| Collection | Endpoints | Order matters? |
+|---|---|---|
+| Articles | `POST/PATCH/DELETE /admin/articles[/:id]`, public `GET /articles[/:slug]` | Yes: first = featured story on the home page |
+| Team | `POST/PATCH/DELETE /admin/team[/:id]`, `PUT /admin/team/order` | Yes |
+| Testimonials | `POST/PATCH/DELETE /admin/testimonials[/:id]`, `PUT …/order` | Yes |
+| Videos | `POST/PATCH/DELETE /admin/videos[/:id]`, `PUT /admin/videos/order` | Yes: first = centre card |
+| Statistics | `PUT /admin/site/stats` (array of 4 `{ value, label }`) | Yes |
+| Featured districts | `PUT /admin/site/featured-districts` (1–5 `{ name, count, img }`) | Yes |
+
+**Users** — `admin/AdminUsers.tsx`: already live on `GET /admin/users`. Please add **`lastLoginAt`**
+to `USER_SELECT`; the "Last Sign-in" column is ready and shows "—" until then.
+
+**Suggested Prisma models** (names are suggestions; field names match what the UI sends):
+
+```prisma
+model Property {
+  id            Int      @id @default(autoincrement())
+  ref           String   @unique              // "NB-013" (UI calls it propId)
+  title         String
+  tagline       String   @default("")
+  description   String
+  listing       Listing                        // FOR_SALE | FOR_RENT
+  type          String                         // one of PROPERTY_TYPES
+  badge         String                         // one of BADGES
+  featured      Boolean  @default(false)
+  verified      Boolean  @default(false)
+  district      String                         // one of the 77, exact spelling
+  location      String                         // "Jawlakhel, Lalitpur"
+  facing        String
+  roadSurface   String
+  roadWidthFt   Int?
+  priceNum      BigInt                         // rupees; per month when FOR_RENT
+  builtAreaValue Decimal? @db.Decimal(10,2)
+  builtAreaUnit String?                        // sq.ft | sq.m
+  landAreaValue Decimal? @db.Decimal(10,2)
+  landAreaUnit  String?                        // Ropani | Aana | Bigha | Kattha | Dhur | sq.ft
+  beds          Int      @default(0)           // 0 hides it; land is always 0
+  baths         Int      @default(0)
+  floors        Int      @default(0)
+  buildYear     Int?
+  gallery       String[]                       // ordered; [0] is the cover
+  amenities     String[]                       // canonical names only
+  highlights    String[]                       // free text
+  mapX          Int      @default(50)
+  mapY          Int      @default(50)
+  reactionCount Int      @default(0)
+  floorPlans    FloorPlan[]
+  reviews       Review[]
+  createdAt     DateTime @default(now())       // "newest" sort needs this
+  updatedAt     DateTime @updatedAt
+}
+model FloorPlan { id String @id @default(cuid()) propertyId Int property Property @relation(fields:[propertyId], references:[id], onDelete: Cascade)
+                  label String  image String?  rooms Json  /* [{ name, dims }] */  position Int }
+model Review    { id Int @id @default(autoincrement()) propertyId Int property Property @relation(fields:[propertyId], references:[id], onDelete: Cascade)
+                  author String  avatar String?  rating Int  text String  verified Boolean @default(false)
+                  status ReviewStatus @default(PENDING)  createdAt DateTime @default(now()) }
+model Article   { id Int @id @default(autoincrement())  slug String @unique  title String  category String
+                  excerpt String  body String  coverUrl String  author String  readingMinutes Int
+                  position Int  publishedAt DateTime @default(now()) }
+model TeamMember  { id Int @id @default(autoincrement()) name String role String photoUrl String position Int
+                    department String? bio String? experienceYears Int? specialities String[] languages String[]
+                    phone String? whatsapp String? email String? }
+model Testimonial { id Int @id @default(autoincrement()) name String role String rating Int text String photoUrl String position Int }
+model Video       { id Int @id @default(autoincrement()) title String duration String youtubeUrl String? posterUrl String? position Int }
+model SiteSetting { key String @id  value Json }   // "stats", "featuredDistricts", later "contact"
+enum Listing { FOR_SALE FOR_RENT }
+enum ReviewStatus { PENDING PUBLISHED REJECTED }
+```
+
+**Not in the admin yet, because they need the backend first** (flagged in §12):
+enquiries inbox (the four §7.5 forms and Free Listing submissions have nowhere to go), editable
+contact details (phone, email, WhatsApp, address, hours are hard-coded in several places), and
+the Services list (its icons are code, so it needs an icon-name field first).
+
+**Admin UX facts the backend may rely on:** drafts autosave to `localStorage` per property
+(`nb-admin-draft:property:<id|new>`) and are removed on save; photos picked before a reload are
+not kept in drafts. "Duplicate" creates a new property from a copy (new ref, reactions 0). The
+"Write it for me" / idea chips are local templates (`admin/suggestions.ts`), not an AI service.
+
 ---
 
 ## 8. Login and authentication — full detail
@@ -700,19 +1028,23 @@ POST /listings    { propertyTitle*, contactName*, contactPhone*, contactEmail,
 
 ### 9.1 Data-calling variables — the exact swap list
 
-These module-scope constants in `apps/web/src/app/App.tsx` **are** the current data layer. Each one is the
-insertion point for an API call.
+These module-scope arrays **are** the current data layer (moved out of `App.tsx` on 2026-09-28).
+Each one is the insertion point for an API call, and the save/delete functions beside them are
+the insertion points for the admin's writes.
 
-| Variable | Line | Read by | Replace with |
+| Variable | File | Read by | Replace with |
 |---|---|---|---|
-| `ALL_PROPS: Prop[]` | 57 | Nearly every section | `GET /properties`, `GET /properties/:id` |
-| `BLOGS` | 168 | `BlogSection`, `BlogPage`, `BlogPostPage` | `GET /articles` |
-| `TESTIMONIALS` | 183 | `TestimonialsSection` | `GET /testimonials` |
-| `AREAS` | 189 | District filters, Free Listing dropdown | `GET /reference` |
-| `PROP_TYPES` | 190 | Type filters, Free Listing dropdown | `GET /reference` |
-| `PRICE_RANGES` | 191 | Price panel | `GET /reference` |
-| `SERVICES_LIST` | 205 | `ServicesSectionHome`, `ServicesPage`, `AboutPage` | `GET /services` (icon by name) |
-| `FAVS: Set<number>` | 474 | `FavButton` | `GET/PUT/DELETE /me/favourites` |
+| `ALL_PROPS: Prop[]` | `data/properties.ts` | Nearly every section, admin | `GET /properties`, `GET /properties/:id` |
+| `PROP_TYPES`, `PRICE_RANGES` | `data/properties.ts` | Filters, Free Listing, admin | `GET /reference` |
+| `BLOGS` | `data/content.ts` | `BlogSection`, `BlogPage`, `BlogPostPage`, admin | `GET /articles` |
+| `TESTIMONIALS` | `data/content.ts` | `TestimonialsSection`, admin | `GET /testimonials` |
+| `TEAM` | `data/content.ts` | `AboutPage`, admin | `GET /team` |
+| `STATS`, `FEATURED_DISTRICTS` | `data/content.ts` | `StatisticsSection`, `LocationStripsSection`, admin | `GET /site` (settings) |
+| `VIDEO_LIST` / `companyVideos()` | `data/content.ts` | `VideoSection`, admin | `GET /videos` |
+| `REACTIONS`, reviews | `data/reviews.ts` | Hearts, `ReviewsSection`, admin Reviews | §7.7 |
+| `AREAS` | `App.tsx` (= `DISTRICTS`) | District filters | `GET /reference` |
+| `SERVICES_LIST` | `App.tsx` | `ServicesSectionHome`, `ServicesPage`, `AboutPage` | `GET /services` (icon by name) |
+| `FAVS: Set<number>` | `components/ui/reaction-button.tsx` | `FavButton`, `ReactionButton` | `GET/PUT/DELETE /me/favourites` |
 
 Line numbers drift with every edit. The **variable names** are the reliable anchor — grep for
 them rather than trusting the numbers.
@@ -757,7 +1089,7 @@ Worked example — what a filtered search looks like end to end once wired:
   api/properties.ts  listProperties(filters)
         │
         ▼
-  api/client.ts  GET {VITE_API_BASE_URL}/properties
+  api/client.ts  GET {VITE_API_URL}/api/v1/properties
                      ?listing=for-sale&type=Land&page=1&limit=20
         │  Authorization: Bearer <access>   (omitted when signed out)
         ▼
@@ -777,11 +1109,11 @@ the API.
 
 ### 9.3 Environment variables
 
-**`apps/web`** has none yet. Vite only exposes variables prefixed `VITE_`. When the API client is
-written, create `apps/web/.env.local` (git-ignored):
+**Frontend** (`frontend-realstate/.env.local`, git-ignored, optional): `VITE_API_URL`, the backend
+origin without a path (default `http://localhost:3000`). `auth.tsx` appends `/api/v1`.
 
 ```
-VITE_API_BASE_URL=http://localhost:3000/api
+VITE_API_URL=http://localhost:3000
 ```
 
 > **Anything prefixed `VITE_` is compiled into the public bundle.** Never put a secret, private
@@ -862,15 +1194,15 @@ selected property id; the child is responsible for calling `go("property")` afte
 
 ### 9.6 Styling conventions — do not fight these
 
-- Colours are **constants at the top of `App.tsx`**: `MAROON #8a2030`, `GOLD #b08848`,
+- Colours are **constants in `src/app/components/ui/brand.ts`**: `MAROON #8a2030`, `GOLD #b08848`,
   `BG_DARK #0e0d0b`, `BG_LIGHT / CREAM #f7f3ed`, `FG_DARK #f0ebe0`, `FG_LIGHT #1a1611`.
 - Two fonts: `serif` = Gloock (display), `sans` = Jost (everything else), both from Google Fonts.
 - Most styling is **inline `style={{}}`**, not Tailwind classes. Tailwind is used for layout only
   (flex, grid, spacing). Match the surrounding style; do not convert one to the other piecemeal.
 - The navbar is 80px (`h-20`). Every page starts with `pt-20`. Sticky elements use `top-20`.
   **Change the nav height and you must change all of them.**
-- `src/app/components/ui/` holds ~50 shadcn/ui components. **`App.tsx` imports none of them.**
-  They are dead code. Do not assume they are in use.
+- `src/app/components/ui/` holds only the site's own shared components (§4.2). The unused
+  shadcn/ui files and their 51 packages were removed on 2026-09-28.
 
 ---
 
@@ -962,8 +1294,8 @@ Ranked by how much they will cost if ignored.
    property site that cannot link to a property is not shippable. `react-router` is installed.
 2. **The frontend still talks to nobody.** Auth works on the server and is theatre in the UI.
    Nothing is gated, nothing persists, and any password still "works" in `apps/web`.
-3. **The whole frontend is one 1,927-line file.** Guarantees merge conflicts. Split it.
-4. **`apps/web` types are never checked.** No `tsconfig.json`, TypeScript not installed. Every
+3. **`App.tsx` is still ~2,800 lines** (public pages). Data, admin and shared components are split out; the pages are not yet.
+4. ~~Frontend types are never checked~~ **Fixed 2026-09-28:** `npm run typecheck` (strict). Previously every
    frontend type in this document is a comment, not a guarantee. `apps/api` is checked.
 5. **No email verification.** Anyone can register with anyone's address. Matters more once
    agents can list property.
@@ -975,7 +1307,7 @@ Ranked by how much they will cost if ignored.
    have no backend at all yet.
 9. **No loading or error states in the UI.** Every screen assumes data is already there.
 10. **All images hotlinked from Unsplash.** No media pipeline, no upload, no resizing.
-11. **~50 unused shadcn/ui components** in `apps/web/src/app/components/ui/` — dead weight.
+11. ~~Unused shadcn/ui components~~ **Removed 2026-09-28**, with 51 unused packages.
 12. **No tests and no CI** anywhere. Nothing stops a broken commit reaching `main`.
 13. **Dates are display strings** (`"May 2025"`) and reading time is hardcoded (`"6 min"`).
 14. **`mapX`/`mapY` are fake.** No real geography anywhere.
@@ -996,6 +1328,11 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 | Date | From | Question / request | Status |
 |---|---|---|---|
+| 2026-09-28 | Frontend | **Admin panel is built, frontend only.** Please build §7.8 (properties, uploads, articles, team, testimonials, videos, site settings) and §7.7 (reviews, reactions). Suggested Prisma models are in §7.8. | **Needs saksham** |
+| 2026-09-28 | Frontend | Add **`lastLoginAt`** to `USER_SELECT` in `GET /admin/users`; the Users page column is ready. | **Needs saksham** |
+| 2026-09-28 | Frontend | Split property `features` into **`amenities`** (canonical, 69 names) and **`highlights`** (free text); the admin already keeps them apart. | Open |
+| 2026-09-28 | Frontend | **Enquiries inbox**: the four §7.5 forms and Free Listing submissions need endpoints and storage before the admin can show them. | Open |
+| 2026-09-28 | Frontend | Editable **contact details** (phone, email, WhatsApp, address, hours) as a `SiteSetting`; today they are hard-coded in several places. | Open |
 | 2026-09-23 | Backend | **Review the `LoginPage` edit on `feat/be-google-auth`.** It touches `App.tsx` (frontend-owned, §10.2): adds the "Continue with Google" button and the `?auth=google` / `?auth_error=google` handling. Done on the product owner's request; flagged here rather than merged silently. | **Needs Prajjwal** |
 | 2026-09-23 | Backend | **Reconcile the two backends.** `feat/monorepo-and-auth-hardening` (`apps/api`, cookie-only, `/api/auth`) and `feat/be-google-auth` (`backend-realstate`, Bearer + refresh cookie, `/api/v1/auth`, forgot/reset-password, agency/agent verification, Google login) diverged from the same commit. Pick one scheme and port the other branch's fixes (rate limiting, reuse detection, password denylist) or features across. | Open |
 | 2026-09-22 | Frontend | **Review `feat/monorepo-and-auth-hardening`.** It edits `apps/api`, which is yours. Seven security fixes plus the repo restructure. Details in the two commits on that branch. | **Needs saksham** |
@@ -1018,6 +1355,28 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-09-28 · frontend · Clean-up, admin tools, handoff page.** Removed 48 unused shadcn files,
+  51 unused packages and Figma Make leftovers (CSS 103 → 45 kB; `npm audit` clean after Vite 6.4.3).
+  The admin now loads separately from the public site. Added a "Needs attention" checklist, Ctrl K
+  search, one-click Featured/Verified switches and Undo for deletes. `npm run typecheck` added.
+  **New §0 is the backend quick reference**: env vars, built vs needed endpoints with call sites,
+  exact vocabularies. Frontend env var is `VITE_API_URL` (older text said `VITE_API_BASE_URL`).
+
+- **2026-09-28 · frontend · Team profiles and a Team page.** Clicking a team card opens a profile pop-up
+  (bio, specialities, languages, Call / WhatsApp / Email, prev/next, Back). About shows the first 6;
+  the new `team` page lists everyone with department filters and search, so the team can grow past
+  20 without a carousel. `TeamMember` gained optional profile fields (§6, §7.8). The floating Quick
+  Enquiry button now scrolls to the home page enquiry form (`#enquiry`) instead of opening a pop-up.
+
+- **2026-09-28 · frontend · Admin panel (frontend only) and a data layer.** Mock data moved out of
+  `App.tsx` into `src/app/data/` (properties, content, reviews); the admin (`src/app/admin/`) edits
+  it in memory. Three pages: Dashboard (properties with an 8-step editor, live card preview,
+  draft autosave, duplicate, floor plans, map pin, reaction count; journal; team; testimonials;
+  videos; home-page stats and districts), Users (live API), Reviews (delete). 24 new amenities
+  (69 total). Amenity icons removed from listing cards (property page only). In-app Back button
+  on property and article pages. `tsconfig.json` added. **Backend-facing:** every endpoint and a
+  suggested schema are in §7.7–7.8; requests in §12.
 
 - **2026-09-24 · frontend · Real YouTube videos, pushed as branch `feat/auth-2fa-admin-videos`.** "Explore in
   Video" now shows the 4 Nepal Bhoomi YouTube videos listed in §7 "Company videos"; the

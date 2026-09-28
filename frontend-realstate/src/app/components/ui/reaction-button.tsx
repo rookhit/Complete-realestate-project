@@ -4,21 +4,11 @@ import { Heart } from "lucide-react";
 import { BORDER_L, MAROON, MUTED_L, sans } from "./brand";
 import { reactionCount } from "@/app/data/reviews";
 
-/**
- * Properties this visitor has saved / reacted to.
- *
- * Module scope, so it survives page changes but not a reload. For the backend:
- * this becomes GET/POST/DELETE /api/v1/me/favourites once that exists, and the
- * set is loaded from it on sign-in.
- */
+// Properties this visitor has hearted. Lost on reload for now;
+// becomes GET/PUT/DELETE /api/v1/me/favourites once that exists.
 export const FAVS = new Set<number>();
 
-/**
- * Heart with the running reaction count beside it.
- *
- * A bare heart said nothing about whether anyone else cared. The count is the
- * social proof, so it sits inside the same control: one target, one meaning.
- */
+/** Heart button with the reaction count next to it. */
 export function ReactionButton({ id, size = "md" }: { id: number; size?: "sm" | "md" }) {
   const [on, setOn] = useState(FAVS.has(id));
   const sm = size === "sm";

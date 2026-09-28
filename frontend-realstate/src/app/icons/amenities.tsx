@@ -1,4 +1,10 @@
 import type { SVGProps } from "react";
+import {
+  Accessibility, AirVent, Archive, BedSingle, Blinds, BookOpen, Cctv, Droplets, Fan, Fence,
+  FireExtinguisher, Flame, GlassWater, LandPlot, Microwave, PawPrint, Plug, Refrigerator,
+  ShowerHead, ThermometerSun, ToyBrick, Tv, WashingMachine,
+  type LucideIcon, type LucideProps,
+} from "lucide-react";
 
 /**
  * Amenity icons.
@@ -9,12 +15,24 @@ import type { SVGProps } from "react";
  * like the lucide icons beside them, and scale with the `size` prop.
  *
  * Nothing existed before these — amenities rendered as a gold dot and a label,
- * and the project contained no SVG files at all. All 44 are new: 22 drawn for the
- * canonical list, and 22 more added afterwards to cover the phrases real
- * listings use, so no amenity falls back to a bare dot any more.
+ * and the project contained no SVG files at all. 44 are drawn here: 22 for the
+ * canonical list, and 22 more to cover the phrases real listings use.
+ *
+ * A further 25 (2026-09-27, "Everyday essentials" below) use lucide-react's own
+ * icons, where lucide has a clear match (AirVent, Cctv, WashingMachine, …). They
+ * sit in the same set with the same size and colour behaviour, so nothing on a
+ * page can tell the two sources apart.
+ *
+ * For the backend: only the amenity NAME is ever stored or sent. Which drawing
+ * represents a name is decided here, so icons can change without a migration.
  */
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "size"> & { size?: number };
+
+/** Adapt a lucide icon to this file's icon signature (same default size and stroke). */
+const fromLucide = (L: LucideIcon) => ({ size = 22, ...rest }: IconProps) => (
+  <L size={size} strokeWidth={2} aria-hidden="true" {...(rest as LucideProps)} />
+);
 
 function Svg({ size = 22, children, ...rest }: IconProps) {
   return (
@@ -513,6 +531,37 @@ export const GuestCottage = (p: IconProps) => (
   </Svg>
 );
 
+/* ─── Everyday essentials (lucide) ───────────────────────────────────────── */
+//
+// Added 2026-09-27 so the admin's amenity picker covers what Nepali listings
+// actually advertise, and the backend's amenity vocabulary is complete. Each
+// uses lucide's own icon where it has an unambiguous one.
+
+export const AirConditioning = fromLucide(AirVent);
+export const CctvCamera      = fromLucide(Cctv);
+export const FireSafety      = fromLucide(FireExtinguisher);
+export const BoringWater     = fromLucide(Droplets);
+export const SolarWaterHeater = fromLucide(ThermometerSun);
+export const GatedCommunity  = fromLucide(Fence);
+export const KidsPlayArea    = fromLucide(ToyBrick);
+export const PetFriendly     = fromLucide(PawPrint);
+export const WheelchairAccess = fromLucide(Accessibility);
+export const EvCharging      = fromLucide(Plug);
+export const CornerPlot      = fromLucide(LandPlot);
+export const PujaRoom        = fromLucide(Flame);
+export const StudyRoom       = fromLucide(BookOpen);
+export const StoreRoom       = fromLucide(Archive);
+export const LaundryRoom     = fromLucide(WashingMachine);
+export const GuestRoom       = fromLucide(BedSingle);
+export const AttachedBathroom = fromLucide(ShowerHead);
+export const Fridge          = fromLucide(Refrigerator);
+export const WasherMachine   = fromLucide(WashingMachine);
+export const MicrowaveOven   = fromLucide(Microwave);
+export const Television      = fromLucide(Tv);
+export const WaterPurifier   = fromLucide(GlassWater);
+export const CurtainsBlinds  = fromLucide(Blinds);
+export const CeilingFans     = fromLucide(Fan);
+
 /* ─── Registry ───────────────────────────────────────────────────────────── */
 
 export type AmenityGroup = "Main Features" | "Rooms" | "Furnished";
@@ -555,6 +604,17 @@ export const AMENITIES: Amenity[] = [
   { name: "Waterfront",           group: "Main Features", Icon: Waterfront },
   { name: "Nature Trails",        group: "Main Features", Icon: Trail },
   { name: "Heritage Architecture",group: "Main Features", Icon: Heritage },
+  { name: "Air Conditioning",     group: "Main Features", Icon: AirConditioning },
+  { name: "CCTV",                 group: "Main Features", Icon: CctvCamera },
+  { name: "Fire Safety",          group: "Main Features", Icon: FireSafety },
+  { name: "Boring Water",         group: "Main Features", Icon: BoringWater },
+  { name: "Solar Water Heater",   group: "Main Features", Icon: SolarWaterHeater },
+  { name: "Gated Community",      group: "Main Features", Icon: GatedCommunity },
+  { name: "Kids Play Area",       group: "Main Features", Icon: KidsPlayArea },
+  { name: "Pet Friendly",         group: "Main Features", Icon: PetFriendly },
+  { name: "Wheelchair Access",    group: "Main Features", Icon: WheelchairAccess },
+  { name: "EV Charging",          group: "Main Features", Icon: EvCharging },
+  { name: "Corner Plot",          group: "Main Features", Icon: CornerPlot },
 
   // Rooms — what the building contains.
   { name: "Bedroom",              group: "Rooms", Icon: Bedroom },
@@ -572,6 +632,12 @@ export const AMENITIES: Amenity[] = [
   { name: "Commercial Unit",      group: "Rooms", Icon: CommercialUnit },
   { name: "Open Plan",            group: "Rooms", Icon: OpenPlan },
   { name: "Floors",               group: "Rooms", Icon: Floors },
+  { name: "Puja Room",            group: "Rooms", Icon: PujaRoom },
+  { name: "Study Room",           group: "Rooms", Icon: StudyRoom },
+  { name: "Store Room",           group: "Rooms", Icon: StoreRoom },
+  { name: "Laundry Room",         group: "Rooms", Icon: LaundryRoom },
+  { name: "Guest Room",           group: "Rooms", Icon: GuestRoom },
+  { name: "Attached Bathroom",    group: "Rooms", Icon: AttachedBathroom },
 
   // Furnished — what conveys with the property.
   { name: "Fully Furnished",      group: "Furnished", Icon: Furnished },
@@ -582,6 +648,13 @@ export const AMENITIES: Amenity[] = [
   { name: "Bed",                  group: "Furnished", Icon: Bed },
   { name: "Closet",               group: "Furnished", Icon: Closet },
   { name: "Sofa",                 group: "Furnished", Icon: Sofa },
+  { name: "Refrigerator",         group: "Furnished", Icon: Fridge },
+  { name: "Washing Machine",      group: "Furnished", Icon: WasherMachine },
+  { name: "Microwave",            group: "Furnished", Icon: MicrowaveOven },
+  { name: "Television",           group: "Furnished", Icon: Television },
+  { name: "Water Purifier",       group: "Furnished", Icon: WaterPurifier },
+  { name: "Curtains & Blinds",    group: "Furnished", Icon: CurtainsBlinds },
+  { name: "Ceiling Fans",         group: "Furnished", Icon: CeilingFans },
 ];
 
 export const AMENITY_GROUPS: AmenityGroup[] = ["Main Features", "Rooms", "Furnished"];
@@ -655,6 +728,43 @@ const ALIASES: Record<string, string> = {
   "commercial units": "Commercial Unit",
   "ground floor retail": "Commercial Unit",
   "development ready": "Open Plan",
+
+  // Everyday essentials. Whole phrases only: short keys like "ac" or "tv"
+  // would match inside unrelated words ("space", "private").
+  "air conditioning": "Air Conditioning",
+  "air conditioned": "Air Conditioning",
+  "air-conditioned": "Air Conditioning",
+  "cctv": "CCTV",
+  "fire alarm": "Fire Safety",
+  "fire safety": "Fire Safety",
+  "deep boring": "Boring Water",
+  "boring water": "Boring Water",
+  "solar water": "Solar Water Heater",
+  "water heater": "Solar Water Heater",
+  "geyser": "Solar Water Heater",
+  "gated community": "Gated Community",
+  "gated colony": "Gated Community",
+  "play area": "Kids Play Area",
+  "playground": "Kids Play Area",
+  "pet friendly": "Pet Friendly",
+  "pets allowed": "Pet Friendly",
+  "wheelchair": "Wheelchair Access",
+  "ev charging": "EV Charging",
+  "corner plot": "Corner Plot",
+  "puja room": "Puja Room",
+  "prayer room": "Puja Room",
+  "study room": "Study Room",
+  "store room": "Store Room",
+  "laundry": "Laundry Room",
+  "guest room": "Guest Room",
+  "attached bath": "Attached Bathroom",
+  "ensuite": "Attached Bathroom",
+  "fridge": "Refrigerator",
+  "washing machine": "Washing Machine",
+  "smart tv": "Television",
+  "water purifier": "Water Purifier",
+  "curtains": "Curtains & Blinds",
+  "ceiling fan": "Ceiling Fans",
 };
 
 const BY_NAME = new Map(AMENITIES.map((a) => [a.name.toLowerCase(), a]));
@@ -693,13 +803,3 @@ export function amenityIcon(name: string): Amenity["Icon"] | null {
   return null;
 }
 
-/** The canonical name an arbitrary string maps onto, or null. */
-export function canonicalAmenity(name: string): string | null {
-  const n = name.trim().toLowerCase();
-  if (!n) return null;
-  if (BY_NAME.has(n)) return BY_NAME.get(n)!.name;
-  if (ALIASES[n]) return ALIASES[n];
-  for (const k of ALIAS_KEYS) if (n.includes(k)) return ALIASES[k];
-  for (const k of NAME_KEYS) if (n.includes(k)) return BY_NAME.get(k)!.name;
-  return null;
-}

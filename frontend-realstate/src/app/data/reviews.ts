@@ -1,22 +1,11 @@
-/**
- * Property reviews and reaction counts: mock data until the API serves them.
- *
- * For the backend: the shapes below are what the frontend expects.
- *   GET  /api/v1/properties/:id/reviews   -> Review[]   (newest first)
- *   POST /api/v1/properties/:id/reviews   <- { rating, name, text }
- *   The property itself should carry `reactionCount` and `reviewCount`.
- *
- * Notes:
- *   - `verified` must be decided by the server (did this person really visit
- *     through us?) and never accepted from the client.
- *   - A new review should go into moderation before it is shown.
- *   - `reactionCount` should exclude the caller's own reaction: the frontend
- *     adds one locally so the number updates instantly (see reactionCount below).
- *
- * Distinct from the agency TESTIMONIALS in App.tsx, which are about Nepal
- * Bhoomi rather than one listing.
- */
+// Property reviews and reaction counts (mock data). API in FRONTEND_CLAUDE.md §7.7:
+//   GET  /api/v1/properties/:id/reviews   newest first
+//   POST /api/v1/properties/:id/reviews   { rating, name, text } -> moderation queue
+// "verified" must be set by the server, never taken from the client.
+// reactionCount should not include the caller's own heart; the frontend adds it locally.
+// (Testimonials about the agency are separate, in data/content.ts.)
 import { img } from "@/app/components/ui/brand";
+import { emitChange } from "./store";
 
 export interface Review {
   id:       number;
@@ -56,15 +45,46 @@ const REVIEW_POOL: Review[] = [
 /**
  * Which reviews belong to which property: a rotating slice of the pool, so
  * every listing has a plausible history. Replaced wholesale by the API.
+ * Each entry is a copy with its own id (property id × 100 + position), so
+ * deleting a review on one property never touches another.
  */
 const REVIEWS: Record<number, Review[]> = Object.fromEntries(
   Array.from({ length: 12 }, (_, i) => {
     const id = i + 1, take = [5,4,3,5,4,6,3,4,5,6,3,4][i];
-    return [id, Array.from({ length: take }, (_, k) => REVIEW_POOL[(i*3+k) % REVIEW_POOL.length])];
+    return [id, Array.from({ length: take }, (_, k) => ({ ...REVIEW_POOL[(i*3+k) % REVIEW_POOL.length], id: id * 100 + k + 1 }))];
   }),
 );
 
 export const reviewsFor = (id: number): Review[] => REVIEWS[id] ?? [];
+
+/** Every property id that has at least one review, for the admin Reviews page. */
+export const reviewedPropertyIds = (): number[] =>
+  Object.keys(REVIEWS).map(Number).filter(id => REVIEWS[id].length > 0);
+
+/** API: DELETE /api/v1/admin/reviews/:reviewId (ADMIN). */
+export function deleteReview(propertyId: number, reviewId: number): void {
+  const list = REVIEWS[propertyId];
+  if (!list) return;
+  const i = list.findIndex(r => r.id === reviewId);
+  if (i >= 0) { list.splice(i, 1); emitChange(); }
+}
+
+/** Undo for deleteReview: put the review back at its old position. */
+export function restoreReview(propertyId: number, review: Review, index: number): void {
+  const list = (REVIEWS[propertyId] ??= []);
+  if (list.some(r => r.id === review.id)) return;
+  list.splice(Math.min(Math.max(index, 0), list.length), 0, review);
+  emitChange();
+}
+
+/**
+ * Set how many reactions a property shows. The admin can raise or lower it.
+ * API: PATCH /api/v1/admin/properties/:id with { reactionCount } (ADMIN).
+ */
+export function setReactionCount(propertyId: number, count: number): void {
+  REACTIONS[propertyId] = Math.max(0, Math.round(count));
+  emitChange();
+}
 
 /** Average star rating to one decimal place, or 0 when there are no reviews. */
 export const ratingFor = (id: number): number => {

@@ -1,10 +1,7 @@
 import { ChevronDown, Search, X } from "lucide-react";
 import { BORDER_L, FG_LIGHT, MUTED_L, WHITE, sans } from "./brand";
 
-/**
- * Sort orders for the Buy/Rent results. The keys are the values the listings
- * API should accept in its `sort` query parameter.
- */
+// Sort options for Buy/Rent. The keys double as the API's `sort` values.
 export type SortKey = "newest" | "price_asc" | "price_desc";
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -13,13 +10,8 @@ export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "price_desc", label: "Price: high to low" },
 ];
 
-/**
- * Result count, free-text search and sort, shown above the Buy/Rent results.
- *
- * For the backend: `query` maps to the listings API's `q` parameter (matched
- * against title, location, district, type and property ref like "NB-004"),
- * and `sort` to its `sort` parameter.
- */
+// Count, search box and sort menu above the Buy/Rent results.
+// API: query -> ?q= (title, location, district, type, ref like NB-004), sort -> ?sort=
 export function ResultsToolbar({ count, query, onQuery, sort, onSort }: {
   count: number;
   query: string;

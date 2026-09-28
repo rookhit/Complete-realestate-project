@@ -6,17 +6,9 @@ import { MAROON, WHITE, sans } from "./brand";
 /** WhatsApp number the dock links to. Replace with the real business number. */
 export const WHATSAPP_URL = "https://wa.me/9779800000000";
 
-/**
- * The floating contact dock in the bottom-right corner: Quick Enquiry and
- * WhatsApp as two matching 52px circles.
- *
- * Replaces the old 176px Quick Enquiry bar pinned at bottom-24, which sat on
- * top of headlines, carousel arrows and card buttons on several screens.
- *
- * `overHero` is true on pages that open with the full-height hero. The hero
- * puts its own "Scroll" cue in the same corner, so the dock waits until the
- * visitor has scrolled past it. Other pages show it straight away.
- */
+// Quick Enquiry + WhatsApp buttons in the bottom-right corner.
+// With overHero, the dock stays hidden until the visitor scrolls past the home hero
+// (the hero has its own "Scroll" cue in that corner).
 export function FloatingDock({ onEnquire, overHero = false }: { onEnquire: () => void; overHero?: boolean }) {
   const [shown, setShown] = useState(!overHero);
 
@@ -57,11 +49,7 @@ export function FloatingDock({ onEnquire, overHero = false }: { onEnquire: () =>
   );
 }
 
-/**
- * One button in the dock. A 52px circle at rest; the label slides out on hover
- * by animating max-width, so the collapsed hit area stays a perfect circle.
- * `pulse` adds a slow gold ring to draw the eye without blinking the button.
- */
+// A round 52px button; the label slides out on hover. pulse adds a slow gold ring.
 export function DockButton({ icon, label, bg, onClick, href, pulse = false, peek = false }: {
   icon: React.ReactNode; label: string; bg: string;
   onClick?: () => void; href?: string; pulse?: boolean; peek?: boolean;

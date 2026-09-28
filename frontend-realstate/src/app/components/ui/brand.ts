@@ -1,12 +1,5 @@
-/**
- * Nepal Bhoomi brand tokens.
- *
- * One place for the colours and font stacks every page and component uses.
- * App.tsx and the components in this folder all import from here, so a colour
- * changes once instead of in every file.
- */
+// Brand colours and fonts, shared by App.tsx and everything in components/ and admin/.
 
-export const BG_DARK   = "#0e0d0b";
 export const BG_LIGHT  = "#f7f3ed";
 export const FG_DARK   = "#f0ebe0";
 export const FG_LIGHT  = "#1a1611";

@@ -8,15 +8,9 @@ import { ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
 /** How many reviews show before "Show all". */
 const VISIBLE = 2;
 
-/**
- * "Resident Reviews" block on the property detail page.
- *
- * Summary (average, stars, count, star distribution), then two reviews with
- * the rest behind one button, plus a write-a-review form. Data comes from
- * src/app/data/reviews.ts until GET /properties/:id/reviews exists.
- *
- * The wrapper has id="reviews" so the rating link in the info bar can scroll here.
- */
+// "Resident Reviews" on the property page: rating summary, two reviews (rest behind a
+// button) and a write-a-review form. id="reviews" is the target of the rating link.
+// Data: data/reviews.ts until GET /properties/:id/reviews exists.
 export function ReviewsSection({ propId }: { propId: number }) {
   const all = reviewsFor(propId);
   const [expanded, setExpanded] = useState(false);
@@ -111,10 +105,7 @@ export function ReviewsSection({ propId }: { propId: number }) {
   );
 }
 
-/**
- * Star + average + count, for the detail page's info bar. Clicking scrolls to
- * the reviews. Renders nothing when a property has no reviews.
- */
+// "★ 4.8 · 5 reviews" in the property info bar; scrolls down to the reviews.
 export function RatingLink({ propId }: { propId: number }) {
   const count = reviewsFor(propId).length;
   if (!count) return null;
@@ -159,11 +150,8 @@ export function ReviewCard({ r }: { r: Review }) {
   );
 }
 
-/**
- * The write-a-review form. Validates on the client and shows a thank-you;
- * nothing is sent yet. For the backend: POST /properties/:id/reviews with
- * { rating, name, text } goes where `setSent(true)` is.
- */
+// Write-a-review form. Only validates for now; POST /properties/:id/reviews
+// with { rating, name, text } goes where setSent(true) is.
 export function ReviewForm({ onClose }: { onClose: () => void }) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);

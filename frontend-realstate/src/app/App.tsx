@@ -1,37 +1,52 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Menu, X, MapPin, ArrowRight, Search, ChevronDown, ChevronLeft, ChevronRight,
   Phone, Mail, MessageCircle, Send, Bed, Bath, Square, Share2,
-  Play, Filter, Grid3X3, List as ListIcon, Map, Calculator, Star,
+  Play, Grid3X3, List as ListIcon, Map, Calculator, Star,
   Building2, Home, Landmark, Briefcase, Layers, CheckCircle2, Award,
-  Instagram, Facebook, Youtube, Linkedin, Globe, MessageSquare, ZoomIn,
-  SlidersHorizontal, RotateCcw, User, Users, FileText, PlusCircle,
+  Instagram, Facebook, Youtube, Linkedin, ZoomIn,
+  SlidersHorizontal, RotateCcw, User, FileText, PlusCircle,
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
   Tag as TagIcon,
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
-import { DISTRICTS, PROVINCE_OF, searchDistricts } from "@/app/data/districts";
+import { DISTRICTS } from "@/app/data/districts";
 import { reviewsFor } from "@/app/data/reviews";
+import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, type Prop } from "@/app/data/properties";
+import {
+  BLOGS, TESTIMONIALS, TEAM, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS,
+  companyVideos, youtubeThumb, type CompanyVideo,
+} from "@/app/data/content";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
-import { API_URL, ApiError, AuthProvider, authFetch, forgotPassword, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
+import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 import {
   BG_LIGHT, FG_DARK, FG_LIGHT, CREAM, WHITE, MAROON, GOLD, GOLD_DIM,
   MUTED_D, MUTED_L, BORDER_L, BORDER_D, serif, sans, img,
 } from "@/app/components/ui/brand";
 import { StatusBadge, VerifiedChip } from "@/app/components/ui/status-badge";
-import { AmenityStrip } from "@/app/components/ui/amenity-strip";
 import { FavButton, ReactionButton } from "@/app/components/ui/reaction-button";
 import { FloatingDock } from "@/app/components/ui/floating-dock";
 import { RatingLink, ReviewsSection } from "@/app/components/ui/property-reviews";
 import { ResultsToolbar, type SortKey } from "@/app/components/ui/results-toolbar";
+import { DistrictCombobox } from "@/app/components/ui/district-combobox";
+// The admin is only downloaded when an admin opens it, so visitors never load it.
+const AdminDashboard = lazy(() => import("@/app/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const AdminUsers = lazy(() => import("@/app/admin/AdminUsers").then(m => ({ default: m.AdminUsers })));
+const AdminReviews = lazy(() => import("@/app/admin/AdminReviews").then(m => ({ default: m.AdminReviews })));
+import type { AdminNav } from "@/app/admin/AdminLayout";
+import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
+import { BackButton } from "@/app/components/ui/back-button";
+import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
+import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Page =
   | "home" | "buy" | "rent" | "property" | "hot" | "new-listings"
   | "about" | "blog" | "blog-post" | "services" | "emi" | "contact"
-  | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "admin" | "reset-password";
+  | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "reset-password" | "team"
+  | "admin" | "admin-users" | "admin-reviews";                  // the admin area, src/app/admin/
 
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
@@ -43,168 +58,11 @@ type Go = (p: Page, o?: NavOpts) => void;
 // Brand colours and fonts live in components/ui/brand.ts.
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
-interface Prop {
-  id: number; propId: string; badge: string; title: string; tagline: string;
-  location: string; district: string; price: string; priceNum: number;
-  listing: "For Sale" | "For Rent"; type: string;
-  beds: number; baths: number; builtArea: string; landArea: string;
-  roadAccess: string; facing: string; buildYear: number; floors: number;
-  verified: boolean; featured: boolean;
-  hero: string; gallery: string[]; description: string; features: string[];
-  mapX: number; mapY: number;
-}
-
-const ALL_PROPS: Prop[] = [
-  { id:1, propId:"NB-001", badge:"Hot", title:"The Patan Residence", tagline:"Heritage Reimagined",
-    location:"Jawlakhel, Lalitpur", district:"Lalitpur", price:"NPR 8.5 Cr", priceNum:85000000,
-    listing:"For Sale", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,850 sq.ft", landArea:"12 Ropani",
-    roadAccess:"Black-topped 20ft", facing:"North-East", buildYear:2019, floors:3, verified:true, featured:true,
-    hero:img("photo-1600596542815-ffad4c1539a9",1920,1080),
-    gallery:[img("photo-1600596542815-ffad4c1539a9"),img("photo-1586023492125-27b2c045efd7"),img("photo-1631049307264-da0ec9d70304"),img("photo-1556909114-f6e7ad7d3136")],
-    description:"A masterfully crafted contemporary residence in the heart of Lalitpur, blending the architectural legacy of the Kathmandu Valley with the refined sensibility of modern luxury living.",
-    features:["Infinity Pool","Home Theater","Smart Home","Rooftop Garden","3-Car Garage","Staff Quarters","Wine Cellar","Solar Power","Earthquake Resistant","Marble","Balcony","Parking","Terrace","Master Bedroom","Modular Kitchen","Internet","Reserve Tank","Drinking Water"],
-    mapX:55, mapY:48 },
-  { id:2, propId:"NB-002", badge:"Featured", title:"Boudha Heights Penthouse", tagline:"Sanctuary Above the City",
-    location:"Boudhanath, Kathmandu", district:"Kathmandu", price:"NPR 4.2 Cr", priceNum:42000000,
-    listing:"For Sale", type:"Apartment", beds:3, baths:3, builtArea:"2,800 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 30ft", facing:"South", buildYear:2021, floors:1, verified:true, featured:true,
-    hero:img("photo-1613977257363-707ba9348227",1920,1080),
-    gallery:[img("photo-1613977257363-707ba9348227"),img("photo-1560185007-cde436f6a4d0"),img("photo-1586023492125-27b2c045efd7")],
-    description:"Perched above the sacred Boudhanath stupa, this rare penthouse commands 270-degree views of the valley and distant Himalayan peaks.",
-    features:["Panoramic Views","Private Terrace","Concierge","Smart Home","Wine Cellar","Balcony","Parking","Terrace","Master Bedroom","Modular Kitchen","Internet","Marble","Closet","Sofa"],
-    mapX:61, mapY:34 },
-  { id:3, propId:"NB-003", badge:"New", title:"Pokhara Lakeside Villa", tagline:"Himalayan Vistas & Serenity",
-    location:"Lakeside, Pokhara", district:"Kaski", price:"NPR 12 Cr", priceNum:120000000,
-    listing:"For Sale", type:"House/Bungalow", beds:6, baths:5, builtArea:"6,800 sq.ft", landArea:"18 Ropani",
-    roadAccess:"Black-topped 16ft", facing:"East", buildYear:2020, floors:2, verified:true, featured:false,
-    hero:img("photo-1600585154526-990dced4db0d",1920,1080),
-    gallery:[img("photo-1600585154526-990dced4db0d"),img("photo-1568605114967-8130f3a36994"),img("photo-1631049307264-da0ec9d70304")],
-    description:"A rare lakeside estate with direct Phewa Lake frontage and unobstructed Annapurna views. The pinnacle of refined living in Pokhara.",
-    features:["Lakefront Access","Heated Pool","Boat Dock","Mountain Deck","Guest Cottage","Yoga Terrace","Earthquake Resistant","Parquet","Balcony","Parking","Terrace","Master Bedroom","Living Room","Dining Room","Internet","Drinking Water"],
-    mapX:28, mapY:38 },
-  { id:4, propId:"NB-004", badge:"Prime", title:"Godavari Forest Estate", tagline:"Nature Reserve Living",
-    location:"Godavari, Lalitpur", district:"Lalitpur", price:"NPR 6.8 Cr", priceNum:68000000,
-    listing:"For Sale", type:"Land", beds:0, baths:0, builtArea:"—", landArea:"25 Ropani",
-    roadAccess:"Graveled 12ft", facing:"North", buildYear:0, floors:0, verified:true, featured:false,
-    hero:img("photo-1512917774080-9991f1c4c750",1920,1080),
-    gallery:[img("photo-1512917774080-9991f1c4c750"),img("photo-1500382017468-9049fed747ef")],
-    description:"25 ropani of pristine forested land at the foot of the Godavari botanical reserve. Complete privacy and a profound connection to nature.",
-    features:["Private Forest","Botanical Access","Spring Water","Trekking Trails","Development Ready","Drinking Water","Drainage","Parking","Reserve Tank"],
-    mapX:68, mapY:56 },
-  { id:5, propId:"NB-005", badge:"Verified", title:"Thamel Commercial Tower", tagline:"Urban Investment",
-    location:"Thamel, Kathmandu", district:"Kathmandu", price:"NPR 15 Cr", priceNum:150000000,
-    listing:"For Sale", type:"Commercial", beds:0, baths:6, builtArea:"8,200 sq.ft", landArea:"4 Ropani",
-    roadAccess:"Black-topped 40ft", facing:"South-East", buildYear:2018, floors:5, verified:true, featured:false,
-    hero:img("photo-1497366216548-37526070297c",1920,1080),
-    gallery:[img("photo-1497366216548-37526070297c"),img("photo-1497366811353-6870744d04b2")],
-    description:"A prime commercial building in Kathmandu's most cosmopolitan district. Fully tenanted with excellent rental yield.",
-    features:["5 Floors","Elevator","Generator Backup","24/7 Security","Ground Floor Retail","4 Commercial Units","Earthquake Resistant","Parking","Drainage","Reserve Tank","Internet","Bathroom","Pantry"],
-    mapX:48, mapY:30 },
-  { id:6, propId:"NB-006", badge:"Rare", title:"Bhaktapur Heritage Villa", tagline:"Living Within History",
-    location:"Suryabinayak, Bhaktapur", district:"Bhaktapur", price:"NPR 5.5 Cr", priceNum:55000000,
-    listing:"For Sale", type:"House/Bungalow", beds:4, baths:4, builtArea:"3,800 sq.ft", landArea:"8 Ropani",
-    roadAccess:"Black-topped 14ft", facing:"East", buildYear:2015, floors:3, verified:true, featured:false,
-    hero:img("photo-1568605114967-8130f3a36994",1920,1080),
-    gallery:[img("photo-1568605114967-8130f3a36994"),img("photo-1600596542815-ffad4c1539a9")],
-    description:"A sensitively restored heritage villa near Bhaktapur's UNESCO-listed Durbar Square, blending Newari architecture with modern amenities.",
-    features:["Heritage Architecture","Traditional Courtyard","Durbar Views","Restored Woodwork","Earthquake Resistant","Marble","Parquet","Balcony","Terrace","Master Bedroom","Living Room","Dining Room","Kitchen","Bathroom"],
-    mapX:73, mapY:39 },
-  { id:7, propId:"NB-007", badge:"Featured", title:"Jhamsikhel Luxury Flat", tagline:"Urban Elegance",
-    location:"Jhamsikhel, Lalitpur", district:"Lalitpur", price:"NPR 85,000/mo", priceNum:85000,
-    listing:"For Rent", type:"Flat", beds:3, baths:2, builtArea:"1,850 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 20ft", facing:"South", buildYear:2022, floors:1, verified:true, featured:true,
-    hero:img("photo-1522708323590-d24dbb6b0267",1920,1080),
-    gallery:[img("photo-1522708323590-d24dbb6b0267"),img("photo-1560448204-e02f11c3d0e2")],
-    description:"A beautifully finished luxury flat in one of Lalitpur's most sought-after addresses. Fully furnished and ready to move in.",
-    features:["Fully Furnished","Parking","Security","Gym Access","Balcony Views","Balcony","Modular Kitchen","Internet","Bed","Closet","Sofa","Dining Table","Bathroom"],
-    mapX:59, mapY:44 },
-  { id:8, propId:"NB-008", badge:"Verified", title:"Lazimpat Premium Apartment", tagline:"Diplomatic Quarter",
-    location:"Lazimpat, Kathmandu", district:"Kathmandu", price:"NPR 1.2 L/mo", priceNum:120000,
-    listing:"For Rent", type:"Apartment", beds:4, baths:3, builtArea:"2,400 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 30ft", facing:"North-East", buildYear:2020, floors:1, verified:true, featured:false,
-    hero:img("photo-1560448204-e02f11c3d0e2",1920,1080),
-    gallery:[img("photo-1560448204-e02f11c3d0e2"),img("photo-1555041469-a586c61ea9bc")],
-    description:"Premium 4-bedroom apartment in Kathmandu's prestigious diplomatic quarter. Minutes from embassies and international schools.",
-    features:["4 Bedrooms","Gym","Swimming Pool","24/7 Concierge","International Kitchen","Balcony","Parking","Terrace","Master Bedroom","Living Room","Modular Kitchen","Internet","Closet","Sofa"],
-    mapX:44, mapY:40 },
-  { id:9, propId:"NB-009", badge:"New", title:"Budhanilkantha Villa", tagline:"Quiet Hilltop Retreat",
-    location:"Budhanilkantha, Kathmandu", district:"Kathmandu", price:"NPR 95,000/mo", priceNum:95000,
-    listing:"For Rent", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,200 sq.ft", landArea:"6 Ropani",
-    roadAccess:"Black-topped 16ft", facing:"South", buildYear:2017, floors:3, verified:false, featured:false,
-    hero:img("photo-1580587771525-78b9dba3b914",1920,1080),
-    gallery:[img("photo-1580587771525-78b9dba3b914"),img("photo-1568605114967-8130f3a36994")],
-    description:"A tranquil hilltop villa above the city, offering complete privacy and sweeping valley views. Ideal for families seeking space and calm.",
-    features:["Garden","Parking for 4","Generator","Water Tank","Mountain Views","Earthquake Resistant","Parking","Terrace","Balcony","Reserve Tank","Drinking Water","Kitchen","Bathroom","Living Room"],
-    mapX:57, mapY:22 },
-  { id:10, propId:"NB-010", badge:"Hot", title:"Durbar Marg Office Suite", tagline:"Premier Business Address",
-    location:"Durbar Marg, Kathmandu", district:"Kathmandu", price:"NPR 2.5 L/mo", priceNum:250000,
-    listing:"For Rent", type:"Commercial", beds:0, baths:2, builtArea:"3,500 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 40ft", facing:"East", buildYear:2016, floors:1, verified:true, featured:true,
-    hero:img("photo-1497366811353-6870744d04b2",1920,1080),
-    gallery:[img("photo-1497366811353-6870744d04b2"),img("photo-1497366216548-37526070297c")],
-    description:"Full-floor office suite on Kathmandu's most prestigious commercial address. Perfect for corporate headquarters and premium businesses.",
-    features:["3,500 sq.ft Open Plan","Board Room","Reception Area","Pantry","High-speed Internet","Parking","Drainage","Reserve Tank","Internet","Bathroom"],
-    mapX:69, mapY:27 },
-  { id:11, propId:"NB-011", badge:"Verified", title:"Pulchowk Modern Flat", tagline:"City Centre Living",
-    location:"Pulchowk, Lalitpur", district:"Lalitpur", price:"NPR 45,000/mo", priceNum:45000,
-    listing:"For Rent", type:"Flat", beds:2, baths:1, builtArea:"950 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 20ft", facing:"West", buildYear:2023, floors:1, verified:true, featured:false,
-    hero:img("photo-1555041469-a586c61ea9bc",1920,1080),
-    gallery:[img("photo-1555041469-a586c61ea9bc"),img("photo-1522708323590-d24dbb6b0267")],
-    description:"A modern 2-bedroom flat in vibrant Pulchowk. Walking distance to restaurants, cafes and the Lalitpur commercial district.",
-    features:["Modern Interiors","Covered Parking","Security","Balcony","WiFi Ready","Parking","Modular Kitchen","Internet","Bed","Closet","Bathroom"],
-    mapX:36, mapY:52 },
-  { id:12, propId:"NB-012", badge:"New", title:"Sauraha Riverside Retreat", tagline:"Nature at Your Doorstep",
-    location:"Sauraha, Chitwan", district:"Chitwan", price:"NPR 3.2 Cr", priceNum:32000000,
-    listing:"For Sale", type:"House/Bungalow", beds:4, baths:3, builtArea:"3,200 sq.ft", landArea:"15 Ropani",
-    roadAccess:"Graveled 14ft", facing:"South", buildYear:2021, floors:2, verified:false, featured:false,
-    // Was photo-1507003211169, a studio portrait of a man (also used as a
-    // testimonial avatar), so this listing led with a stranger's face.
-    hero:img("photo-1520250497591-112f2f40a3f4",1920,1080),
-    gallery:[img("photo-1520250497591-112f2f40a3f4"),img("photo-1582719478250-c89cae4dc85b"),img("photo-1500382017468-9049fed747ef")],
-    description:"An extraordinary riverside retreat at the edge of the Chitwan National Park. Wake up to jungle sounds and sunset river views every day.",
-    features:["River Frontage","Private Garden","Nature Trails","Open Verandah","Jungle Views","Earthquake Resistant","Drinking Water","Parking","Terrace","Living Room","Dining Room","Kitchen","Bathroom"],
-    mapX:45, mapY:65 },
-];
-
-const BLOGS = [
-  { id:1, cat:"Market Update", date:"May 2025", read:"6 min", title:"Nepal Real Estate Rebounds: Q1 2025 Market Report",
-    excerpt:"After a cautious 2024, Nepal's property market has shown strong signs of recovery in Q1 2025, with Kathmandu Valley recording a 14% uptick in premium transactions.",
-    image:img("photo-1544735716-392fe2489ffa",800,500), author:"Arjun Thapa" },
-  { id:2, cat:"Buyer's Guide", date:"Apr 2025", read:"8 min", title:"How to Buy Property in Nepal: The Complete 2025 Guide",
-    excerpt:"From land registration to bank financing, we break down every step of the property purchase process in Nepal in plain language.",
-    image:img("photo-1512917774080-9991f1c4c750",800,500), author:"Priya Shrestha" },
-  { id:3, cat:"Investment", date:"Mar 2025", read:"5 min", title:"Pokhara International Airport: What It Means for Property Prices",
-    excerpt:"Pokhara's new international airport has catalyzed a significant shift in property values across the western region. Here's what investors need to know.",
-    image:img("photo-1600585154526-990dced4db0d",800,500), author:"Rajan Maharjan" },
-  { id:4, cat:"Vastu", date:"Feb 2025", read:"4 min", title:"Vastu Shastra for Modern Homes: Principles That Still Work",
-    excerpt:"Ancient Vastu principles continue to influence homebuying decisions in Nepal. Our consultants explain which guidelines genuinely improve living quality.",
-    image:img("photo-1600596542815-ffad4c1539a9",800,500), author:"Sita Karki" },
-];
-
-const TESTIMONIALS = [
-  { name:"Bijay Shrestha", role:"Property Buyer, Kathmandu", rating:5, text:"Nepal Bhoomi helped us find our dream home in Lalitpur within 3 weeks. Their knowledge of the market and genuine care for our needs was exceptional.", img:img("photo-1560250097-0b93528c311a",200,200) },
-  { name:"Anita Gurung", role:"Property Investor, Pokhara", rating:5, text:"As an NRN investing from abroad, Nepal Bhoomi's advisory team guided us through every legal and financial step. Complete transparency throughout.", img:img("photo-1573497019940-1c28c88b4f3e",200,200) },
-  { name:"Dr. Ramesh Poudel", role:"Commercial Buyer, Lalitpur", rating:5, text:"Purchased a commercial property through Nepal Bhoomi. Their valuation was spot-on and the transaction was completed without a single hitch. Highly recommended.", img:img("photo-1507003211169-0a1dd7228f2d",200,200) },
-];
+// Properties live in data/properties.ts; journal, testimonials, team, statistics, featured
+// districts and videos in data/content.ts. The admin edits those arrays.
 
 // Every district in Nepal. Was a 9-item hand-picked list.
 const AREAS = DISTRICTS;
-const PROP_TYPES = ["All Types","House/Bungalow","Land","Apartment","Commercial","Flat"];
-const PRICE_RANGES: Record<"For Sale"|"For Rent", {label:string;min:number;max:number}[]> = {
-  "For Sale": [
-    { label:"Any Price", min:0, max:Infinity },
-    { label:"Under 5 Cr", min:0, max:50000000 },
-    { label:"5 - 10 Cr", min:50000000, max:100000000 },
-    { label:"Above 10 Cr", min:100000000, max:Infinity },
-  ],
-  "For Rent": [
-    { label:"Any Price", min:0, max:Infinity },
-    { label:"Under 1 Lakh", min:0, max:100000 },
-    { label:"1 - 2 Lakh", min:100000, max:200000 },
-    { label:"Above 2 Lakh", min:200000, max:Infinity },
-  ],
-};
 const SERVICES_LIST = [
   { icon:<Home size={22}/>, title:"Property Sales", desc:"Full-service representation for residential and commercial property transactions across Nepal." },
   { icon:<Layers size={22}/>, title:"Letting", desc:"Specialist letting advisory for landlords and tenants seeking premium rental properties." },
@@ -224,13 +82,6 @@ const SectionTitle = ({ tag, h, dark=true }: { tag:string; h:string; dark?:boole
     <div className="flex items-center gap-3"><GoldLine /><Tag>{tag}</Tag></div>
     <h2 className="leading-[0.93]" style={{ color:dark?FG_DARK:FG_LIGHT, ...serif, fontSize:"clamp(2.2rem,4.4vw,4rem)" }}>{h}</h2>
   </div>
-);
-const PillBtn = ({ active, onClick, children }: { active?:boolean; onClick?:()=>void; children:React.ReactNode }) => (
-  <button onClick={onClick}
-    className="flex items-center gap-1.5 px-5 py-2.5 text-[12px] tracking-[0.15em] border transition-all duration-200 whitespace-nowrap"
-    style={{ borderRadius:"9999px", borderColor:active?"transparent":BORDER_L, background:active?"#1a1611":"transparent", color:active?WHITE:FG_LIGHT, ...sans }}>
-    {children}
-  </button>
 );
 
 // ─── Shared inputs ────────────────────────────────────────────────────────────
@@ -265,104 +116,7 @@ function PasswordInput({ value, onChange, placeholder="********", onEnter, autoC
   );
 }
 
-/**
- * District typeahead over all 77 districts.
- *
- * Typing "g" lists every district starting with G before any that merely
- * contain it, and the alias table means "pokhara" finds Kaski. Full keyboard
- * support: arrows move, Enter picks, Escape closes.
- */
-function DistrictCombobox({ value, onChange, placeholder="Type a district...", dark=false }: {
-  value:string; onChange:(v:string)=>void; placeholder?:string; dark?:boolean;
-}) {
-  const [query,setQuery]=useState(value);
-  const [open,setOpen]=useState(false);
-  const [active,setActive]=useState(0);
-  const wrapRef=useRef<HTMLDivElement>(null);
-
-  useEffect(()=>{ setQuery(value); },[value]);
-
-  useEffect(()=>{
-    const onDocDown=(e:MouseEvent)=>{
-      if(wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown",onDocDown);
-    return ()=>document.removeEventListener("mousedown",onDocDown);
-  },[]);
-
-  const results=searchDistricts(query,8);
-  const fg=dark?FG_DARK:FG_LIGHT;
-  const muted=dark?MUTED_D:MUTED_L;
-  const border=dark?BORDER_D:BORDER_L;
-  const panelBg=dark?"#14120f":WHITE;
-
-  const pick=(d:string)=>{ onChange(d); setQuery(d); setOpen(false); };
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <div className="flex items-center gap-2.5 border px-4" style={{borderColor:border}}>
-        <MapPin size={15} style={{color:GOLD,flexShrink:0}}/>
-        <input
-          value={query}
-          onChange={e=>{ setQuery(e.target.value); setActive(0); setOpen(true); if(e.target.value==="") onChange(""); }}
-          onFocus={()=>setOpen(true)}
-          onKeyDown={e=>{
-            if(e.key==="ArrowDown"){ e.preventDefault(); setOpen(true); setActive(a=>Math.min(a+1,results.length-1)); }
-            else if(e.key==="ArrowUp"){ e.preventDefault(); setActive(a=>Math.max(a-1,0)); }
-            else if(e.key==="Enter"){ if(open&&results[active]){ e.preventDefault(); pick(results[active]); } }
-            else if(e.key==="Escape"){ setOpen(false); }
-          }}
-          placeholder={placeholder}
-          role="combobox" aria-expanded={open} aria-autocomplete="list"
-          className="flex-1 bg-transparent py-3 text-[15px] outline-none"
-          style={{color:fg,...sans}}
-        />
-        {query && (
-          <button type="button" onClick={()=>{ setQuery(""); onChange(""); setOpen(true); }} aria-label="Clear district" className="p-1" style={{color:muted}}>
-            <X size={14}/>
-          </button>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {open && results.length>0 && (
-          <motion.ul
-            initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}}
-            transition={{duration:0.14}}
-            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto border shadow-lg"
-            style={{background:panelBg,borderColor:border}}
-            role="listbox"
-          >
-            {results.map((d,i)=>(
-              <li key={d}>
-                <button
-                  type="button"
-                  onMouseEnter={()=>setActive(i)}
-                  onClick={()=>pick(d)}
-                  role="option" aria-selected={i===active}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors"
-                  style={{ background: i===active ? (dark?"rgba(176,136,72,0.12)":"#f7f3ed") : "transparent" }}
-                >
-                  <span className="text-[14px]" style={{color:fg,...sans}}>{d}</span>
-                  <span className="text-[10px] tracking-[0.18em] uppercase" style={{color:muted,...sans}}>{PROVINCE_OF[d]}</span>
-                </button>
-              </li>
-            ))}
-          </motion.ul>
-        )}
-        {open && results.length===0 && (
-          <motion.div
-            initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="absolute left-0 right-0 top-full z-50 mt-1 border px-4 py-3 shadow-lg"
-            style={{background:panelBg,borderColor:border}}
-          >
-            <span className="text-[14px]" style={{color:muted,...sans}}>No district matches &ldquo;{query}&rdquo;</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+// DistrictCombobox (typeahead over all 77 districts) lives in components/ui/district-combobox.tsx.
 
 /** Multi-image picker with drag-and-drop, previews and removal. */
 type PickedImage = { id:string; file:File; url:string };
@@ -550,10 +304,10 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
           </div>
           {/* Right side */}
           <div className="hidden lg:flex items-center gap-3 ml-auto">
-            <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
+            <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
               style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</button>
             {user ? (<>
-              {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page==="admin"?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin</button>}
+              {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page.startsWith("admin")?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin</button>}
               <span className="flex items-center gap-1.5 px-2 text-[12px] max-w-[180px] truncate" title={user.email} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/>{user.name||user.email}</span>
               <button onClick={signOut} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Logout</button>
             </>) : (<>
@@ -616,7 +370,7 @@ function Footer({ go }: { go:Go }) {
         </div>
         {[
           {title:"Properties",links:[{l:"Buy Property",p:"buy"},{l:"Rent Property",p:"rent"},{l:"Hot Properties",p:"hot"},{l:"New Listings",p:"new-listings"},{l:"View All",p:"buy"}]},
-          {title:"Company",links:[{l:"About Us",p:"about"},{l:"Services",p:"services"},{l:"Blog & News",p:"blog"},{l:"Videos",p:"home",o:{scrollTo:"videos"}},{l:"Contact",p:"contact"}]},
+          {title:"Company",links:[{l:"About Us",p:"about"},{l:"Our Team",p:"team"},{l:"Services",p:"services"},{l:"Blog & News",p:"blog"},{l:"Videos",p:"home",o:{scrollTo:"videos"}},{l:"Contact",p:"contact"}]},
           {title:"Tools",links:[{l:"EMI Calculator",p:"emi"},{l:"Free Listing",p:"free-listing"},{l:"Register",p:"register"},{l:"Login",p:"login"}]},
         ].map(col=>(
           <div key={col.title}>
@@ -638,9 +392,9 @@ function Footer({ go }: { go:Go }) {
 }
 
 // ─── Callback form ────────────────────────────────────────────────────────────
-// One implementation, used by the section at the bottom of the home page and by
-// the Quick Enquiry popup. They were the same form twice; now they cannot drift.
-function CallbackForm({ onClose }: { onClose?: () => void }) {
+// The "Let Us Call You" form at the bottom of the home page. The floating Quick Enquiry
+// button scrolls here.
+function CallbackForm() {
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
   const [time,setTime]=useState("Morning (9am-12pm)");
@@ -652,11 +406,6 @@ function CallbackForm({ onClose }: { onClose?: () => void }) {
       <div className="flex flex-col items-center gap-4 py-8 text-center">
         <CheckCircle2 size={32} style={{color:GOLD}}/>
         <p className="text-base" style={{color:FG_LIGHT,...serif}}>Thank you. We will call you shortly.</p>
-        {onClose && (
-          <button onClick={onClose} className="mt-1 px-7 py-3 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
-            Close
-          </button>
-        )}
       </div>
     );
   }
@@ -682,97 +431,17 @@ function CallbackForm({ onClose }: { onClose?: () => void }) {
 }
 
 // ─── Float Elements ───────────────────────────────────────────────────────────
-// The AI concierge was removed: it only ever returned one canned reply, so it
-// promised a conversation it could not hold. Its slot now opens the real
-// callback form, which reaches an actual advisor. The buttons themselves are
-// the FloatingDock in components/ui/floating-dock.tsx.
-function QuickEnquiryFloat({ overHero=false }: { overHero?:boolean }) {
-  const [open,setOpen]=useState(false);
-
-  useEffect(()=>{
-    if(!open) return;
-    const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape") setOpen(false); };
-    window.addEventListener("keydown",onKey);
-    document.body.style.overflow="hidden";
-    return ()=>{ window.removeEventListener("keydown",onKey); document.body.style.overflow=""; };
-  },[open]);
-
-  return (
-    <>
-      <FloatingDock onEnquire={()=>setOpen(true)} overHero={overHero}/>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="fixed inset-0 z-[60] flex items-center justify-center p-5"
-            style={{background:"rgba(10,9,8,0.72)", backdropFilter:"blur(6px)"}}
-            initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            onClick={()=>setOpen(false)}
-          >
-            <motion.div
-              className="relative w-full max-w-xl border max-h-[90vh] overflow-y-auto"
-              style={{background:WHITE,borderColor:BORDER_L}}
-              initial={{opacity:0,y:24,scale:0.97}}
-              animate={{opacity:1,y:0,scale:1}}
-              exit={{opacity:0,y:16,scale:0.98}}
-              transition={{duration:0.28,ease:[0.16,1,0.3,1]}}
-              onClick={e=>e.stopPropagation()}
-              role="dialog" aria-modal="true" aria-label="Quick enquiry"
-            >
-              <button onClick={()=>setOpen(false)} aria-label="Close" className="absolute top-4 right-4 p-2 transition-colors hover:text-[#8a2030]" style={{color:MUTED_L}}>
-                <X size={18}/>
-              </button>
-              <div className="px-7 md:px-10 py-10 text-center">
-                <div className="flex items-center justify-center gap-3 mb-4">
-                  <div style={{width:"2rem",height:"0.5px",background:GOLD}}/>
-                  <Tag c={GOLD}>Quick Enquiry</Tag>
-                  <div style={{width:"2rem",height:"0.5px",background:GOLD}}/>
-                </div>
-                <h2 className="leading-tight mb-3" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.8rem,3.4vw,2.6rem)"}}>Let Us Call You</h2>
-                <p className="text-[15px] mb-8 leading-relaxed" style={{color:MUTED_L,...sans}}>Leave your details and one of our senior advisors will call you within 2 hours during business hours.</p>
-                <CallbackForm onClose={()=>setOpen(false)}/>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
+// The floating Quick Enquiry and WhatsApp buttons (FloatingDock, components/ui/floating-dock.tsx).
+// Quick Enquiry takes the visitor to the "Let Us Call You" section on the home page
+// (CallbackSection, id="enquiry") instead of opening a pop-up with the same form.
+function QuickEnquiryFloat({ overHero=false, onEnquire }: { overHero?:boolean; onEnquire:()=>void }) {
+  return <FloatingDock onEnquire={onEnquire} overHero={overHero}/>;
 }
 
 // ─── PropertyCard ─────────────────────────────────────────────────────────────
+// The card design lives in components/ui/property-cards.tsx (shared with the admin's live preview).
 function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:number)=>void; light?:boolean }) {
-  const [hov,setHov]=useState(false);
-  const nav=()=>{ setId(p.id); go("property"); window.scrollTo(0,0); };
-  return (
-    <div className="group cursor-pointer flex flex-col" onClick={nav} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>
-      <div className="relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-        <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-700" style={{transform:hov?"scale(1.05)":"scale(1)"}}/>
-        <div className="absolute inset-0 transition-opacity duration-400" style={{background:"linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)",opacity:hov?1:0.5}}/>
-        <div className="absolute top-3 left-3 flex gap-1.5">
-          <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
-        </div>
-        {/* The corner badge already says "Featured" when that is the badge, so
-            the status chip must not repeat it. */}
-        <div className="absolute top-3 right-3"><StatusBadge verified={p.verified} featured={p.featured && p.badge!=="Featured"} onImage/></div>
-        <motion.div className="absolute bottom-3 left-3 right-3 flex gap-3" animate={{opacity:hov?1:0,y:hov?0:6}} transition={{duration:0.25}}>
-          {p.beds>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:"rgba(240,235,224,0.8)",...sans}}><Bed size={12}/>{p.beds}</span>}
-          {p.baths>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:"rgba(240,235,224,0.8)",...sans}}><Bath size={12}/>{p.baths}</span>}
-          {p.builtArea!=="—"&&<span className="flex items-center gap-1 text-[11px]" style={{color:"rgba(240,235,224,0.8)",...sans}}><Square size={12}/>{p.builtArea}</span>}
-        </motion.div>
-      </div>
-      <div className={`flex flex-col ${light?"px-7 pt-7 pb-8":"pt-6"}`} style={{background:light?WHITE:"transparent"}}>
-        <span className="text-[10px] tracking-[0.24em] uppercase mb-3" style={{color:light?MUTED_L:MUTED_D,...sans}}>{p.type}</span>
-        <h3 className="leading-[1.22] text-[1.3rem] mb-2.5" style={{color:light?FG_LIGHT:FG_DARK,...serif}}>{p.title}</h3>
-        <div className="flex items-center gap-1.5 min-w-0 mb-4">
-          <MapPin size={12} style={{color:GOLD,flexShrink:0}}/>
-          <span className="text-[13px] truncate" style={{color:light?MUTED_L:MUTED_D,...sans}}>{p.location}</span>
-        </div>
-        <div className="mb-4"><AmenityStrip features={p.features} muted={light?MUTED_L:MUTED_D}/></div>
-        <span className="text-[17px] font-medium tracking-[0.01em]" style={{color:light?MAROON:GOLD,...sans}}>{p.price}</span>
-      </div>
-    </div>
-  );
+  return <ListingCard p={p} light={light} onOpen={()=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>;
 }
 
 // Favourites and reactions (FavButton, ReactionButton) live in components/ui/reaction-button.tsx.
@@ -864,31 +533,7 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
         </div>
         {/* Horizontal scroll */}
         <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
-          {hot.map(p=>(
-            <div key={p.id} className="shrink-0 flex flex-col gap-5 cursor-pointer group" style={{width:"clamp(300px,30vw,380px)"}} onClick={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}>
-              {/* Video thumbnail style */}
-              <div className="relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-                <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]"/>
-                <div className="absolute inset-0" style={{background:"rgba(0,0,0,0.28)"}}/>
-                {/* Play button */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-12 h-12 flex items-center justify-center border-2 border-white rounded-full bg-black/30 group-hover:bg-white/20 transition-all">
-                    <Play size={18} fill="white" style={{color:"white",marginLeft:2}}/>
-                  </div>
-                </div>
-                <div className="absolute top-3 left-3"><span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span></div>
-                {p.verified&&<div className="absolute top-3 right-3"><CheckCircle2 size={16} style={{color:"rgba(176,136,72,0.9)"}}/></div>}
-              </div>
-              {/* Same caption rhythm as the New Listings cards beside it. */}
-              <div className="flex flex-col gap-1.5 px-0.5">
-                <p className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</p>
-                <p className="text-[19px] leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</p>
-                <p className="flex items-center gap-1.5 text-[13px]" style={{color:MUTED_L,...sans}}><MapPin size={12} style={{color:GOLD}}/>{p.location}</p>
-                <div className="mt-1.5"><AmenityStrip features={p.features}/></div>
-                <p className="text-[16px] font-medium mt-1" style={{color:MAROON,...sans}}>{p.price}</p>
-              </div>
-            </div>
-          ))}
+          {hot.map(p=><HotCard key={p.id} p={p} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
         </div>
       </div>
     </section>
@@ -915,11 +560,9 @@ function NewListingsSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
 
 // ─── Properties by Location (Image 3 style) ───────────────────────────────────
 function LocationStripsSection({ go }: { go:Go }) {
-  const locs = [
-    {name:"Kathmandu",count:24,img:img("photo-1613977257363-707ba9348227",900,1100)},
-    {name:"Lalitpur",count:18,img:img("photo-1600596542815-ffad4c1539a9",900,1100)},
-    {name:"Bhaktapur",count:7,img:img("photo-1568605114967-8130f3a36994",900,1100)},
-  ];
+  // Edited in the admin (Home Page section): 1 to 5 districts.
+  const locs = FEATURED_DISTRICTS;
+  if(locs.length===0) return null;
   // Each tile takes an equal share of the row, so the strip fills the width
   // however many districts are published. Height follows that same share so
   // the proportion holds as the list grows, instead of the tiles turning into
@@ -956,64 +599,7 @@ function LocationStripsSection({ go }: { go:Go }) {
   );
 }
 
-// ─── Company videos ───────────────────────────────────────────────────────────
-//
-// These are company films, not property listings, so the card shows only a
-// title — the location line was removed. Each entry is either a self-hosted
-// file (one or more quality renditions) or a YouTube id.
-
-type VideoCaption = { start:string; end:string; text:string };
-type VideoSource  = { label:string; src:string; type?:string };
-
-type CompanyVideo = {
-  id:number;
-  title:string;
-  poster:string;
-  duration:string;
-  sources?:VideoSource[];
-  youtubeId?:string;
-  captions?:VideoCaption[];
-};
-
-// How a video is written in the list below. For YouTube, paste the normal share link as
-// `youtubeUrl` (youtu.be/..., youtube.com/watch?v=..., /shorts/...); `poster` can be left out
-// and the video's own YouTube thumbnail is used.
-type CompanyVideoInput = Omit<CompanyVideo,"poster"> & { poster?:string; youtubeUrl?:string };
-
-// Accepts any usual YouTube link or a bare 11-character video id; returns the id.
-function youtubeIdFrom(input?:string):string|undefined {
-  if(!input) return undefined;
-  if(/^[\w-]{11}$/.test(input)) return input;
-  try {
-    const u=new URL(input);
-    if(u.hostname.endsWith("youtu.be")) return u.pathname.slice(1,12)||undefined;
-    const v=u.searchParams.get("v");
-    if(v) return v;
-    return u.pathname.match(/\/(?:shorts|embed|live)\/([\w-]{11})/)?.[1];
-  } catch { return undefined; }
-}
-
-// maxresdefault is sharp but missing on some videos; hqdefault always exists (see onError below).
-const youtubeThumb=(id:string, q:"maxresdefault"|"hqdefault"="maxresdefault")=>`https://i.ytimg.com/vi/${id}/${q}.jpg`;
-
-// The first entry is the one shown in the centre when the page loads; the order here is the
-// order on the site. To add a video, paste its YouTube share link as `youtubeUrl`. A self-hosted
-// MP4 also works via `sources` (several entries make the quality menu work, highest first).
-const VIDEO_LIST: CompanyVideoInput[] = [
-  { id:6, title:"Sitapaila Elite Colony — 2 Minutes from Ring Road", duration:"1:19",
-    youtubeUrl:"https://youtu.be/gHsBz7OJDHk" },
-  { id:7, title:"Commercial Space for Rent — Kamaladi, Kathmandu", duration:"1:01",
-    youtubeUrl:"https://youtu.be/7wxOvLCa1BA" },
-  { id:8, title:"Buying Land Across Kathmandu? Talk to Nepal Bhoomi", duration:"0:52",
-    youtubeUrl:"https://youtu.be/qP_ZmzMgBlE" },
-  { id:9, title:"Stay Aware, Stay Alert — Property Awareness", duration:"0:34",
-    youtubeUrl:"https://youtu.be/_rU-4grC0k0" },
-];
-
-const COMPANY_VIDEOS: CompanyVideo[] = VIDEO_LIST.map(({ youtubeUrl, ...v })=>{
-  const youtubeId=youtubeIdFrom(youtubeUrl ?? v.youtubeId);
-  return { ...v, youtubeId, poster: v.poster ?? (youtubeId ? youtubeThumb(youtubeId) : "") };
-});
+// Company videos (types, the list and companyVideos()) live in data/content.ts.
 
 const fmtTime = (s:number) => {
   if(!isFinite(s)||s<0) return "0:00";
@@ -1280,13 +866,15 @@ function VideoSection() {
   const [index,setIndex]=useState(0);
   const [open,setOpen]=useState<CompanyVideo|null>(null);
   const [paused,setPaused]=useState(false);
+  // Read at render, so videos the admin adds or reorders appear the next time the page opens.
+  const COMPANY_VIDEOS=companyVideos();
   const count=COMPANY_VIDEOS.length;
 
   const go=(d:number)=>setIndex(i=>(i+d+count)%count);
 
   // Gentle auto-rotation; stops while hovered or while a film is open.
   useEffect(()=>{
-    if(paused||open) return;
+    if(paused||open||count<2) return;
     const t=setInterval(()=>go(1),5200);
     return ()=>clearInterval(t);
   },[paused,open,count]);
@@ -1298,6 +886,9 @@ function VideoSection() {
     if(o<-count/2) o+=count;
     return o;
   };
+
+  // The admin can remove every video; the section then simply isn't shown.
+  if(count===0) return null;
 
   return (
     <section id="videos" className="py-28 md:py-36 border-t overflow-hidden" style={{background:"#0e0d0b",borderColor:BORDER_D}}>
@@ -1387,6 +978,8 @@ function VideoSection() {
 // ─── Testimonials ─────────────────────────────────────────────────────────────
 function TestimonialsSection() {
   const [idx,setIdx]=useState(0);
+  // The admin can remove every testimonial; the section then simply isn't shown.
+  if(TESTIMONIALS.length===0) return null;
   return (
     <section className="py-28 md:py-36 border-t" style={{background:WHITE,borderColor:BORDER_L}}>
       <div className="px-6 md:px-12 lg:px-20">
@@ -1403,7 +996,7 @@ function TestimonialsSection() {
         <AnimatePresence mode="wait">
           <motion.div key={idx} className="grid grid-cols-1 lg:grid-cols-3 gap-8" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}} transition={{duration:0.4}}>
             {TESTIMONIALS.map((t,i)=>(
-              <div key={t.name} className={`p-9 border transition-all duration-300 ${i===idx?"":"opacity-60"}`} style={{background:i===idx?CREAM:WHITE,borderColor:BORDER_L}}>
+              <div key={t.id} className={`p-9 border transition-all duration-300 ${i===idx?"":"opacity-60"}`} style={{background:i===idx?CREAM:WHITE,borderColor:BORDER_L}}>
                 <div className="flex gap-0.5 mb-5">{Array.from({length:t.rating}).map((_,j)=><Star key={j} size={15} fill={GOLD} style={{color:GOLD}}/>)}</div>
                 <p className="text-[15px] leading-[1.75] mb-6" style={{color:MUTED_L,...sans}}>"{t.text}"</p>
                 <div className="flex items-center gap-3 pt-5 border-t" style={{borderColor:BORDER_L}}>
@@ -1485,15 +1078,16 @@ function ServicesSectionHome({ go }: { go:Go }) {
 
 // ─── Statistics Section ────────────────────────────────────────────────────────
 function StatisticsSection() {
-  const stats=[{n:"180+",l:"Properties Sold"},{n:"12",l:"Years in Nepal"},{n:"NPR 2B+",l:"Total Value"},{n:"9",l:"Districts Covered"}];
+  // Edited in the admin (Home Page section).
+  const stats=STATS;
   return (
     <section className="py-28 md:py-36 border-t border-b" style={{background:"#080706",borderColor:BORDER_D}}>
       <div className="px-6 md:px-12 lg:px-20">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 border-t" style={{borderColor:BORDER_D}}>
           {stats.map(s=>(
-            <div key={s.n} className="border-r last:border-0 py-14 pr-10" style={{borderColor:BORDER_D}}>
-              <p className="leading-none mb-2" style={{color:FG_DARK,...serif,fontSize:"clamp(2rem,4.5vw,3.8rem)"}}>{s.n}</p>
-              <p className="text-[11px] tracking-[0.22em] uppercase" style={{color:MUTED_D,...sans}}>{s.l}</p>
+            <div key={s.id} className="border-r last:border-0 py-14 pr-10" style={{borderColor:BORDER_D}}>
+              <p className="leading-none mb-2" style={{color:FG_DARK,...serif,fontSize:"clamp(2rem,4.5vw,3.8rem)"}}>{s.value}</p>
+              <p className="text-[11px] tracking-[0.22em] uppercase" style={{color:MUTED_D,...sans}}>{s.label}</p>
             </div>
           ))}
         </div>
@@ -1505,7 +1099,8 @@ function StatisticsSection() {
 // ─── "Let Us Call You" Callback Form ─────────────────────────────────────────
 function CallbackSection() {
   return (
-    <section className="py-28 md:py-36 border-t" style={{background:WHITE,borderColor:BORDER_L}}>
+    // id="enquiry" is where the floating Quick Enquiry button brings visitors.
+    <section id="enquiry" className="py-28 md:py-36 border-t scroll-mt-20" style={{background:WHITE,borderColor:BORDER_L}}>
       <div className="px-6 md:px-12 lg:px-20 max-w-3xl mx-auto text-center">
         <div className="flex items-center justify-center gap-3 mb-4"><div style={{width:"2rem",height:"0.5px",background:GOLD}}/><Tag c={GOLD}>Quick Enquiry</Tag><div style={{width:"2rem",height:"0.5px",background:GOLD}}/></div>
         <h2 className="leading-tight mb-3" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.1rem,4vw,3.4rem)"}}>Let Us Call You</h2>
@@ -1704,7 +1299,6 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                       {p.builtArea!=="—"&&<span className="flex items-center gap-1.5 text-[12px]" style={{color:MUTED_L,...sans}}><Square size={14}/>{p.builtArea}</span>}
                       {p.landArea!=="—"&&<span className="flex items-center gap-1.5 text-[12px]" style={{color:MUTED_L,...sans}}><Landmark size={14}/>{p.landArea}</span>}
                     </div>
-                    <div className="mb-3"><AmenityStrip features={p.features} max={6} labels/></div>
                     <p className="text-[14px] leading-relaxed line-clamp-2" style={{color:MUTED_L,...sans}}>{p.description}</p>
                   </div>
                   <div className="flex items-center justify-between pt-3 mt-3 border-t" style={{borderColor:BORDER_L}}>
@@ -1757,7 +1351,6 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
                 {p.beds>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Bed size={11}/>{p.beds}</span>}
                 {p.baths>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Bath size={11}/>{p.baths}</span>}
               </div>
-              <div className="mt-3"><AmenityStrip features={p.features} max={6}/></div>
             </div>
           </div>
         ))}
@@ -1821,7 +1414,7 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPERTY DETAIL PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId:(id:number)=>void }) {
+function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
   const p=ALL_PROPS.find(x=>x.id===propId)||ALL_PROPS[0];
   const [galIdx,setGalIdx]=useState(0);
   const [lightbox,setLightbox]=useState(false);
@@ -1876,11 +1469,12 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       {/* Breadcrumb */}
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go(p.listing==="For Sale"?"buy":"rent")} className="transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</button>
+        <button onClick={()=>go(p.listing==="For Sale"?"buy":"rent")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</button>
         <span style={{color:MUTED_L}}>/</span>
-        <span style={{color:FG_LIGHT,...sans}}>{p.title}</span>
+        <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{p.title}</span>
+        <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
       </div>
       {/* Hero gallery */}
       <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}}>
@@ -1969,7 +1563,15 @@ function PropertyDetailPage({ propId, go, setId }: { propId:number; go:Go; setId
               })}
             </div>
           </div>
-          {p.beds>0&&<>
+          {/* Floor plans uploaded in the admin replace the illustrative plan below. */}
+          {p.floorPlans&&p.floorPlans.length>0&&<>
+            <div className="h-px" style={{background:BORDER_L}}/>
+            <div>
+              <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Floor Plan</p>
+              <FloorPlanViewer plans={p.floorPlans}/>
+            </div>
+          </>}
+          {!(p.floorPlans&&p.floorPlans.length>0)&&p.beds>0&&<>
             <div className="h-px" style={{background:BORDER_L}}/>
             {/* Interactive Floor Plan */}
             <div>
@@ -2118,7 +1720,6 @@ function EMICalculator() {
                   const pPct=loan/denom*100;
                   const iPct=interest/denom*100;
                   const r=40; const cx=50; const cy=50;
-                  const toXY=(pct:number,prev:number)=>{ const a=(prev+pct/2)*3.6-90; return {x:cx+r*Math.cos(a*Math.PI/180),y:cy+r*Math.sin(a*Math.PI/180)}; };
                   const arc=(start:number,pct:number,col:string)=>{
                     const s=start*3.6-90; const e=(start+pct)*3.6-90; const large=pct>50?1:0;
                     const sx=cx+r*Math.cos(s*Math.PI/180),sy=cy+r*Math.sin(s*Math.PI/180);
@@ -2146,6 +1747,8 @@ function EMICalculator() {
 // ABOUT PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 function AboutPage({ go }: { go:Go }) {
+  // Which team member's profile is open (index into the cards shown), or null.
+  const [profile,setProfile]=useState<number|null>(null);
   return (
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       <div className="relative overflow-hidden" style={{height:"55vh",minHeight:300}}>
@@ -2180,21 +1783,22 @@ function AboutPage({ go }: { go:Go }) {
           ))}
         </div>
       </div>
-      {/* Team */}
+      {/* Team: the first ABOUT_TEAM_LIMIT in the admin's order; everyone is on the Team page.
+          Clicking a card opens that person's profile. */}
       <div className="px-6 md:px-12 lg:px-20 py-20 border-b" style={{background:WHITE,borderColor:BORDER_L}}>
-        <h2 className="text-3xl mb-12" style={{color:FG_LIGHT,...serif}}>Our Team</h2>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12">
+          <h2 className="text-3xl" style={{color:FG_LIGHT,...serif}}>Our Team</h2>
+          {TEAM.length>ABOUT_TEAM_LIMIT&&(
+            <button onClick={()=>go("team")} className="self-start sm:self-auto flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>
+              Meet the Full Team ({TEAM.length})<ArrowRight size={14}/>
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-          {[{name:"Arjun Thapa",role:"Founder & Principal Advisor",img:img("photo-1560250097-0b93528c311a",500,600)},
-            {name:"Priya Shrestha",role:"Senior Property Consultant",img:img("photo-1580489944761-15a19d674349",500,600)},
-            {name:"Rajan Maharjan",role:"Investment Specialist",img:img("photo-1507003211169-0a1dd7228f2d",500,600)}].map(m=>(
-            <div key={m.name}>
-              <div className="overflow-hidden mb-4" style={{aspectRatio:"4/5"}}><img src={m.img} alt={m.name} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"/></div>
-              <p className="text-base" style={{color:FG_LIGHT,...serif}}>{m.name}</p>
-              <p className="text-[12px] tracking-[0.15em] mt-0.5" style={{color:MUTED_L,...sans}}>{m.role}</p>
-            </div>
-          ))}
+          {TEAM.slice(0,ABOUT_TEAM_LIMIT).map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(i)}/>)}
         </div>
       </div>
+      <TeamProfile members={TEAM.slice(0,ABOUT_TEAM_LIMIT)} index={profile} onIndex={setProfile} onClose={()=>setProfile(null)}/>
       {/* Why Choose Us */}
       <div className="px-6 md:px-12 lg:px-20 py-20" style={{background:CREAM}}>
         <h2 className="text-3xl mb-12" style={{color:FG_LIGHT,...serif}}>Why Choose Nepal Bhoomi</h2>
@@ -2210,6 +1814,66 @@ function AboutPage({ go }: { go:Go }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEAM PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Everyone, however many there are: department chips and a search instead of a carousel, so
+// a visitor can find the advisor they need (a language, an area, lettings…) rather than
+// waiting for faces to rotate past. Cards open the same profile pop-up as the About page.
+function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) {
+  const [dept,setDept]=useState("All");
+  const [q,setQ]=useState("");
+  const [profile,setProfile]=useState<number|null>(null);
+  const depts=["All",...DEPARTMENTS.filter(d=>TEAM.some(m=>m.department===d))];
+  const s=q.trim().toLowerCase();
+  const shown=TEAM.filter(m=>
+    (dept==="All"||m.department===dept) &&
+    (!s||[m.name,m.role,m.department??"",...(m.languages??[]),...(m.specialities??[])].some(v=>v.toLowerCase().includes(s))));
+  return (
+    <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
+      <div className="px-6 md:px-12 lg:px-20 pt-10 pb-14 md:pb-16 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
+        <div className="mb-10"><BackButton label={backLabel} onClick={onBack}/></div>
+        <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag c={GOLD}>The People Behind Nepal Bhoomi</Tag></div>
+        <h1 className="leading-[0.92]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.6rem,5.4vw,4.6rem)"}}>Our Team</h1>
+        <p className="mt-4 text-[15px] max-w-xl leading-relaxed" style={{color:MUTED_L,...sans}}>{TEAM.length} advisors across the valley. Choose a department or search by name, language or speciality, then open a profile to get in touch directly.</p>
+      </div>
+      <div className="px-6 md:px-12 lg:px-20 py-12">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-12">
+          <div className="flex flex-wrap gap-2 flex-1">
+            {depts.map(d=>{
+              const on=d===dept;
+              const n=d==="All"?TEAM.length:TEAM.filter(m=>m.department===d).length;
+              return (
+                <button key={d} onClick={()=>setDept(d)} aria-pressed={on}
+                  className="px-5 py-2.5 text-[12px] tracking-[0.12em] border transition-all whitespace-nowrap"
+                  style={{borderRadius:"9999px",borderColor:on?"transparent":BORDER_L,background:on?FG_LIGHT:WHITE,color:on?WHITE:FG_LIGHT,...sans}}>
+                  {d} <span style={{opacity:0.55}}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="relative lg:w-80 shrink-0">
+            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:MUTED_L}}/>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name, language or speciality" aria-label="Search the team"
+              className="w-full border pl-11 pr-4 py-3 text-[14px] outline-none transition-colors focus:border-[#8a2030]" style={{borderColor:BORDER_L,background:WHITE,color:FG_LIGHT,...sans}}/>
+          </div>
+        </div>
+        {shown.length===0 ? (
+          <div className="py-20 text-center">
+            <p className="text-2xl mb-2" style={{color:FG_LIGHT,...serif}}>No one matches that</p>
+            <p className="text-[15px]" style={{color:MUTED_L,...sans}}>Try another department or a different word.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-12">
+            {shown.map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(i)}/>)}
+          </div>
+        )}
+      </div>
+      <TeamProfile members={shown} index={profile} onIndex={setProfile} onClose={()=>setProfile(null)}/>
     </div>
   );
 }
@@ -2247,17 +1911,18 @@ function BlogPage({ go }: { go:Go }) {
 }
 
 // ─── Blog Post ─────────────────────────────────────────────────────────────────
-function BlogPostPage({ id, go }: { id:number; go:Go }) {
+function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:()=>void; backLabel:string }) {
   const a=BLOGS.find(b=>b.id===id)||BLOGS[0];
   const more=BLOGS.filter(b=>b.id!==a.id);
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go("blog")} className="transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</button>
+        <button onClick={()=>go("blog")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</button>
         <span style={{color:MUTED_L}}>/</span>
-        <span style={{color:FG_LIGHT,...sans}}>{a.cat}</span>
+        <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{a.cat}</span>
+        <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
       </div>
       <div className="relative overflow-hidden" style={{height:"52vh",minHeight:320}}>
         <img src={a.image} alt={a.title} className="w-full h-full object-cover"/>
@@ -2269,6 +1934,10 @@ function BlogPostPage({ id, go }: { id:number; go:Go }) {
           <div className="flex items-center gap-3 mb-5"><GoldLine/><Tag c={GOLD}>{a.date} &middot; {a.read} read</Tag></div>
           <h1 className="leading-[0.95]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4.5vw,3.4rem)"}}>{a.title}</h1>
           <p className="mt-8 pt-8 border-t leading-[1.75]" style={{borderColor:BORDER_L,color:MUTED_L,...sans,fontSize:"1.05rem"}}>{a.excerpt}</p>
+          {/* The full article, written in the admin. Paragraphs are separated by a blank line. */}
+          {a.body&&a.body.split(/\n\s*\n/).map(t=>t.trim()).filter(Boolean).map((para,i)=>(
+            <p key={i} className="mt-6 leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}>{para}</p>
+          ))}
           <div className="flex items-center gap-3 mt-10 pt-6 border-t" style={{borderColor:BORDER_L}}>
             <div className="w-9 h-9 flex items-center justify-center rounded-full" style={{background:"rgba(176,136,72,0.14)",color:GOLD}}><FileText size={15}/></div>
             <div>
@@ -2384,8 +2053,7 @@ function ContactPage() {
 // New accounts (and logins before verifying) get a 6-digit code by email. Entering it verifies
 // the email and signs the user in; the parent re-renders its signed-in view once `user` is set.
 const RESEND_COOLDOWN_S=60;
-// Must match UNVERIFIED_ACCOUNT_TTL_DAYS in the backend (lib/auth/email-verification.ts).
-const UNVERIFIED_ACCOUNT_DAYS=7;
+// UNVERIFIED_ACCOUNT_DAYS comes from auth.tsx (it must match the backend).
 
 function VerifyEmailForm({ email, onBack, onMfa }: { email:string; onBack:()=>void; onMfa:(mfaToken:string)=>void }) {
   const { verifyEmail } = useAuth();
@@ -2758,98 +2426,7 @@ function ResetPasswordPage({ go, token }: { go:Go; token:string }) {
   );
 }
 
-// ─── Admin Page ───────────────────────────────────────────────────────────────
-// First version: a read-only list of registered users. More admin tools (listings, enquiries,
-// moderation) will be added here later. The backend enforces access (ADMIN role + 2FA); the
-// role check below only decides what to show.
-type AdminUserRow = { id:string; email:string; name:string|null; phone:string; role:"USER"|"ADMIN"; emailVerifiedAt:string|null; createdAt:string };
-
-function AdminPage({ go }: { go:Go }) {
-  const { user, status } = useAuth();
-  const [users,setUsers]=useState<AdminUserRow[]|null>(null);
-  const [err,setErr]=useState("");
-  const isAdmin=user?.role==="ADMIN";
-
-  useEffect(()=>{
-    if(!isAdmin) return;
-    let cancelled=false;
-    authFetch<{ users:AdminUserRow[] }>("/admin/users")
-      .then(r=>{ if(!cancelled) setUsers(r.users); })
-      .catch(e=>{ if(!cancelled) setErr(e instanceof ApiError ? e.message : "Could not load users."); });
-    return ()=>{ cancelled=true; };
-  },[isAdmin]);
-
-  const weekAgo=Date.now()-7*24*60*60*1000;
-  const joined=(iso:string)=>new Date(iso).toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric" });
-
-  if(status!=="loading" && !isAdmin) return (
-    <div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}>
-      <div className="text-center px-6">
-        <p className="text-2xl mb-3" style={{color:FG_LIGHT,...serif}}>Admins only</p>
-        <p className="text-[15px] mb-6" style={{color:MUTED_L,...sans}}>You need to be signed in as the administrator to view this page.</p>
-        <button onClick={()=>go(user?"home":"login")} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>{user?"Back to Home":"Sign In"}</button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
-      <div className="px-6 md:px-12 lg:px-20 py-14 md:py-16 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
-        <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag c={GOLD}>Administration</Tag></div>
-        <h1 className="leading-[0.92]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.6vw,3.8rem)"}}>Admin Dashboard</h1>
-        <p className="text-[15px] mt-4" style={{color:MUTED_L,...sans}}>Signed in as {user?.name||user?.email}. More tools will be added here soon.</p>
-      </div>
-
-      <div className="px-6 md:px-12 lg:px-20 py-12">
-        {err ? (
-          <p className="text-[15px] border px-5 py-4" style={{color:MAROON,borderColor:BORDER_L,background:WHITE,...sans}}>{err}</p>
-        ) : !users ? (
-          <p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading users...</p>
-        ) : (<>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-            {[
-              {l:"Registered users", v:users.length},
-              {l:"Members", v:users.filter(u=>u.role==="USER").length},
-              {l:"Joined this week", v:users.filter(u=>new Date(u.createdAt).getTime()>=weekAgo).length},
-              {l:"Awaiting verification", v:users.filter(u=>!u.emailVerifiedAt).length},
-            ].map(t=>(
-              <div key={t.l} className="border px-6 py-5" style={{borderColor:BORDER_L,background:WHITE}}>
-                <p className="text-[10px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>{t.l}</p>
-                <p className="text-3xl" style={{color:FG_LIGHT,...serif}}>{t.v}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-3 mb-4"><Users size={16} style={{color:GOLD}}/><h2 className="text-xl" style={{color:FG_LIGHT,...serif}}>Users</h2></div>
-          <div className="border overflow-x-auto" style={{borderColor:BORDER_L,background:WHITE}}>
-            <table className="w-full min-w-[640px] text-left">
-              <thead>
-                <tr className="border-b" style={{borderColor:BORDER_L}}>
-                  {["Name","Email","Email Status","Phone","Role","Joined"].map(h=>(
-                    <th key={h} className="px-5 py-3 text-[10px] tracking-[0.28em] uppercase font-normal" style={{color:MUTED_L,...sans}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u=>(
-                  <tr key={u.id} className="border-b last:border-b-0" style={{borderColor:BORDER_L}}>
-                    <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.name||"—"}</td>
-                    <td className="px-5 py-3.5 text-[14px]" style={{color:FG_LIGHT,...sans}}>{u.email}</td>
-                    {/* Unverified accounts are deleted UNVERIFIED_ACCOUNT_DAYS after sign-up. */}
-                    <td className="px-5 py-3.5 text-[13px] whitespace-nowrap" style={{color:u.emailVerifiedAt?MUTED_L:MAROON,...sans}}>{u.emailVerifiedAt?"Verified":`Pending · deleted ${joined(new Date(new Date(u.createdAt).getTime()+UNVERIFIED_ACCOUNT_DAYS*864e5).toISOString())}`}</td>
-                    <td className="px-5 py-3.5 text-[14px]" style={{color:MUTED_L,...sans}}>{u.phone||"—"}</td>
-                    <td className="px-5 py-3.5"><span className="text-[10px] tracking-[0.2em] uppercase px-2 py-1" style={{color:u.role==="ADMIN"?WHITE:FG_LIGHT,background:u.role==="ADMIN"?MAROON:BG_LIGHT,...sans}}>{u.role==="ADMIN"?"Admin":"Member"}</span></td>
-                    <td className="px-5 py-3.5 text-[14px] whitespace-nowrap" style={{color:MUTED_L,...sans}}>{joined(u.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>)}
-      </div>
-    </div>
-  );
-}
+// The admin area (Dashboard, Users, Reviews) lives in src/app/admin/.
 
 // ─── Free Listing Page ─────────────────────────────────────────────────────────
 function FreeListingPage() {
@@ -3020,6 +2597,39 @@ function HomePage({ go, setId, scrollTo }: { go:Go; setId:(id:number)=>void; scr
   );
 }
 
+// ─── Back button helpers ──────────────────────────────────────────────────────
+/** A page the visitor was on: everything go() changes, plus how far down they had scrolled. */
+type Visit = { page:Page; nav:NavOpts; selId:number; blogId:number; scrollY:number };
+
+/** "Back to …" text for a page, e.g. "Back to Properties for Sale" or a property's title. */
+function visitLabel(v:Visit):string {
+  const name=(():string=>{
+    switch(v.page){
+      case "home": case "videos": return "Home";
+      case "buy":  return v.nav.district ? `Properties in ${v.nav.district}` : "Properties for Sale";
+      case "rent": return v.nav.district ? `Rentals in ${v.nav.district}` : "Properties for Rent";
+      case "hot": return "Hot Properties";
+      case "new-listings": return "New Listings";
+      case "map": return "Map";
+      case "area": return v.nav.district ? `Properties in ${v.nav.district}` : "Properties";
+      case "property": return ALL_PROPS.find(x=>x.id===v.selId)?.title ?? "Property";
+      case "blog": return "Journal";
+      case "blog-post": return BLOGS.find(b=>b.id===v.blogId)?.title ?? "Article";
+      case "about": return "About";
+      case "team": return "Our Team";
+      case "services": return "Services";
+      case "emi": return "EMI Calculator";
+      case "contact": return "Contact";
+      case "login": return "Sign In";
+      case "register": return "Register";
+      case "free-listing": return "Free Listing";
+      case "reset-password": return "Reset Password";
+      case "admin": case "admin-users": case "admin-reviews": return "Admin";
+    }
+  })();
+  return `Back to ${name}`;
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [loading, setLoading]=useState(true);
@@ -3044,12 +2654,88 @@ export default function App() {
   const [blogId, setBlogId]=useState(1);
   const [nav, setNav]=useState<NavOpts>({});
   const handleDone=useCallback(()=>setLoading(false),[]);
+
+  // ── Back button ──
+  // Pages visited so far (newest last). Browser history isn't touched.
+  // `here` is the page on screen; go() reads it before the next render, so it's the page being left.
+  const here=useRef<Visit>({ page, nav, selId, blogId, scrollY:0 });
+  here.current={ page, nav, selId, blogId, scrollY:0 };
+  const trail=useRef<Visit[]>([]);
+  const restoreY=useRef<number|null>(null);
+  const [trailLen,setTrailLen]=useState(0);
+  // The property a link has just chosen (setId runs right before go), so opening another
+  // property from "You May Also Like" counts as a new page rather than the same one.
+  const nextSelId=useRef<number|null>(null);
+  const setSelIdFromLink=useCallback((id:number)=>{ nextSelId.current=id; setSelId(id); },[]);
+
   const go=useCallback<Go>((p,o={})=>{
+    const from=here.current;
+    const toSel=nextSelId.current ?? from.selId;
+    nextSelId.current=null;
+    const same=from.page===p && JSON.stringify(from.nav)===JSON.stringify(o)
+      && (o.blog===undefined || o.blog===from.blogId) && (p!=="property" || toSel===from.selId);
+    if(!same){
+      trail.current.push({ ...from, scrollY:window.scrollY });
+      if(trail.current.length>50) trail.current.shift();
+      setTrailLen(trail.current.length);
+    }
+    restoreY.current=null;
     setPage(p); setNav(o);
     if(o.blog!==undefined) setBlogId(o.blog);
     window.scrollTo(0,0);
   },[]);
+
+  /** Where the Back button leads: the previous page, or the natural parent if there is none. */
+  const backTarget=():Visit=>{
+    const prev=trail.current[trail.current.length-1];
+    if(prev) return prev;
+    const h=here.current;
+    const listing=ALL_PROPS.find(x=>x.id===h.selId)?.listing;
+    const parent:Page=h.page==="property" ? (listing==="For Rent" ? "rent" : "buy") : h.page==="blog-post" ? "blog" : h.page==="team" ? "about" : "home";
+    return { page:parent, nav:{}, selId:h.selId, blogId:h.blogId, scrollY:0 };
+  };
+  const goBack=useCallback(()=>{
+    const prev=trail.current.pop();
+    setTrailLen(trail.current.length);
+    if(!prev){ const t=backTarget(); go(t.page,t.nav); trail.current=[]; setTrailLen(0); return; }
+    restoreY.current=prev.scrollY;
+    setPage(prev.page); setNav(prev.nav); setSelId(prev.selId); setBlogId(prev.blogId);
+    window.scrollTo(0,0);
+  },[go]);
+  // Recomputed whenever the page or the trail changes, so the button always names its target.
+  const backLabel=useMemo(()=>visitLabel(backTarget()),[trailLen,page,selId,blogId,nav]);
+
+  // After Back, scroll to where the visitor was. Retried briefly because the page is still
+  // animating in and images are loading; stops as soon as they scroll themselves.
+  useEffect(()=>{
+    const y=restoreY.current;
+    if(y===null||y<=0) return;
+    restoreY.current=null;
+    const until=performance.now()+1500;
+    let raf=0;
+    const stop=()=>{ cancelAnimationFrame(raf); window.removeEventListener("wheel",stop); window.removeEventListener("touchstart",stop); };
+    const tick=()=>{
+      const target=Math.min(y, Math.max(0, document.documentElement.scrollHeight-window.innerHeight));
+      if(Math.abs(window.scrollY-target)>2) window.scrollTo(0,target);
+      if(performance.now()<until) raf=requestAnimationFrame(tick); else stop();
+    };
+    window.addEventListener("wheel",stop,{ passive:true });
+    window.addEventListener("touchstart",stop,{ passive:true });
+    raf=requestAnimationFrame(tick);
+    return stop;
+  },[page,selId,blogId,nav]);
+
   const navKey=[nav.type,nav.district,nav.preset,nav.view,nav.scrollTo].join("|");
+  // Floating Quick Enquiry: on the home page, glide down to the enquiry form; anywhere else,
+  // open the home page at that form (HomePage scrolls to `scrollTo` once it has rendered).
+  const goToEnquiry=useCallback(()=>{
+    const onHome=page==="home"||page==="videos";
+    const el=onHome ? document.getElementById("enquiry") : null;
+    if(el) el.scrollIntoView({behavior:"smooth",block:"start"});
+    else go("home",{scrollTo:"enquiry"});
+  },[page,go]);
+  // What the admin pages need: page changes, and opening one listing on the public site.
+  const adminNav=useMemo<AdminNav>(()=>({ go:p=>go(p), openProperty:id=>{ setSelIdFromLink(id); go("property"); } }),[go,setSelIdFromLink]);
   return (
     <AuthProvider>
     <div className="min-h-screen bg-background">
@@ -3059,31 +2745,41 @@ export default function App() {
       <motion.div animate={{opacity:loading?0:1}} transition={{duration:0.6}} style={{pointerEvents:loading?"none":"auto"}}>
         <Navbar page={page} go={go}/>
         <AnimatePresence mode="wait">
-          <motion.div key={`${page}|${selId}|${blogId}|${navKey}`} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.38,ease:[0.16,1,0.3,1]}}>
-            {page==="home"&&<HomePage go={go} setId={setSelId} scrollTo={nav.scrollTo}/>}
-            {page==="buy"&&<BuyRentPage listing="For Sale" go={go} setId={setSelId} nav={nav}/>}
-            {page==="rent"&&<BuyRentPage listing="For Rent" go={go} setId={setSelId} nav={nav}/>}
-            {page==="hot"&&<BuyRentPage listing="For Sale" go={go} setId={setSelId} nav={{...nav,preset:"hot"}}/>}
-            {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelId} nav={{...nav,preset:"new"}}/>}
-            {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelId} nav={{...nav,view:"map"}}/>}
-            {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelId} nav={nav}/>}
-            {page==="property"&&<PropertyDetailPage propId={selId} go={go} setId={setSelId}/>}
+          {/* The three admin pages share one key, so switching between their tabs is instant
+              instead of fading out and in like a change of page. */}
+          <motion.div key={page.startsWith("admin") ? "admin-area" : `${page}|${selId}|${blogId}|${navKey}`} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.38,ease:[0.16,1,0.3,1]}}>
+            {page==="home"&&<HomePage go={go} setId={setSelIdFromLink} scrollTo={nav.scrollTo}/>}
+            {page==="buy"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="rent"&&<BuyRentPage listing="For Rent" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="hot"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"hot"}}/>}
+            {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
+            {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
+            {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="property"&&<PropertyDetailPage propId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>}
             {page==="about"&&<AboutPage go={go}/>}
+            {page==="team"&&<TeamPage onBack={goBack} backLabel={backLabel}/>}
             {page==="blog"&&<BlogPage go={go}/>}
-            {page==="blog-post"&&<BlogPostPage id={blogId} go={go}/>}
+            {page==="blog-post"&&<BlogPostPage id={blogId} go={go} onBack={goBack} backLabel={backLabel}/>}
             {page==="services"&&<ServicesPage go={go}/>}
             {page==="emi"&&<EMICalculator/>}
             {page==="contact"&&<ContactPage/>}
             {page==="login"&&<LoginPage go={go} googleResult={googleResult}/>}
             {page==="register"&&<RegisterPage go={go}/>}
             {page==="free-listing"&&<FreeListingPage/>}
-            {page==="admin"&&<AdminPage go={go}/>}
+            {page.startsWith("admin")&&(
+              <Suspense fallback={<div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}><p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading the admin…</p></div>}>
+                {page==="admin"&&<AdminDashboard nav={adminNav}/>}
+                {page==="admin-users"&&<AdminUsers nav={adminNav}/>}
+                {page==="admin-reviews"&&<AdminReviews nav={adminNav}/>}
+              </Suspense>
+            )}
             {page==="reset-password"&&<ResetPasswordPage go={go} token={resetToken??""}/>}
-            {page==="videos"&&<HomePage go={go} setId={setSelId} scrollTo="videos"/>}
+            {page==="videos"&&<HomePage go={go} setId={setSelIdFromLink} scrollTo="videos"/>}
           </motion.div>
         </AnimatePresence>
         <Footer go={go}/>
-        <QuickEnquiryFloat overHero={page==="home"||page==="videos"}/>
+        {/* Visitor contact buttons; not shown in the admin, where they would cover the tools. */}
+        {!page.startsWith("admin")&&<QuickEnquiryFloat overHero={page==="home"||page==="videos"} onEnquire={goToEnquiry}/>}
       </motion.div>
     </div>
     </AuthProvider>
