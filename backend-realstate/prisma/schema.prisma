@@ -43,6 +43,8 @@ model User {
   auditLogs           AuditLog[]
   mfaRecoveryCodes    MfaRecoveryCode[]
   emailVerification   EmailVerificationCode?
+  reactions           PropertyReaction[]
+  comments            PropertyComment[]
 }
 
 // One row per refresh token. A login creates one; every refresh revokes it and creates the next.
@@ -160,4 +162,287 @@ model EmailVerificationCode {
   sentAt      DateTime  @default(now())
 
   @@index([expiresAt])
+}
+
+// ─── Properties ───────────────────────────────────────────────────────────────
+// Shapes follow the frontend's data/properties.ts and FRONTEND_CLAUDE.md §6/§7.8.
+// The API maps these enums to the frontend's display strings ("For Sale", "House/Bungalow", …).
+
+enum ListingType {
+  FOR_SALE
+  FOR_RENT
+}
+
+enum PropertyType {
+  HOUSE_BUNGALOW
+  LAND
+  APARTMENT
+  COMMERCIAL
+  FLAT
+}
+
+enum PropertyBadge {
+  HOT
+  FEATURED
+  NEW
+  PRIME
+  RARE
+  VERIFIED
+  EXCLUSIVE
+}
+
+enum Furnishing {
+  UNFURNISHED
+  SEMI_FURNISHED
+  FULLY_FURNISHED
+}
+
+enum Facing {
+  NORTH
+  NORTH_EAST
+  EAST
+  SOUTH_EAST
+  SOUTH
+  SOUTH_WEST
+  WEST
+  NORTH_WEST
+}
+
+enum RoadSurface {
+  BLACK_TOPPED
+  CONCRETE
+  GRAVELED
+  EARTHEN
+}
+
+enum LandAreaUnit {
+  ROPANI
+  AANA
+  BIGHA
+  KATTHA
+  DHUR
+  SQ_FT
+}
+
+enum BuiltAreaUnit {
+  SQ_FT
+  SQ_M
+}
+
+enum AmenityGroup {
+  MAIN_FEATURES
+  ROOMS
+  FURNISHED
+}
+
+enum CommentStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+model Property {
+  id             Int            @id @default(autoincrement())
+  // Human reference shown on the site, "NB-013" (the frontend calls it propId). Assigned by the server.
+  ref            String         @unique
+  title          String
+  tagline        String         @default("")
+  description    String         @default("")
+  listing        ListingType
+  type           PropertyType
+  badge          PropertyBadge?
+  // Independent flags: a property can be featured, verified, both or neither.
+  featured       Boolean        @default(false)
+  verified       Boolean        @default(false)
+  // Whole rupees (per month when FOR_RENT). NULL = no price given = shown as "Negotiable".
+  price          BigInt?
+  furnishing     Furnishing?
+  // NULL = not applicable (e.g. land), shown as "—" on the site.
+  bedrooms       Int?
+  bathrooms      Int?
+  floors         Int?
+  buildYear      Int?
+  builtAreaValue Decimal?       @db.Decimal(12, 2)
+  builtAreaUnit  BuiltAreaUnit?
+  landAreaValue  Decimal?       @db.Decimal(12, 2)
+  landAreaUnit   LandAreaUnit?
+  facing         Facing?
+  roadSurface    RoadSurface?
+  roadWidthFt    Int?
+  // Image URLs in display order; [0] is the cover. Zero or more. The files live in Cloudflare R2;
+  // only their URLs are stored here.
+  gallery        String[]
+  // At most one video per property, optional. The file lives in Cloudflare R2; only its URL is stored.
+  videoUrl       String?
+  // Free-text selling points, separate from the canonical amenities.
+  highlights     String[]
+  // Shown count; the admin can edit it. Kept in step with PropertyReaction rows by the API.
+  reactionCount  Int            @default(0)
+  // Soft delete, so the admin's "Undo" can restore the same id and ref.
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  location   PropertyLocation?
+  amenities  PropertyAmenity[]
+  floorPlans FloorPlan[]
+  reactions  PropertyReaction[]
+  comments   PropertyComment[]
+
+  @@index([listing, type])
+  @@index([featured])
+  @@index([price])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+// One location per property.
+model PropertyLocation {
+  id            Int      @id @default(autoincrement())
+  propertyId    Int      @unique
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  // One of the 77 districts, exact spelling from the frontend's data/districts.ts (filter key).
+  district      String
+  // Free-text area line shown under the title, e.g. "Jawlakhel, Lalitpur".
+  address       String   @default("")
+  // The share link the admin pastes from Google Maps. Stored only; the frontend does not use it yet.
+  googleMapsUrl String?
+  latitude      Decimal? @db.Decimal(9, 6)
+  longitude     Decimal? @db.Decimal(9, 6)
+  // Pin position (0-100 %) on the frontend's decorative map grid. Not real coordinates.
+  mapX          Int      @default(50)
+  mapY          Int      @default(50)
+
+  @@index([district])
+}
+
+// The canonical amenity list (AMENITIES in the frontend's icons/amenities.tsx). Seeded by prisma/seed.ts.
+// Only the name is stored; the frontend picks the icon.
+model Amenity {
+  id         Int               @id @default(autoincrement())
+  name       String            @unique
+  group      AmenityGroup
+  position   Int               @default(0)
+  properties PropertyAmenity[]
+}
+
+model PropertyAmenity {
+  propertyId Int
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenityId  Int
+  amenity    Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@index([amenityId])
+}
+
+// One floor of a property ("Ground Floor", "First Floor", …) with an optional plan drawing.
+model FloorPlan {
+  id         Int      @id @default(autoincrement())
+  propertyId Int
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  label      String
+  imageUrl   String?
+  position   Int      @default(0)
+  rooms      Room[]
+
+  @@index([propertyId])
+}
+
+// A room on a floor, e.g. { name: "Kitchen", dimensions: "5.2 × 4.8 m" }.
+model Room {
+  id          Int       @id @default(autoincrement())
+  floorPlanId Int
+  floorPlan   FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+  // One of the frontend's ROOM_NAMES ("Living Room", "Master Bedroom", …).
+  name        String
+  // Free text as the admin types it, "" when unknown.
+  dimensions  String    @default("")
+  position    Int       @default(0)
+
+  @@index([floorPlanId])
+}
+
+// A signed-in user's heart on a property. One per user per property.
+model PropertyReaction {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  propertyId Int
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, propertyId])
+  @@index([propertyId])
+}
+
+// A signed-in user's comment on a property with a 1-5 star rating ("Resident Reviews" on the site).
+// New comments wait for the admin (PENDING). verified is set by the server, never by the client.
+model PropertyComment {
+  id         Int           @id @default(autoincrement())
+  propertyId Int
+  property   Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Name shown on the site, copied at posting time so it survives the account being deleted.
+  authorName String
+  rating     Int
+  body       String
+  verified   Boolean       @default(false)
+  status     CommentStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([propertyId, status, createdAt])
+  @@index([userId])
+}
+
+// ─── Journal and team ─────────────────────────────────────────────────────────
+
+model TeamMember {
+  id              Int       @id @default(autoincrement())
+  name            String
+  role            String
+  photoUrl        String
+  department      String?
+  bio             String?
+  experienceYears Int?
+  specialities    String[]
+  languages       String[]
+  phone           String?
+  // Digits with country code, e.g. "9779800000000".
+  whatsapp        String?
+  email           String?
+  // Display order: the About page shows the first 6.
+  position        Int       @default(0)
+  articles        Article[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([position])
+}
+
+model Article {
+  id             Int         @id @default(autoincrement())
+  slug           String      @unique
+  title          String
+  category       String
+  // Card summary and the article's standfirst.
+  excerpt        String
+  // Full text, paragraphs separated by a blank line.
+  body           String      @default("")
+  coverUrl       String
+  // Usually a team member; authorName is kept for display (and for guest authors).
+  authorId       Int?
+  author         TeamMember? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorName     String
+  readingMinutes Int         @default(1)
+  // Display order: the first is the featured story on the home page.
+  position       Int         @default(0)
+  // NULL = draft, not shown publicly.
+  publishedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([position])
+  @@index([publishedAt])
 }

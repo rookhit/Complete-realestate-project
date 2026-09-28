@@ -31,6 +31,22 @@ async function main(): Promise<void> {
   });
 
   console.log(`Admin user ready: ${admin.email} (${admin.id})`);
+
+  // Amenities: add missing names and fix group/order; never deletes (properties may link to old ones).
+  const { AMENITY_SEED } = await import("./amenities");
+  let position = 0;
+  for (const [group, names] of Object.entries(AMENITY_SEED) as [keyof typeof AMENITY_SEED, string[]][]) {
+    for (const name of names) {
+      position++;
+      await prisma.amenity.upsert({
+        where: { name },
+        update: { group, position },
+        create: { name, group, position },
+      });
+    }
+  }
+  console.log(`Amenities ready: ${position}`);
+
   await prisma.$disconnect();
 }
 

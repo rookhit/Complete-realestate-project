@@ -3,7 +3,7 @@
 Things that must be changed or set up before (and when) the site goes live. Add to this list
 whenever something comes up during development; tick items off at deployment.
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Secrets and accounts
 
@@ -30,6 +30,13 @@ Last updated: 2026-09-27
       (Vercel Cron, crontab on a VPS, cron-job.org or GitHub Actions). The endpoint answers 404 until
       the secret is set. What it deletes: `backend-realstate/lib/cron/cleanup-tokens.ts`.
 
+## Media storage (Cloudflare R2)
+
+- [ ] Create the R2 bucket for property images and videos (the database stores only their URLs:
+      `Property.gallery`, `Property.videoUrl`) and give it a public/custom domain for serving.
+- [ ] Add that media host to the frontend's Content-Security-Policy in `frontend-realstate/vite.config.ts`
+      (`img-src` and `media-src`), or images and videos will be blocked in production.
+
 ## URLs, domain and HTTPS
 
 - [ ] Serve everything over **HTTPS**.
@@ -46,6 +53,8 @@ Last updated: 2026-09-27
 ## Database (Supabase)
 
 - [ ] Apply migrations on the production database: `npx prisma migrate deploy` (in `backend-realstate`).
+- [ ] Then run `npm run db:seed` once: it creates the admin **and** the 69 amenities the property
+      editor links to (the `Amenity` table is empty until then). Safe to re-run.
 - [ ] For serverless hosting, consider the Supabase transaction pooler (port 6543) for `DATABASE_URL`,
       and host the backend near the database region (ap-northeast-2).
 - [ ] Supabase free tier pauses when idle and has limited backups: upgrade or set up backups before launch.

@@ -29,12 +29,13 @@ Two authorization roles, USER and ADMIN, with exactly one ADMIN.
 Reusable server-side guards: getAuthUser(), requireAuth(), requireAdmin().
 A seed script that creates the single admin.
 
+Database schema (tables only, no endpoints yet) for properties, locations, amenities, floor plans/rooms, reactions, comments, journal articles and team members (added by explicit request on 2026-09-28; see "Content schema" below).
+
 Out of scope. Do NOT build these unless I ask:
 
 Middleware / proxy route protection (I will add it later).
-Reactions, comments, inquiries (the inquiry channel, WhatsApp or email, is not decided yet).
+API endpoints for the content tables above, and inquiries (the inquiry channel, WhatsApp or email, is not decided yet).
 OAuth / social login other than Google, admin dashboard. (TOTP 2FA was added by explicit request on 2026-09-24; email verification + real email delivery on 2026-09-26.)
-Any business tables (properties, comments, inquiries).
 
 Reactions, comments and inquiries will later call requireAuth() on the server. Keep the guards generic and easy to reuse.
 
@@ -239,6 +240,15 @@ Not yet updated: the frontend repo's own CLAUDE.md (a different repo, not checke
 - Verified a fresh clone runs on another machine with only the .env added: needs Node 20.19+ / 22.12+ / 24+ (Prisma 7), `npm install`, `npx prisma generate`, `npm run dev`. On a brand-new clone `npx tsc --noEmit` reports LayoutProps missing until `next dev`/`next build` (or `next typegen`) has run once.
 
 2026-09-26 — email verification + emailed password reset, by explicit request ("Gmail OTP send, verification before login, keep the link for forgot password"). Migration 20260926090353_email_verification (User.emailVerifiedAt, EmailVerificationCode + RLS, existing users backfilled as verified). Gmail SMTP via nodemailer, emails sent with after(). Frontend: shared VerifyEmailForm (register + login), forgot-password form now calls the API, new /reset-password page (App reads ?token= then replaceState to "/"; production hosting must serve index.html for /reset-password). Verified against Supabase with throwaway users (register → no session, 409 on repeat, unverified login → code, wrong/unknown/reused code 400, 5-try limit, resend cooldown, correct code → session, forgot → link → reset verifies an unverified account) and the reset page in Chrome; test data deleted. Real Gmail delivery not yet tested (GMAIL_* not set at the time).
+
+2026-09-28 — content schema, by explicit request (migration 20260928161901_property_content_schema; tables only, no endpoints). Modelled on the frontend's data/properties.ts, data/content.ts, data/reviews.ts, icons/amenities.tsx and FRONTEND_CLAUDE.md §6/§7.8, with the user's rules:
+- Property: title required (NOT NULL + CHECK not blank); listing enum FOR_SALE | FOR_RENT (exactly one); type enum of the 5 PROPERTY_TYPES; featured and verified are independent booleans; price BigInt? in whole rupees (per month for rent), NULL = no price given = "Negotiable" (no separate flag; CHECK price > 0); furnishing enum UNFURNISHED | SEMI_FURNISHED | FULLY_FURNISHED (nullable); bedrooms/bathrooms/floors/buildYear nullable instead of the frontend's 0 / "—"; areas as value + unit enum; facing/roadSurface enums; gallery String[] (0+ image URLs) + videoUrl String? (at most one video, added in migration 20260928*_property_video_url; files for both live in Cloudflare R2, the DB stores URLs only; no PropertyVideo table by decision) + highlights String[]; admin-editable reactionCount; deletedAt soft delete (the admin's Undo keeps id and ref); ref "NB-013" unique, assigned by the server.
+- PropertyLocation (1:1): district required (CHECK not blank; must be one of the frontend's 77 spellings — validate in the API), address, googleMapsUrl (stored only, the frontend doesn't use it yet), optional latitude/longitude, mapX/mapY (0-100 decorative grid).
+- Amenity (name unique + group MAIN_FEATURES | ROOMS | FURNISHED) with PropertyAmenity join table. The 69 names live in prisma/amenities.ts (copy of the frontend's AMENITIES) and are upserted by prisma/seed.ts (never deleted).
+- FloorPlan (label, imageUrl, position) → Room (name, dimensions, position).
+- PropertyReaction: one per (user, property), signed-in users only. PropertyComment: star rating 1-5 (CHECK), body, authorName snapshot, userId SetNull, server-set verified, status PENDING | PUBLISHED | REJECTED (moderation).
+- TeamMember (frontend TeamMember shape + position) and Article (journal; slug unique, optional authorId → TeamMember SetNull + authorName, publishedAt NULL = draft, position).
+- RLS enabled on all 10 new tables. Verified against Supabase inside rolled-back transactions (valid property with location/amenities/rooms, NULL price, both flags, duplicate reaction, blank title, bad enums, price 0, missing/blank district, rating 6, duplicate slug). Next: the API endpoints in FRONTEND_CLAUDE.md §0.4 (map enums to the frontend's display strings; BigInt price needs converting for JSON).
 
 Open items (none block running the app):
 - Needs a decision: the enquiry/contact/free-listing forms send nothing (need an API or a WhatsApp link); register's 409 still reveals registered emails; real page URLs in the frontend; reconcile this backend with apps/api on feat/monorepo-and-auth-hardening (FRONTEND_CLAUDE.md §7.4/§12).
