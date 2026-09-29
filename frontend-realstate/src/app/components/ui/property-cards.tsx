@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Bath, Bed, CheckCircle2, MapPin, Play, Square } from "lucide-react";
-import type { Prop } from "@/app/data/properties";
+import { Bath, Bed, CheckCircle2, LandPlot, MapPin, Play, Square } from "lucide-react";
+import { landSqftNote, type Prop } from "@/app/data/properties";
 import { FG_DARK, FG_LIGHT, GOLD, MAROON, MUTED_D, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StatusBadge } from "./status-badge";
+import { RefTag } from "./property-ref";
 
 /**
  * The two property card designs the site uses. They live here, rather than in App.tsx,
@@ -38,15 +39,32 @@ export function ListingCard({ p, onOpen, light = false, showDetails = false }: {
         </motion.div>
       </div>
       <div className={`flex flex-col ${light ? "px-7 pt-7 pb-8" : "pt-6"}`} style={{ background: light ? WHITE : "transparent" }}>
-        <span className="text-[10px] tracking-[0.24em] uppercase mb-3" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.type}</span>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <span className="text-[10px] tracking-[0.24em] uppercase truncate" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.type}</span>
+          <RefTag propId={p.propId} dark={!light} />
+        </div>
         <h3 className="leading-[1.22] text-[1.3rem] mb-2.5" style={{ color: light ? FG_LIGHT : FG_DARK, ...serif }}>{p.title}</h3>
         <div className="flex items-center gap-1.5 min-w-0 mb-4">
           <MapPin size={12} style={{ color: GOLD, flexShrink: 0 }} />
           <span className="text-[13px] truncate" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.location}</span>
         </div>
-        <span className="text-[17px] font-medium tracking-[0.01em]" style={{ color: light ? MAROON : GOLD, ...sans }}>{p.price}</span>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[17px] font-medium tracking-[0.01em]" style={{ color: light ? MAROON : GOLD, ...sans }}>{p.price}</span>
+          <LandArea p={p} color={light ? MUTED_L : MUTED_D} />
+        </div>
       </div>
     </div>
+  );
+}
+
+/** Land area on the price line, e.g. "4-4-0-1 R-A-P-D"; hover shows it in square feet. */
+function LandArea({ p, color }: { p: Prop; color: string }) {
+  if (p.landArea === "—") return null;
+  const sqft = landSqftNote(p.landArea);
+  return (
+    <span className="flex items-center gap-1.5 shrink-0 text-[12px] tabular-nums" style={{ color, ...sans }} title={sqft ? `Land: ${p.landArea} (${sqft})` : `Land: ${p.landArea}`}>
+      <LandPlot size={13} style={{ color: GOLD }} />{p.landArea}
+    </span>
   );
 }
 
@@ -69,10 +87,16 @@ export function HotCard({ p, onOpen }: { p: Prop; onOpen?: () => void }) {
       </div>
       {/* Same caption rhythm as the New Listings cards beside it. */}
       <div className="flex flex-col gap-1.5 px-0.5">
-        <p className="text-[11px] tracking-[0.25em] uppercase" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] tracking-[0.25em] uppercase truncate" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
+          <RefTag propId={p.propId} />
+        </div>
         <p className="text-[19px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
         <p className="flex items-center gap-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location}</p>
-        <p className="text-[16px] font-medium mt-1" style={{ color: MAROON, ...sans }}>{p.price}</p>
+        <div className="flex items-baseline justify-between gap-3 mt-1">
+          <p className="text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
+          <LandArea p={p} color={MUTED_L} />
+        </div>
       </div>
     </div>
   );

@@ -61,8 +61,7 @@ export function AdminUsers({ nav }: { nav: AdminNav }) {
 
   return (
     <AdminLayout nav={nav} current="admin-users" tag="Administration" title="Users" previewNote={false}
-      back={{ label: "Back to Dashboard", to: "admin" }}
-      intro="Everyone who has created an account, live from the database. Unverified accounts are removed automatically after a week.">
+      intro="Everyone with an account, live from the database. Unverified ones are removed after a week.">
       {err ? (
         <div className="border px-6 py-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4" style={{ borderColor: BORDER_L, background: WHITE }}>
           <p className="text-[15px]" style={{ color: MAROON, ...sans }}>{err}</p>

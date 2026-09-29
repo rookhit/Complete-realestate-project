@@ -7,7 +7,7 @@ export type PaletteItem = {
   id: string;
   group: "Actions" | "Properties" | "Articles" | "Team";
   label: string;
-  hint?: string;          // shown faintly on the right, e.g. "NB-004" or "Lalitpur"
+  hint?: string;          // shown faintly on the right, e.g. "#NBS004" or "Lalitpur"
   keywords?: string;      // extra words to match on
   icon?: ReactNode;
   run: () => void;

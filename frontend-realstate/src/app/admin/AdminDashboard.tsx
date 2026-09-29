@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  BadgeCheck, Building2, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
-  MapPin, MessageSquare, Minus, Newspaper, Pencil, Plus, Quote, Search, Star, Trash2, Users,
+  BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
+  ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Star, Trash2, Users,
 } from "lucide-react";
 import { useAuth } from "@/app/auth";
-import { ALL_PROPS, PROPERTY_TYPES, deleteProperty, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROPERTY_TYPES, deleteProperty, displayRef, matchesRef, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
 import { BLOGS, TEAM, TESTIMONIALS, VIDEO_LIST } from "@/app/data/content";
 import { REACTIONS, reviewedPropertyIds, reviewsFor, setReactionCount } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
@@ -16,10 +16,12 @@ import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { PropertyEditor } from "./PropertyEditor";
 import { HomePageSection, JournalSection, TeamSection, TestimonialsSection, VideosSection } from "./ContentEditors";
+import { CompanySection } from "./CompanyEditor";
+import { OptionsSection } from "./OptionsEditor";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { Chip, EmptyState, SearchBox, SectionHeading, useToast, type Notify } from "./parts";
 
-type Section = "overview" | "properties" | "journal" | "team" | "testimonials" | "videos" | "homepage";
+type Section = "overview" | "properties" | "journal" | "team" | "testimonials" | "videos" | "homepage" | "company" | "options";
 
 const SECTIONS: { key: Section; label: string; Icon: typeof Home }[] = [
   { key: "overview", label: "Overview", Icon: LayoutGrid },
@@ -29,6 +31,8 @@ const SECTIONS: { key: Section; label: string; Icon: typeof Home }[] = [
   { key: "testimonials", label: "Testimonials", Icon: Quote },
   { key: "videos", label: "Videos", Icon: Clapperboard },
   { key: "homepage", label: "Home Page", Icon: Home },
+  { key: "company", label: "Contact & Services", Icon: Phone },
+  { key: "options", label: "Dropdown Options", Icon: ListChecks },
 ];
 
 const CANONICAL = new Set(AMENITIES.map(a => a.name));
@@ -66,12 +70,16 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
       act("a-testimonial", "Add a testimonial", <Quote size={15} />, () => goTo("testimonials"), "client quote"),
       act("a-video", "Add a video", <Clapperboard size={15} />, () => goTo("videos"), "youtube film"),
       act("a-home", "Update home page statistics and districts", <Home size={15} />, () => goTo("homepage"), "stats numbers"),
+      act("a-options", "Edit dropdown options", <ListChecks size={15} />, () => goTo("options"), "positions roles badges types languages departments specialities list choices"),
+      act("a-listings", "Review free listings from sellers", <ClipboardList size={15} />, () => nav.go("admin-listings"), "free listing seller submission publish"),
+      act("a-messages", "Open messages and enquiries", <Mail size={15} />, () => nav.go("admin-messages"), "inbox email enquiry callback reply unread"),
+      act("a-contact", "Edit contact details and services", <Phone size={15} />, () => goTo("company"), "phone whatsapp email address hours social instagram facebook services"),
       act("a-overview", "Overview and checklist", <LayoutGrid size={15} />, () => goTo("overview"), "dashboard attention"),
       act("a-users", "Users", <Users size={15} />, () => nav.go("admin-users"), "accounts members people"),
       act("a-reviews", "Reviews", <MessageSquare size={15} />, () => nav.go("admin-reviews"), "comments moderate"),
       act("a-site", "View the website", <Eye size={15} />, () => nav.go("home"), "public site"),
       ...ALL_PROPS.map<PaletteItem>(p => ({
-        id: `p-${p.id}`, group: "Properties", label: p.title, hint: p.propId, keywords: `${p.location} ${p.district} ${p.type} ${p.listing}`,
+        id: `p-${p.id}`, group: "Properties", label: p.title, hint: displayRef(p.propId), keywords: `${p.location} ${p.district} ${p.type} ${p.listing}`,
         icon: <Building2 size={15} />, run: () => setEditing(p),
       })),
       ...BLOGS.map<PaletteItem>(b => ({
@@ -94,11 +102,13 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
     testimonials: <TestimonialsSection notify={notify} />,
     videos: <VideosSection notify={notify} />,
     homepage: <HomePageSection notify={notify} />,
+    company: <CompanySection notify={notify} />,
+    options: <OptionsSection notify={notify} />,
   };
 
   return (
     <AdminLayout nav={nav} current="admin" tag="Administration" title="Admin Dashboard"
-      intro={<>Welcome back{user?.name ? `, ${user.name}` : ""}. Pick a section on the left, or press <b style={{ color: FG_LIGHT }}>Ctrl K</b> to find anything.</>}>
+      intro={<>Welcome back{user?.name ? `, ${user.name}` : ""}. <span className="hidden lg:inline">Pick a section on the left, or press <b style={{ color: FG_LIGHT }}>Ctrl K</b> to find anything.</span><span className="lg:hidden">Pick a section below, or use Find anything.</span></>}>
       <div className="grid grid-cols-1 lg:grid-cols-[15rem_1fr] gap-8 lg:gap-12 items-start">
         <div className="lg:sticky lg:top-[9.5rem] flex flex-col gap-3 min-w-0">
           <button type="button" onClick={() => setPaletteOpen(true)}
@@ -146,7 +156,7 @@ function findIssues(on: { property: (p: Prop) => void; article: (id: number) => 
     if (p.gallery.length < 3) out.push({ key: `p${p.id}-photos`, kind: "property", what: p.title, problem: `Only ${p.gallery.length} photo${p.gallery.length === 1 ? "" : "s"}. Aim for five or more.`, fix, fixLabel: "Add photos" });
     if (p.description.trim().length < 80) out.push({ key: `p${p.id}-desc`, kind: "property", what: p.title, problem: "The description is very short.", fix, fixLabel: "Write it" });
     if (amenities < 3) out.push({ key: `p${p.id}-amen`, kind: "property", what: p.title, problem: `${amenities} amenit${amenities === 1 ? "y" : "ies"} ticked. Buyers filter on these.`, fix, fixLabel: "Add amenities" });
-    if (p.beds > 0 && !p.floorPlans?.length) out.push({ key: `p${p.id}-plan`, kind: "property", what: p.title, problem: "No floor plan yet.", fix, fixLabel: "Add a plan" });
+    if (p.beds > 0 && !p.floorPlan?.length) out.push({ key: `p${p.id}-plan`, kind: "property", what: p.title, problem: "No floor plan yet.", fix, fixLabel: "Add a plan" });
     if (!p.verified) out.push({ key: `p${p.id}-ver`, kind: "property", what: p.title, problem: "Not marked as verified.", fix, fixLabel: "Review" });
   }
   for (const b of BLOGS) if (!b.body?.trim()) out.push({ key: `b${b.id}`, kind: "article", what: b.title, problem: "Only a summary, no full article text.", fix: () => on.article(b.id), fixLabel: "Write it" });
@@ -283,7 +293,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
     const s = q.trim().toLowerCase();
     const list = ALL_PROPS.filter(p =>
       (listing === "All" || p.listing === listing) && (type === "All" || p.type === type) &&
-      (!s || [p.title, p.location, p.district, p.propId].some(v => v.toLowerCase().includes(s))));
+      (!s || ([p.title, p.location, p.district].some(v => v.toLowerCase().includes(s)) || matchesRef(p.propId, s))));
     if (sort === "price_desc") list.sort((a, b) => b.priceNum - a.priceNum);
     if (sort === "price_asc") list.sort((a, b) => a.priceNum - b.priceNum);
     if (sort === "reactions") list.sort((a, b) => (REACTIONS[b.id] ?? 0) - (REACTIONS[a.id] ?? 0));
@@ -310,7 +320,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
         actions={<Button onClick={onAdd}><Plus size={14} />Add a Property</Button>} />
 
       <div className="flex flex-col xl:flex-row gap-3 mb-6">
-        <SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by name, area or ref (NB-004)" />
+        <SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by name, area or ref (#NBS004)" />
         <div className="grid grid-cols-3 gap-3 xl:w-[34rem]">
           <Select value={listing} onChange={v => { setListing(v); setPage(1); }} options={[{ value: "All", label: "Sale & Rent" }, "For Sale", "For Rent"]} />
           <Select value={type} onChange={v => { setType(v); setPage(1); }} options={[{ value: "All", label: "All types" }, ...PROPERTY_TYPES]} />
@@ -326,7 +336,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
       ) : (
         <div className="border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {paginate(rows, current, PER_PAGE).map(p => (
-            <div key={p.id} className="flex flex-col md:flex-row md:items-center gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
+            <div key={p.id} className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap md:items-center gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
               <button onClick={() => onEdit(p)} className="w-full md:w-40 shrink-0 overflow-hidden" style={{ aspectRatio: "4/3" }} aria-label={`Edit ${p.title}`}>
                 <img src={p.hero} alt="" className="w-full h-full object-cover" />
               </button>
@@ -336,7 +346,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                 </div>
                 <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
                 <p className="flex items-center gap-1.5 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
-                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{p.propId}
+                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{displayRef(p.propId)}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <p className="mr-2 text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
@@ -351,6 +361,8 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                   ))}
                 </div>
               </div>
+              {/* Controls: on their own line under the details until there is room beside them. */}
+              <div className="flex flex-wrap items-center gap-3 md:w-full xl:w-auto md:justify-end">
               <div className="flex items-center gap-1 shrink-0" title="Reactions shown on the site">
                 <button type="button" aria-label="One fewer reaction" onClick={() => nudge(p, -1)} className="w-8 h-8 flex items-center justify-center border transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: MUTED_L }}><Minus size={13} /></button>
                 <span className="min-w-[4.5rem] h-8 px-2 flex items-center justify-center gap-1.5 border text-[13px] tabular-nums" style={{ borderColor: BORDER_L, color: MAROON, ...sans }}>
@@ -358,13 +370,14 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                 </span>
                 <button type="button" aria-label="One more reaction" onClick={() => nudge(p, 1)} className="w-8 h-8 flex items-center justify-center border transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: MUTED_L }}><Plus size={13} /></button>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 [&>button]:px-4 sm:[&>button]:px-6">
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)} title="Open on the website"><Eye size={13} />View</Button>
                 <Button variant="quiet" onClick={() => onEdit(p)}><Pencil size={13} />Edit</Button>
                 <button type="button" aria-label={`Duplicate ${p.title}`} title="Start a new listing from this one" onClick={() => onDuplicate(p)}
                   className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Copy size={15} /></button>
                 <button type="button" aria-label={`Delete ${p.title}`} onClick={() => setToDelete(p)}
                   className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Trash2 size={15} /></button>
+              </div>
               </div>
             </div>
           ))}
@@ -373,7 +386,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
       <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={setPage} noun="properties" />
 
       <ConfirmDialog open={toDelete !== null} title="Delete this property?"
-        message={toDelete ? `“${toDelete.title}” (${toDelete.propId}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}
+        message={toDelete ? `“${toDelete.title}” (${displayRef(toDelete.propId)}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}
         onCancel={() => setToDelete(null)}
         onConfirm={() => { if (toDelete) remove(toDelete); setToDelete(null); }} />
     </div>

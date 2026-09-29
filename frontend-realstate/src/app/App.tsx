@@ -4,21 +4,28 @@ import {
   Menu, X, MapPin, ArrowRight, Search, ChevronDown, ChevronLeft, ChevronRight,
   Phone, Mail, MessageCircle, Send, Bed, Bath, Square, Share2,
   Play, Grid3X3, List as ListIcon, Map, Calculator, Star,
-  Building2, Home, Landmark, Briefcase, Layers, CheckCircle2, Award,
+  Home, Landmark, Layers, CheckCircle2,
   Instagram, Facebook, Youtube, Linkedin, ZoomIn,
   SlidersHorizontal, RotateCcw, User, FileText, PlusCircle,
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
   Tag as TagIcon,
+  ExternalLink, LogOut,
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
 import { DISTRICTS } from "@/app/data/districts";
 import { reviewsFor } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, matchesRef, type Prop } from "@/app/data/properties";
+import { placeLabel, resolveMap } from "@/app/data/maps";
+import { addMessage, unreadCount } from "@/app/data/messages";
+import { addListing, newListingsCount } from "@/app/data/listings";
+import { CALLBACK_TIMES, CONTACT_TOPICS } from "@/app/data/options";
+import { useDataVersion } from "@/app/data/store";
 import {
-  BLOGS, TESTIMONIALS, TEAM, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS,
-  companyVideos, youtubeThumb, type CompanyVideo,
+  BLOGS, TESTIMONIALS, TEAM, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
+  companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
 } from "@/app/data/content";
+import { ServiceIcon } from "@/app/components/ui/service-icon";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
 import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 import {
@@ -26,6 +33,7 @@ import {
   MUTED_D, MUTED_L, BORDER_L, BORDER_D, serif, sans, img,
 } from "@/app/components/ui/brand";
 import { StatusBadge, VerifiedChip } from "@/app/components/ui/status-badge";
+import { RefTag } from "@/app/components/ui/property-ref";
 import { FavButton, ReactionButton } from "@/app/components/ui/reaction-button";
 import { FloatingDock } from "@/app/components/ui/floating-dock";
 import { RatingLink, ReviewsSection } from "@/app/components/ui/property-reviews";
@@ -35,6 +43,8 @@ import { DistrictCombobox } from "@/app/components/ui/district-combobox";
 const AdminDashboard = lazy(() => import("@/app/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const AdminUsers = lazy(() => import("@/app/admin/AdminUsers").then(m => ({ default: m.AdminUsers })));
 const AdminReviews = lazy(() => import("@/app/admin/AdminReviews").then(m => ({ default: m.AdminReviews })));
+const AdminMessages = lazy(() => import("@/app/admin/AdminMessages").then(m => ({ default: m.AdminMessages })));
+const AdminListings = lazy(() => import("@/app/admin/AdminListings").then(m => ({ default: m.AdminListings })));
 import type { AdminNav } from "@/app/admin/AdminLayout";
 import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
@@ -46,7 +56,7 @@ type Page =
   | "home" | "buy" | "rent" | "property" | "hot" | "new-listings"
   | "about" | "blog" | "blog-post" | "services" | "emi" | "contact"
   | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "reset-password" | "team"
-  | "admin" | "admin-users" | "admin-reviews";                  // the admin area, src/app/admin/
+  | "admin" | "admin-users" | "admin-reviews" | "admin-listings" | "admin-messages";                  // the admin area, src/app/admin/
 
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
@@ -63,14 +73,6 @@ type Go = (p: Page, o?: NavOpts) => void;
 
 // Every district in Nepal. Was a 9-item hand-picked list.
 const AREAS = DISTRICTS;
-const SERVICES_LIST = [
-  { icon:<Home size={22}/>, title:"Property Sales", desc:"Full-service representation for residential and commercial property transactions across Nepal." },
-  { icon:<Layers size={22}/>, title:"Letting", desc:"Specialist letting advisory for landlords and tenants seeking premium rental properties." },
-  { icon:<Briefcase size={22}/>, title:"Property Consulting", desc:"Expert market analysis, investment advisory and portfolio strategy for all property types." },
-  { icon:<Award size={22}/>, title:"Vastu Advisory", desc:"Authentic Vastu Shastra assessment and consultation for new constructions and existing properties." },
-  { icon:<Building2 size={22}/>, title:"Construction Works", desc:"End-to-end construction project management for residential and commercial developments." },
-  { icon:<Landmark size={22}/>, title:"Engineering Consulting", desc:"Structural, civil and MEP engineering consulting for projects of all scales across Nepal." },
-];
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const Tag = ({ c, children }: { c?: string; children: React.ReactNode }) => (
@@ -233,7 +235,18 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
   const signOut = () => { setMenu(false); void logout().then(()=>go("home")); };
   const [dropdown, setDropdown] = useState<string|null>(null);
   useEffect(()=>{ const fn=()=>setScrolled(window.scrollY>56); window.addEventListener("scroll",fn,{passive:true}); return ()=>window.removeEventListener("scroll",fn); },[]);
-  useEffect(()=>{ document.body.style.overflow = menu ? "hidden" : ""; return ()=>{ document.body.style.overflow=""; }; },[menu]);
+  const [openSub, setOpenSub] = useState<string|null>(null);
+  useDataVersion();
+  // Unread messages plus free listings waiting for review.
+  const unread = user?.role==="ADMIN" ? unreadCount()+newListingsCount() : 0;
+  const badge = unread>0 ? <span className="min-w-[18px] h-[18px] px-1 rounded-full inline-flex items-center justify-center text-[10px] font-semibold tabular-nums leading-none" style={{background:"#d93636",color:WHITE,letterSpacing:0,...sans}} aria-label={`${unread} new messages and listings`}>{unread>99?"99+":unread}</span> : null;
+  useEffect(()=>{
+    document.body.style.overflow = menu ? "hidden" : "";
+    if(!menu){ setOpenSub(null); return ()=>{ document.body.style.overflow=""; }; }
+    const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape") setMenu(false); };
+    window.addEventListener("keydown",onKey);
+    return ()=>{ window.removeEventListener("keydown",onKey); document.body.style.overflow=""; };
+  },[menu]);
   const sub = (type:string, listing:"For Sale"|"For Rent") => {
     go(listing==="For Sale"?"buy":"rent",{type}); setDropdown(null); setMenu(false);
   };
@@ -246,11 +259,15 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
     { label:"About", page:"about" as Page },
     { label:"Contact", page:"contact" as Page },
   ];
+  const mobileLinks: { label:string; page:Page; items?:{label:string;action:()=>void}[] }[] = [
+    ...navLinks, { label:"EMI Calculator", page:"emi" },
+    ...(user?.role==="ADMIN" ? [{ label:"Admin", page:"admin" as Page }] : []),
+  ];
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 transition-all duration-400"
         style={{ background: scrolled||page!=="home"?"#0a0908":"transparent", borderBottom:scrolled||page!=="home"?`1px solid ${BORDER_D}`:"1px solid transparent", backdropFilter:scrolled?"blur(20px)":"none" }}>
-        <div className="flex items-center gap-7 px-6 md:px-12 lg:px-20 h-20">
+        <div className="flex items-center gap-5 2xl:gap-7 px-6 md:px-12 xl:px-10 2xl:px-20 h-20">
           {/* Logo */}
           <button onClick={()=>go("home")} className="flex items-center gap-2.5 shrink-0">
             <img src={logoImg} alt="NB" className="h-8 w-8 object-contain" />
@@ -260,11 +277,11 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
             </div>
           </button>
           {/* Desktop nav */}
-          <div className="hidden lg:flex items-center gap-1 ml-4">
+          <div className="hidden xl:flex items-center gap-0.5 2xl:gap-1 ml-2 2xl:ml-4">
             {navLinks.map(n => (
               <div key={n.label} className="relative" onMouseEnter={()=>n.items&&setDropdown(n.label)} onMouseLeave={()=>setDropdown(null)}>
                 <button onClick={()=>n.page&&go(n.page)}
-                  className="group/nav relative flex items-center gap-1 px-3 py-2 text-[12px] tracking-[0.2em] uppercase transition-colors"
+                  className="group/nav relative flex items-center gap-1 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors"
                   style={{color:page===(n.page)?GOLD:"rgba(240,235,224,0.72)",...sans}}>
                   {n.label}{n.items&&<ChevronDown size={13} className="transition-transform duration-300 group-hover/nav:rotate-180"/>}
                   {/* Same gesture as the district tiles: a gold rule that grows
@@ -294,7 +311,7 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                 )}
               </div>
             ))}
-            <button onClick={()=>go("emi")} className="group/nav relative flex items-center gap-1.5 px-3 py-2 text-[12px] tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
+            <button onClick={()=>go("emi")} className="group/nav relative flex items-center gap-1.5 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
               <Calculator size={14}/>EMI
               <span
                 className={`pointer-events-none absolute left-1/2 bottom-0.5 h-px -translate-x-1/2 transition-all duration-400 ease-out group-hover/nav:w-[calc(100%-1.5rem)] ${page==="emi"?"w-[calc(100%-1.5rem)]":"w-0"}`}
@@ -303,48 +320,98 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
             </button>
           </div>
           {/* Right side */}
-          <div className="hidden lg:flex items-center gap-3 ml-auto">
+          <div className="hidden xl:flex items-center gap-2.5 2xl:gap-3 ml-auto">
             <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
               style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</button>
             {user ? (<>
-              {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page.startsWith("admin")?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin</button>}
-              <span className="flex items-center gap-1.5 px-2 text-[12px] max-w-[180px] truncate" title={user.email} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/>{user.name||user.email}</span>
-              <button onClick={signOut} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Logout</button>
+              {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page.startsWith("admin")?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin{badge}</button>}
+              <span className="flex items-center gap-1.5 px-1.5 text-[12px] max-w-[180px] truncate" title={`${user.name||""} · ${user.email}`} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/><span className="hidden 2xl:inline">{user.name||user.email}</span></span>
+              <button onClick={signOut} aria-label="Logout" title="Logout" className="flex items-center gap-1.5 px-2 2xl:px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}><LogOut size={15} className="2xl:hidden"/><span className="hidden 2xl:inline">Logout</span></button>
             </>) : (<>
               <button onClick={()=>go("login")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-accent" style={{color:"rgba(240,235,224,0.72)",...sans}}>Login</button>
               <button onClick={()=>go("register")} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
             </>)}
           </div>
-          <button onClick={()=>setMenu(!menu)} className="lg:hidden ml-auto p-1" style={{color:FG_DARK}}>
-            {menu?<X size={20}/>:<Menu size={20}/>}
+          <button onClick={()=>setMenu(true)} aria-label="Open menu" className="xl:hidden ml-auto w-10 h-10 rounded-full flex items-center justify-center border transition-colors hover:border-[#b08848]" style={{color:FG_DARK,borderColor:"rgba(240,235,224,0.16)"}}>
+            <Menu size={18} strokeWidth={1.5}/>
           </button>
         </div>
       </nav>
-      {/* Mobile menu */}
+      {/* Mobile menu: a frosted panel from the left. The page stays visible behind it;
+          tapping outside or pressing Escape closes it. */}
       <AnimatePresence>
-        {menu&&(
-          <motion.div className="fixed inset-0 z-40 flex flex-col pt-20 overflow-y-auto"
-            style={{background:"rgba(10,9,8,0.98)",backdropFilter:"blur(24px)"}}
-            initial={{opacity:0,clipPath:"inset(0 0 100% 0)"}} animate={{opacity:1,clipPath:"inset(0 0 0% 0)"}} exit={{opacity:0,clipPath:"inset(0 0 100% 0)"}} transition={{duration:0.4}}>
-            <div className="flex flex-col px-8 py-6 gap-0">
-              {[{l:"Buy",p:"buy"},{l:"Rent",p:"rent"},{l:"Blog",p:"blog"},{l:"Services",p:"services"},{l:"About",p:"about"},{l:"Contact",p:"contact"},{l:"EMI Calculator",p:"emi"},...(user?.role==="ADMIN"?[{l:"Admin",p:"admin"}]:[])].map((n,i)=>(
-                <motion.button key={n.l} onClick={()=>{go(n.p as Page);setMenu(false);}} className="text-3xl py-5 border-b text-left flex items-center justify-between group"
-                  style={{color:FG_DARK,borderColor:BORDER_D,...serif}} initial={{opacity:0,x:-12}} animate={{opacity:1,x:0}} transition={{delay:i*0.06+0.1}}>
-                  {n.l}<ArrowRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{color:GOLD}}/>
-                </motion.button>
-              ))}
+        {menu&&(<>
+          <motion.div className="xl:hidden fixed inset-0 z-[60]" style={{background:"rgba(10,9,8,0.32)",backdropFilter:"blur(3px)",WebkitBackdropFilter:"blur(3px)"}}
+            initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:0.35}} onClick={()=>setMenu(false)}/>
+          <motion.aside role="dialog" aria-modal="true" aria-label="Menu"
+            className="xl:hidden fixed top-0 left-0 bottom-0 z-[61] w-[min(80vw,360px)] flex flex-col overflow-y-auto overscroll-contain antialiased"
+            style={{background:"linear-gradient(165deg, rgba(30,26,20,0.72) 0%, rgba(10,9,8,0.84) 100%)",backdropFilter:"blur(24px) saturate(150%)",WebkitBackdropFilter:"blur(24px) saturate(150%)",borderRight:"1px solid rgba(176,136,72,0.22)",boxShadow:"30px 0 80px rgba(0,0,0,0.35)"}}
+            initial={{x:"-100%"}} animate={{x:0}} exit={{x:"-100%"}} transition={{type:"spring",stiffness:300,damping:34}}>
+            <div className="shrink-0 flex items-center justify-between h-20 px-7">
+              <span className="flex items-center gap-3 text-[10px] tracking-[0.36em] uppercase" style={{color:GOLD,...sans}}>
+                <span style={{width:"1.5rem",height:"0.5px",background:GOLD}}/>Menu
+              </span>
+              <button onClick={()=>setMenu(false)} aria-label="Close menu" className="w-10 h-10 rounded-full flex items-center justify-center border transition-colors hover:border-[#b08848]" style={{borderColor:"rgba(240,235,224,0.14)",color:FG_DARK}}>
+                <X size={17} strokeWidth={1.5}/>
+              </button>
             </div>
-            <div className="px-8 py-6 flex gap-3 mt-auto border-t" style={{borderColor:BORDER_D}}>
-              {user ? (<>
-                <span className="flex-1 py-3 text-[13px] truncate" style={{color:FG_DARK,...sans}}>{user.name||user.email}</span>
-                <button onClick={signOut} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase border" style={{color:FG_DARK,borderColor:BORDER_D,...sans}}>Logout</button>
-              </>) : (<>
-                <button onClick={()=>{go("login");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase border" style={{color:FG_DARK,borderColor:BORDER_D,...sans}}>Login</button>
-                <button onClick={()=>{go("register");setMenu(false);}} className="flex-1 py-3 text-[12px] tracking-[0.2em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
-              </>)}
-            </div>
-          </motion.div>
-        )}
+
+            <ul className="px-7">
+              {mobileLinks.map((n,i)=>{
+                const active=n.page==="admin"?page.startsWith("admin"):page===n.page;
+                const expanded=openSub===n.label;
+                return (
+                  <motion.li key={n.label} className="border-b" style={{borderColor:"rgba(240,235,224,0.07)"}}
+                    initial={{opacity:0,x:-28}} animate={{opacity:1,x:0}} transition={{delay:0.1+i*0.045,duration:0.5,ease:[0.16,1,0.3,1]}}>
+                    <div className="flex items-center gap-2">
+                      <button onClick={()=>{go(n.page);setMenu(false);}} className="flex-1 flex items-baseline gap-4 py-[15px] text-left">
+                        <span className="w-5 text-[10px] tracking-[0.12em] tabular-nums" style={{color:active?GOLD:"rgba(240,235,224,0.32)",...sans}}>{String(i+1).padStart(2,"0")}</span>
+                        <span className="text-[18px] font-light tracking-[0.03em] transition-colors" style={{color:active?GOLD:FG_DARK,...sans}}>{n.label}</span>{n.page==="admin"&&badge}
+                      </button>
+                      {n.items&&(
+                        <button onClick={()=>setOpenSub(expanded?null:n.label)} aria-label={`${expanded?"Hide":"Show"} ${n.label} property types`} aria-expanded={expanded}
+                          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors" style={{color:expanded?GOLD:"rgba(240,235,224,0.5)",background:expanded?"rgba(176,136,72,0.12)":"transparent"}}>
+                          <ChevronDown size={15} strokeWidth={1.5} className={`transition-transform duration-300 ${expanded?"rotate-180":""}`}/>
+                        </button>
+                      )}
+                    </div>
+                    <AnimatePresence initial={false}>
+                      {n.items&&expanded&&(
+                        <motion.div className="overflow-hidden" initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.3,ease:[0.16,1,0.3,1]}}>
+                          <div className="pl-9 pb-4 flex flex-col">
+                            {n.items.map(it=>(
+                              <button key={it.label} onClick={it.action} className="group flex items-center gap-3 py-2 text-left text-[14px] font-light tracking-[0.02em] transition-colors hover:text-[#b08848]" style={{color:"rgba(240,235,224,0.62)",...sans}}>
+                                <span className="h-px w-3 transition-all group-hover:w-5" style={{background:"rgba(176,136,72,0.6)"}}/>{it.label}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.li>
+                );
+              })}
+            </ul>
+
+            <motion.div className="mt-auto px-7 pt-8 pb-8 flex flex-col gap-3" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:0.35,duration:0.5}}>
+              <button onClick={()=>{go("free-listing");setMenu(false);}} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.24em] uppercase border transition-colors hover:border-[#b08848]"
+                style={{color:FG_DARK,borderColor:GOLD_DIM,background:"rgba(176,136,72,0.06)",...sans}}><PlusCircle size={14} strokeWidth={1.5} style={{color:GOLD}}/>Free Listing</button>
+              {user ? (
+                <div className="flex items-center gap-3 pt-3">
+                  <span className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[13px]" style={{background:"rgba(176,136,72,0.16)",color:GOLD,...sans}}>{(user.name||user.email).charAt(0).toUpperCase()}</span>
+                  <span className="flex-1 min-w-0 text-[13px] font-light truncate" style={{color:FG_DARK,...sans}}>{user.name||user.email}</span>
+                  <button onClick={signOut} className="text-[10px] tracking-[0.24em] uppercase transition-colors hover:text-[#b08848]" style={{color:"rgba(240,235,224,0.6)",...sans}}>Logout</button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button onClick={()=>{go("login");setMenu(false);}} className="flex-1 py-3.5 text-[11px] tracking-[0.24em] uppercase border transition-colors hover:border-[#b08848]" style={{color:FG_DARK,borderColor:"rgba(240,235,224,0.16)",...sans}}>Login</button>
+                  <button onClick={()=>{go("register");setMenu(false);}} className="flex-1 py-3.5 text-[11px] tracking-[0.24em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Register</button>
+                </div>
+              )}
+              <p className="pt-4 text-[9px] tracking-[0.34em] uppercase text-center" style={{color:"rgba(240,235,224,0.28)",...sans}}>Nepal Bhoomi · Estate Agents</p>
+            </motion.div>
+          </motion.aside>
+        </>)}
       </AnimatePresence>
     </>
   );
@@ -366,7 +433,7 @@ function Footer({ go }: { go:Go }) {
             <div><div className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</div><div className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</div></div>
           </div>
           <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's premier luxury real estate advisory, representing the country's most exceptional residential and investment properties.</p>
-          <div className="flex gap-3">{[Instagram,Facebook,Youtube,Linkedin].map((I,i)=><a key={i} href="#" onClick={e=>e.preventDefault()} aria-label="Social" className="transition-opacity hover:opacity-70" style={{color:MUTED_D}}><I size={15}/></a>)}</div>
+          <div className="flex gap-3">{([[Instagram,"Instagram",CONTACT.instagram],[Facebook,"Facebook",CONTACT.facebook],[Youtube,"YouTube",CONTACT.youtube],[Linkedin,"LinkedIn",CONTACT.linkedin]] as const).filter(([,,url])=>url.trim()).map(([I,name,url])=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={name} className="transition-opacity hover:opacity-70" style={{color:MUTED_D}}><I size={15}/></a>)}</div>
         </div>
         {[
           {title:"Properties",links:[{l:"Buy Property",p:"buy"},{l:"Rent Property",p:"rent"},{l:"Hot Properties",p:"hot"},{l:"New Listings",p:"new-listings"},{l:"View All",p:"buy"}]},
@@ -383,7 +450,8 @@ function Footer({ go }: { go:Go }) {
           </div>
         ))}
       </div>
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 py-8">
+      {/* Extra room at the bottom so the floating Enquiry / WhatsApp buttons never cover these links. */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 pt-8 pb-32 sm:pb-8 sm:pr-32 lg:pr-40">
         <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© 2025 Nepal Bhoomi Estate Agents. All rights reserved.</p>
         <div className="flex gap-5">{["Privacy Policy","Terms of Use","Sitemap"].map(t=><a key={t} href="#" onClick={e=>e.preventDefault()} className="text-[12px] hover:opacity-70" style={{color:MUTED_D,...sans}}>{t}</a>)}</div>
       </div>
@@ -397,7 +465,7 @@ function Footer({ go }: { go:Go }) {
 function CallbackForm() {
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
-  const [time,setTime]=useState("Morning (9am-12pm)");
+  const [time,setTime]=useState(CALLBACK_TIMES[0]??"");
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
 
@@ -418,11 +486,11 @@ function CallbackForm() {
       </div>
       <div className="relative">
         <select value={time} onChange={e=>setTime(e.target.value)} className="w-full border px-4 py-3.5 text-[15px] outline-none appearance-none cursor-pointer" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
-          {["Morning (9am-12pm)","Afternoon (12pm-4pm)","Evening (4pm-6pm)"].map(t=><option key={t}>{t}</option>)}
+          {CALLBACK_TIMES.map(t=><option key={t}>{t}</option>)}
         </select>
         <ChevronDown size={15} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:MUTED_L}}/>
       </div>
-      <button onClick={()=>{ if(name.trim()&&phone.trim()){setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
+      <button onClick={()=>{ if(name.trim()&&phone.trim()){ addMessage({kind:"callback",name:name.trim(),phone:phone.trim(),subject:`Please call: ${time}`,body:`Requested a call back: ${time}.`}); setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
         Request a Callback
       </button>
       {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name and phone number.</p>}
@@ -468,7 +536,11 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
       <div className="relative z-10 px-6 md:px-12 lg:px-20 pb-20 w-full">
         <div className="flex items-center gap-4 mb-6"><div style={{width:"3rem",height:"0.5px",background:GOLD}}/><Tag>{prop.badge} · {prop.type}</Tag></div>
         <AnimatePresence mode="wait">
-          <motion.h1 key={active} className="mb-6 leading-[0.9]" style={{color:FG_DARK,...serif,fontSize:"clamp(2.8rem,7.5vw,6.5rem)"}} initial={{opacity:0,y:22}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.85,ease:[0.16,1,0.3,1]}}>{prop.title}</motion.h1>
+          <motion.h1 key={active} className={`${prop.tagline?"mb-3":"mb-6"} leading-[0.9]`} style={{color:FG_DARK,...serif,fontSize:"clamp(2.8rem,7.5vw,6.5rem)"}} initial={{opacity:0,y:22}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.85,ease:[0.16,1,0.3,1]}}>{prop.title}</motion.h1>
+        </AnimatePresence>
+        {/* The tagline the admin writes, e.g. "Heritage Reimagined". */}
+        <AnimatePresence mode="wait">
+          {prop.tagline&&<motion.p key={`t${active}`} className="mb-6 text-[15px] md:text-[17px] tracking-[0.04em] italic" style={{color:"rgba(240,235,224,0.78)",...serif}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{delay:0.1}}>{prop.tagline}</motion.p>}
         </AnimatePresence>
         <AnimatePresence mode="wait">
           <motion.div key={`m${active}`} className="flex flex-wrap items-center gap-x-7 gap-y-3 mb-9" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{delay:0.06}}>
@@ -588,7 +660,7 @@ function LocationStripsSection({ go }: { go:Go }) {
             <img src={l.img} alt={l.name} className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
             <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.94) 0%, rgba(10,9,8,0.58) 36%, rgba(10,9,8,0.06) 76%)"}}/>
             <div className="absolute bottom-0 left-0 right-0 p-8 md:p-10 text-left">
-              <p className="text-[10px] tracking-[0.28em] uppercase mb-2.5" style={{color:GOLD,...sans}}>{l.count} Properties</p>
+              <p className="text-[10px] tracking-[0.28em] uppercase mb-2.5" style={{color:GOLD,...sans}}>{(n=>`${n} ${n===1?"Property":"Properties"}`)(ALL_PROPS.filter(p=>p.district===l.name).length)}</p>
               <p className="leading-[1.04]" style={{color:WHITE,...serif,fontSize:"clamp(1.8rem,2.6vw,2.6rem)"}}>{l.name}</p>
               <div className="mt-5 h-px w-10 transition-all duration-500 ease-out group-hover:w-24" style={{background:GOLD}}/>
             </div>
@@ -1063,9 +1135,9 @@ function ServicesSectionHome({ go }: { go:Go }) {
           <button onClick={()=>go("services")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_D}}>
-          {SERVICES_LIST.map(s=>(
-            <div key={s.title} className="border-b border-r p-10 flex flex-col gap-5 group cursor-pointer hover:bg-white/[0.02] transition-all" style={{borderColor:BORDER_D}}>
-              <div style={{color:GOLD}}>{s.icon}</div>
+          {SERVICES.map(s=>(
+            <div key={s.id} className="border-b border-r p-10 flex flex-col gap-5 group cursor-pointer hover:bg-white/[0.02] transition-all" style={{borderColor:BORDER_D}}>
+              <div style={{color:GOLD}}><ServiceIcon name={s.icon}/></div>
               <h4 className="text-base" style={{color:FG_DARK,...serif}}>{s.title}</h4>
               <p className="text-[14px] leading-relaxed flex-1" style={{color:MUTED_D,...sans}}>{s.desc}</p>
             </div>
@@ -1128,7 +1200,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
   // Match the fields someone would actually type: title, location, district,
-  // type and the reference ("NB-004"). Not the description: a match buried in
+  // type and the reference ("#NBS004", "nbs004" or just "004"). Not the description: a match buried in
   // a paragraph gives results the user cannot see the reason for.
   const q=query.trim().toLowerCase();
   const matchesQuery=(p:Prop)=>
@@ -1136,7 +1208,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
     p.title.toLowerCase().includes(q) ||
     p.location.toLowerCase().includes(q) ||
     p.district.toLowerCase().includes(q) ||
-    p.propId.toLowerCase().includes(q) ||
+    matchesRef(p.propId,q) ||
     p.type.toLowerCase().includes(q);
   const props=ALL_PROPS.filter(p=>{
     if(p.listing!==listing) return false;
@@ -1160,12 +1232,12 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
   const dirty=typeF!=="All Types"||distF!=="All"||priceF!=="Any Price"||q!=="";
   const reset=()=>{ setTypeF("All Types"); setDistF("All"); setPriceF("Any Price"); setQuery(""); };
   const heading=preset==="hot"?"Hot Properties":preset==="new"?"New Listings":(listing==="For Sale"?"Properties for Sale":"Properties for Rent");
-  const scrollToResults=()=>resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       {/* Sticky filter bar */}
       <div className="sticky top-20 z-30 border-b" style={{background:"rgba(247,243,237,0.97)",backdropFilter:"blur(20px)",borderColor:BORDER_L}}>
-        <div className="px-6 md:px-12 lg:px-20 py-4 flex items-center gap-2.5 flex-wrap">
+        {/* Phones: one swipeable row (this bar is sticky, so three wrapped rows would eat the screen). */}
+        <div className="px-4 sm:px-6 md:px-12 lg:px-20 py-3 sm:py-4 flex items-center gap-2 sm:gap-2.5 overflow-x-auto sm:overflow-visible sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <button onClick={()=>setShowFilters(f=>!f)} className="flex items-center gap-1.5 px-5 py-2.5 text-[12px] tracking-[0.15em] border transition-all" style={{borderRadius:"9999px",borderColor:showFilters?"transparent":BORDER_L,background:showFilters?"#1a1611":"transparent",color:showFilters?WHITE:FG_LIGHT,...sans}}>
             <SlidersHorizontal size={14}/>All Filters
           </button>
@@ -1206,9 +1278,6 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                 </button>
               ))}
             </div>
-            <button onClick={scrollToResults} className="flex items-center gap-1.5 px-6 py-2.5 text-[12px] tracking-[0.15em]" style={{borderRadius:"9999px",background:"#1a1611",color:WHITE,...sans}}>
-              <Search size={14}/>Search
-            </button>
           </div>
         </div>
         {/* Expanded filter panel */}
@@ -1258,7 +1327,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
             <p className="text-2xl" style={{color:FG_LIGHT,...serif}}>No properties match these filters</p>
             <p className="text-[15px]" style={{color:MUTED_L,...sans}}>
               {q
-                ? <>Nothing matches &ldquo;{query.trim()}&rdquo;. Try a district, a property name, or a reference like NB-004.</>
+                ? <>Nothing matches &ldquo;{query.trim()}&rdquo;. Try a district, a property name, or a reference like #NBS004.</>
                 : <>Try widening your price range or choosing a different district.</>}
             </p>
             <button onClick={reset} className="mt-2 flex items-center gap-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}><RotateCcw size={14}/>Reset Filters</button>
@@ -1272,9 +1341,9 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
         ) : (
           <div className="flex flex-col gap-0 border-t" style={{borderColor:BORDER_L}}>
             {props.map(p=>(
-              <div key={p.id} className="flex flex-col sm:flex-row items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
+              <div key={p.id} className="flex flex-col sm:flex-row sm:items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
                 style={{borderColor:BORDER_L}} onClick={()=>{setId(p.id);go("property");}}>
-                <div className="w-full sm:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
+                <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
                   <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]"/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
@@ -1282,13 +1351,14 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                     {p.verified&&<VerifiedChip onImage/>}
                   </div>
                 </div>
-                <div className="flex-1 p-8 flex flex-col justify-between">
+                <div className="flex-1 min-w-0 p-5 sm:p-6 md:p-8 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-start justify-between gap-4 mb-1.5">
-                      <div><span className="text-[11px] tracking-[0.25em] uppercase mb-1 block" style={{color:MUTED_L,...sans}}>{p.type} &middot; {p.propId}</span>
+                    {/* Phones: price under the title. Wider: price on the right. */}
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-4 mb-1.5">
+                      <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag propId={p.propId}/></div>
                         <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</h3></div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xl font-medium" style={{color:MAROON,...sans}}>{p.price}</p>
+                      <div className="sm:text-right shrink-0">
+                        <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{p.price}</p>
                         {p.listing==="For Rent"&&<p className="text-[11px]" style={{color:MUTED_L,...sans}}>per month</p>}
                       </div>
                     </div>
@@ -1416,9 +1486,11 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
 // ═══════════════════════════════════════════════════════════════════════════════
 function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
   const p=ALL_PROPS.find(x=>x.id===propId)||ALL_PROPS[0];
+  const map=resolveMap(p.mapUrl,placeLabel(p.location,p.district));
+  // WhatsApp opens with the reference already typed, so the advisor knows which property it is.
+  const waLink=whatsappLink(`Hello, I'm interested in ${displayRef(p.propId)} (${p.title}).`);
   const [galIdx,setGalIdx]=useState(0);
   const [lightbox,setLightbox]=useState(false);
-  const [hovRoom,setHovRoom]=useState<string|null>(null);
   const [form,setForm]=useState({name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
@@ -1442,21 +1514,13 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
       else { await navigator.clipboard.writeText(url); setShared(true); setTimeout(()=>setShared(false),2200); }
     }catch{ /* dismissed by the user */ }
   };
-  const rooms=[
-    {id:"living",label:"Living Room",x:18,y:18,w:40,h:42,dims:"8.5×6.2m"},
-    {id:"kitchen",label:"Kitchen",x:18,y:63,w:23,h:28,dims:"5.2×4.8m"},
-    {id:"master",label:"Master Bed",x:62,y:18,w:34,h:38,dims:"7.0×5.5m"},
-    {id:"bed2",label:"Bedroom 2",x:62,y:59,w:20,h:30,dims:"4.5×4.2m"},
-    {id:"bath",label:"Bathroom",x:83,y:59,w:13,h:30,dims:"3.0×4.2m"},
-    {id:"dining",label:"Dining",x:44,y:63,w:14,h:28,dims:"4.0×4.8m"},
-  ];
   // Same facts as the results list, so the same icons.
   const details=[
-    {l:"Property ID",v:p.propId,i:<FileText size={14}/>},
+    {l:"Reference",v:displayRef(p.propId),i:<FileText size={14}/>},
     {l:"Property Type",v:p.type,i:<Home size={14}/>},
     {l:"Listing",v:p.listing,i:<TagIcon size={14}/>},
     {l:"Built Area",v:p.builtArea,i:<Square size={14}/>},
-    {l:"Land Area",v:p.landArea,i:<Landmark size={14}/>},
+    {l:"Land Area",v:landSqftNote(p.landArea)?<>{p.landArea}<span className="block text-[12px] font-normal mt-0.5" style={{color:MUTED_L}}>{landSqftNote(p.landArea)}</span></>:p.landArea,i:<Landmark size={14}/>},
     {l:"Floors",v:p.floors>0?String(p.floors):"—",i:<Layers size={14}/>},
     {l:"Bedrooms",v:p.beds>0?String(p.beds):"—",i:<Bed size={14}/>},
     {l:"Bathrooms",v:p.baths>0?String(p.baths):"—",i:<Bath size={14}/>},
@@ -1509,7 +1573,6 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
             <Share2 size={14}/>
             {shared&&<span className="absolute -top-8 right-0 whitespace-nowrap px-2 py-1 text-[11px]" style={{background:"#1a1611",color:WHITE,...sans}}>Link copied</span>}
           </button>
-          <a href="https://wa.me/9779800000000" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-4 py-2.5 text-[11px] tracking-[0.2em] uppercase transition-all hover:brightness-110" style={{background:"#25D366",color:WHITE,...sans}}><MessageCircle size={15}/>WhatsApp</a>
         </div>
       </div>
       {/* Content */}
@@ -1517,8 +1580,9 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
         {/* Left */}
         <div className="lg:col-span-2 flex flex-col gap-14">
           <div>
-            <div className="flex items-center gap-3 mb-3"><GoldLine/><Tag c={GOLD}>{p.badge}</Tag></div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3"><GoldLine/><Tag c={GOLD}>{p.badge}</Tag><span className="ml-auto"><RefTag propId={p.propId} copy/></span></div>
             <h1 className="leading-[0.92] mb-2" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.8rem,4vw,3.5rem)"}}>{p.title}</h1>
+            {p.tagline&&<p className="mb-3 text-[16px] italic" style={{color:MUTED_L,...serif}}>{p.tagline}</p>}
             <div className="flex items-center gap-1.5 mb-3"><MapPin size={14} style={{color:GOLD}}/><span className="text-[14px]" style={{color:MUTED_L,...sans}}>{p.location}</span></div>
             <div className="flex items-baseline gap-3"><span className="text-2xl font-medium" style={{color:MAROON,...sans}}>{p.price}</span>{p.listing==="For Rent"&&<span className="text-sm" style={{color:MUTED_L,...sans}}>per month</span>}</div>
           </div>
@@ -1563,33 +1627,29 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
               })}
             </div>
           </div>
-          {/* Floor plans uploaded in the admin replace the illustrative plan below. */}
-          {p.floorPlans&&p.floorPlans.length>0&&<>
+          {/* Floor plan drawn by the admin (boxes with a floor name and area). */}
+          {!!p.floorPlan?.length&&<>
             <div className="h-px" style={{background:BORDER_L}}/>
             <div>
               <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Floor Plan</p>
-              <FloorPlanViewer plans={p.floorPlans}/>
+              <FloorPlanViewer boxes={p.floorPlan}/>
             </div>
           </>}
-          {!(p.floorPlans&&p.floorPlans.length>0)&&p.beds>0&&<>
-            <div className="h-px" style={{background:BORDER_L}}/>
-            {/* Interactive Floor Plan */}
-            <div>
-              <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Floor Plan</p>
-              <div className="relative border p-5" style={{background:CREAM,borderColor:BORDER_L}}>
-                <svg viewBox="0 0 100 95" className="w-full" style={{maxHeight:300}}>
-                  <rect x="16" y="16" width="66" height="75" fill="none" stroke={BORDER_L} strokeWidth="0.8"/>
-                  {rooms.map(r=>(
-                    <g key={r.id} onMouseEnter={()=>setHovRoom(r.id)} onMouseLeave={()=>setHovRoom(null)} className="cursor-pointer">
-                      <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={hovRoom===r.id?"rgba(138,32,48,0.1)":"rgba(26,22,17,0.03)"} stroke={hovRoom===r.id?MAROON:BORDER_L} strokeWidth="0.5" className="transition-all duration-150"/>
-                      <text x={r.x+r.w/2} y={r.y+r.h/2-1.5} textAnchor="middle" fontSize="3.2" fill={hovRoom===r.id?MAROON:MUTED_L} style={{fontFamily:"Jost,sans-serif",pointerEvents:"none"}}>{r.label}</text>
-                      {hovRoom===r.id&&<text x={r.x+r.w/2} y={r.y+r.h/2+3.5} textAnchor="middle" fontSize="2.6" fill={MUTED_L} style={{fontFamily:"Jost,sans-serif"}}>{r.dims}</text>}
-                    </g>
-                  ))}
-                </svg>
-              </div>
+          <div className="h-px" style={{background:BORDER_L}}/>
+          {/* Location: the admin's Google Maps link, or the area by name. Lazy, so the map
+              only loads when the visitor scrolls near it. */}
+          <div>
+            <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Location</p>
+            <div className="relative border overflow-hidden" style={{borderColor:BORDER_L,background:"#e9e3d8",aspectRatio:"16/8"}}>
+              <iframe src={map.src} title={`Map of ${p.title}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="absolute inset-0 w-full h-full border-0"/>
             </div>
-          </>}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <span className="flex items-center gap-2 text-[14px]" style={{color:MUTED_L,...sans}}><MapPin size={14} style={{color:GOLD}}/>{placeLabel(p.location,p.district)}</span>
+              <a href={map.open} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 border text-[11px] tracking-[0.2em] uppercase transition-colors hover:border-[#8a2030] hover:text-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
+                <ExternalLink size={13}/>Open in Google Maps
+              </a>
+            </div>
+          </div>
           {reviewsFor(p.id).length>0&&<>
             <div className="h-px" style={{background:BORDER_L}}/>
             {/* Reviews: social proof after the facts, before "You May Also Like". */}
@@ -1617,15 +1677,12 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
               ))}
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>Message</label>
-                <textarea rows={3} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-3 py-2.5 text-[14px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder="I'm interested in this property..." style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
+                <textarea rows={3} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-3 py-2.5 text-[14px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder={`I'm interested in ${displayRef(p.propId)}...`} style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
-              <button onClick={()=>{ if(form.name.trim()&&(form.email.trim()||form.phone.trim())){setSent(true);setErr(false);} else setErr(true); }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>Send Enquiry</button>
+              <button onClick={()=>{ if(form.name.trim()&&(form.email.trim()||form.phone.trim())){ addMessage({kind:"enquiry",name:form.name.trim(),email:form.email.trim()||undefined,phone:form.phone.trim()||undefined,propertyId:p.id,propRef:p.propId,subject:p.title,body:form.msg.trim()||`Interested in ${displayRef(p.propId)}.`}); setSent(true);setErr(false);} else setErr(true); }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>Send Enquiry</button>
               {err&&<p className="text-[12px]" style={{color:MAROON,...sans}}>Please add your name and either an email or a phone number.</p>}
             </>)}
-            <div className="flex gap-2.5">
-              <a href="tel:+9771400000" className="flex-1 flex items-center justify-center gap-1.5 py-3 border text-[11px] tracking-[0.2em] uppercase transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L,...sans}}><Phone size={14}/>Call</a>
-              <a href="https://wa.me/9779800000000" target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-1.5 py-3 border text-[11px] tracking-[0.2em] uppercase transition-all" style={{borderColor:"#25D366",color:"#25D366",...sans,background:"rgba(37,211,102,0.07)"}}><MessageCircle size={14}/>WhatsApp</a>
-            </div>
+            <a href={waLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3.5 border text-[11px] tracking-[0.22em] uppercase transition-colors hover:bg-[rgba(37,211,102,0.12)]" style={{borderColor:"#25D366",color:"#1f9e4d",background:"rgba(37,211,102,0.07)",...sans}}><MessageCircle size={15}/>Chat on WhatsApp</a>
           </div>
         </div>
       </div>
@@ -1774,9 +1831,9 @@ function AboutPage({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20 py-20 border-b" style={{background:CREAM,borderColor:BORDER_L}}>
         <h2 className="text-3xl mb-12" style={{color:FG_LIGHT,...serif}}>What We Offer</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_L}}>
-          {SERVICES_LIST.map(s=>(
-            <div key={s.title} className="border-b border-r px-8 py-10" style={{borderColor:BORDER_L}}>
-              <div className="mb-3" style={{color:MAROON}}>{s.icon}</div>
+          {SERVICES.map(s=>(
+            <div key={s.id} className="border-b border-r px-8 py-10" style={{borderColor:BORDER_L}}>
+              <div className="mb-3" style={{color:MAROON}}><ServiceIcon name={s.icon}/></div>
               <p className="text-[15px] mb-2" style={{color:FG_LIGHT,...serif}}>{s.title}</p>
               <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>{s.desc}</p>
             </div>
@@ -1979,9 +2036,9 @@ function ServicesPage({ go }: { go:Go }) {
         <p className="mt-3 text-[15px] max-w-xl" style={{color:MUTED_L,...sans}}>A full-spectrum real estate advisory service crafted around the unique requirements of Nepal's property market.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-t border-l px-0" style={{borderColor:BORDER_L}}>
-        {SERVICES_LIST.map(s=>(
-          <div key={s.title} className="border-b border-r px-10 py-12" style={{borderColor:BORDER_L}}>
-            <div className="w-14 h-14 flex items-center justify-center border mb-6" style={{borderColor:BORDER_L,color:MAROON}}>{s.icon}</div>
+        {SERVICES.map(s=>(
+          <div key={s.id} className="border-b border-r px-10 py-12" style={{borderColor:BORDER_L}}>
+            <div className="w-14 h-14 flex items-center justify-center border mb-6" style={{borderColor:BORDER_L,color:MAROON}}><ServiceIcon name={s.icon}/></div>
             <h3 className="text-xl mb-3" style={{color:FG_LIGHT,...serif}}>{s.title}</h3>
             <p className="text-[15px] leading-[1.75]" style={{color:MUTED_L,...sans}}>{s.desc}</p>
             <button onClick={()=>go("contact")} className="mt-6 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase group/btn" style={{color:MAROON,...sans}}>Learn More <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-1"/></button>
@@ -1994,7 +2051,7 @@ function ServicesPage({ go }: { go:Go }) {
 
 // ─── Contact Page ──────────────────────────────────────────────────────────────
 function ContactPage() {
-  const [form,setForm]=useState({name:"",email:"",phone:"",interest:"General Enquiry",msg:""});
+  const [form,setForm]=useState({name:"",email:"",phone:"",interest:CONTACT_TOPICS[0]??"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
   return (
@@ -2016,14 +2073,14 @@ function ContactPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Interest</label>
                 <div className="relative"><select value={form.interest} onChange={e=>setForm(v=>({...v,interest:e.target.value}))} className="w-full border px-4 py-3 text-[15px] outline-none appearance-none" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
-                  {["General Enquiry","Buy Property","Rent Property","Investment Advisory","Free Listing"].map(o=><option key={o}>{o}</option>)}
+                  {CONTACT_TOPICS.map(o=><option key={o}>{o}</option>)}
                 </select><ChevronDown size={15} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:MUTED_L}}/></div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Message</label>
                 <textarea rows={4} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-4 py-3 text-[15px] outline-none resize-none" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
-              <button onClick={()=>{ if(form.name.trim()&&form.email.trim()){setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Send Enquiry</button>
+              <button onClick={()=>{ if(form.name.trim()&&form.email.trim()){ addMessage({kind:"contact",name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim()||undefined,subject:form.interest,body:form.msg.trim()||"(No message)"}); setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Send Enquiry</button>
               {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name and email address.</p>}
             </div>
           )}
@@ -2032,15 +2089,15 @@ function ContactPage() {
           {/* One list, so every row carries an icon and the same rule above it.
               Office and Office Hours used to be bare headings between iconned rows. */}
           {[
-            {i:<MapPin size={15}/>,        l:"Our Office",   v:<>Jhamsikhel Road, Lalitpur<br/>Kathmandu Valley, Nepal</>},
-            {i:<Phone size={15}/>,         l:"Telephone",    v:"+977 1 400 0000"},
-            {i:<Mail size={15}/>,          l:"Email",        v:"info@nepalbhoomi.com"},
-            {i:<MessageCircle size={15}/>, l:"WhatsApp",     v:"+977 980 000 0000"},
-            {i:<Clock size={15}/>,         l:"Office Hours", v:<>Sunday–Friday: 9:00 AM – 6:00 PM<br/>Saturday: By Appointment</>},
-          ].map((c,i)=>(
+            {i:<MapPin size={15}/>,        l:"Our Office",   v:CONTACT.address},
+            {i:<Phone size={15}/>,         l:"Telephone",    v:CONTACT.phone},
+            {i:<Mail size={15}/>,          l:"Email",        v:CONTACT.email},
+            {i:<MessageCircle size={15}/>, l:"WhatsApp",     v:CONTACT.whatsapp},
+            {i:<Clock size={15}/>,         l:"Office Hours", v:CONTACT.hours},
+          ].filter(c=>c.v.trim()).map((c,i)=>(
             <div key={c.l} className={`flex items-start gap-4 ${i>0?"border-t pt-8":""}`} style={{borderColor:BORDER_L}}>
               <span className="w-5 shrink-0 flex justify-center" style={{color:GOLD,marginTop:2}}>{c.i}</span>
-              <div><p className="text-[10px] tracking-[0.28em] uppercase mb-1.5" style={{color:MUTED_L,...sans}}>{c.l}</p><p className="text-[15px] leading-relaxed" style={{color:FG_LIGHT,...sans}}>{c.v}</p></div>
+              <div><p className="text-[10px] tracking-[0.28em] uppercase mb-1.5" style={{color:MUTED_L,...sans}}>{c.l}</p><p className="text-[15px] leading-relaxed whitespace-pre-line" style={{color:FG_LIGHT,...sans}}>{c.v}</p></div>
             </div>
           ))}
         </div>
@@ -2444,7 +2501,7 @@ function FreeListingPage() {
     {l:"Contact Email",t:"email",ph:"your@email.com"},
     {l:"Price (NPR)",t:"text",ph:"e.g. 5,00,00,000"},
     {l:"Built Area",t:"text",ph:"e.g. 3,500 sq.ft"},
-    {l:"Land Area",t:"text",ph:"e.g. 8 Ropani"},
+    {l:"Land Area",t:"text",ph:"e.g. 8 Ropani or 4-4-0-1"},
     {l:"Build Year",t:"number",ph:"2020"},
   ];
   const set=(k:string,v:string)=>setVals(o=>({...o,[k]:v}));
@@ -2456,6 +2513,12 @@ function FreeListingPage() {
     if(missing){ setErr(`Please fill in "${missing}".`); return; }
     if(!district.trim()){ setErr("Please choose a district."); return; }
     if(images.length===0){ setErr("Please add at least one photo — listings with photos get far more enquiries."); return; }
+    // Lands in Admin → Free Listings for review; the seller's details stay private.
+    const v=(k:string)=>(vals[k]||"").trim();
+    addListing({seller:{name:v("Contact Name"),phone:v("Contact Phone"),email:v("Contact Email")||undefined},
+      title:v("Property Title"),listing:v("Listing Type")==="For Rent"?"For Rent":"For Sale",type:v("Property Type")&&v("Property Type")!=="All Types"?v("Property Type"):"House/Bungalow",
+      district,price:v("Price (NPR)"),builtArea:v("Built Area"),landArea:v("Land Area"),buildYear:v("Build Year"),description:v("desc"),
+      amenities,photos:images.map(i=>i.url)});
     setErr(""); setDone(true);
   };
 
@@ -2487,7 +2550,7 @@ function FreeListingPage() {
                 </div>
               ))}
 
-              {[{l:"Property Type",opts:PROP_TYPES},{l:"Listing Type",opts:["For Sale","For Rent"]}].map(s=>(
+              {[{l:"Property Type",opts:PROPERTY_TYPES},{l:"Listing Type",opts:["For Sale","For Rent"]}].map(s=>(
                 <div key={s.l} className="flex flex-col gap-1.5">
                   <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>{s.l}</label>
                   <div className="relative">
@@ -2624,7 +2687,7 @@ function visitLabel(v:Visit):string {
       case "register": return "Register";
       case "free-listing": return "Free Listing";
       case "reset-password": return "Reset Password";
-      case "admin": case "admin-users": case "admin-reviews": return "Admin";
+      case "admin": case "admin-users": case "admin-reviews": case "admin-listings": case "admin-messages": return "Admin";
     }
   })();
   return `Back to ${name}`;
@@ -2682,7 +2745,9 @@ export default function App() {
     restoreY.current=null;
     setPage(p); setNav(o);
     if(o.blog!==undefined) setBlogId(o.blog);
-    window.scrollTo(0,0);
+    // Admin tabs switch in place: AdminLayout keeps the tab bar where it was instead of the page
+    // jumping back to the top. Everything else opens at the top.
+    if(!(from.page.startsWith("admin")&&p.startsWith("admin"))) window.scrollTo(0,0);
   },[]);
 
   /** Where the Back button leads: the previous page, or the natural parent if there is none. */
@@ -2771,6 +2836,8 @@ export default function App() {
                 {page==="admin"&&<AdminDashboard nav={adminNav}/>}
                 {page==="admin-users"&&<AdminUsers nav={adminNav}/>}
                 {page==="admin-reviews"&&<AdminReviews nav={adminNav}/>}
+                {page==="admin-messages"&&<AdminMessages nav={adminNav}/>}
+                {page==="admin-listings"&&<AdminListings nav={adminNav}/>}
               </Suspense>
             )}
             {page==="reset-password"&&<ResetPasswordPage go={go} token={resetToken??""}/>}

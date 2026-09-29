@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Eye, Star, Trash2 } from "lucide-react";
-import { ALL_PROPS } from "@/app/data/properties";
+import { ALL_PROPS, displayRef } from "@/app/data/properties";
 import { deleteReview, ratingFor, restoreReview, reviewedPropertyIds, reviewsFor, type Review } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
 import { BORDER_L, FG_LIGHT, GOLD, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
@@ -46,12 +46,11 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
   const total = groups.reduce((n, g) => n + g.reviews.length, 0);
   const current = Math.min(page, Math.max(1, Math.ceil(groups.length / GROUPS_PER_PAGE)));
   const propertyOptions = [{ value: "all", label: "All properties" },
-    ...reviewedPropertyIds().map(id => ALL_PROPS.find(p => p.id === id)).filter(Boolean).map(p => ({ value: String(p!.id), label: `${p!.title} (${p!.propId})` }))];
+    ...reviewedPropertyIds().map(id => ALL_PROPS.find(p => p.id === id)).filter(Boolean).map(p => ({ value: String(p!.id), label: `${p!.title} (${displayRef(p!.propId)})` }))];
 
   return (
     <AdminLayout nav={nav} current="admin-reviews" tag="Administration" title="Reviews"
-      back={{ label: "Back to Dashboard", to: "admin" }}
-      intro="What visitors have written about each property. Remove anything inappropriate; it disappears from the property page immediately.">
+      intro="What visitors wrote about each property. Anything you remove leaves the site at once.">
       <div className="flex flex-col lg:flex-row gap-3 mb-8">
         <SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by reviewer or words in the review" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:w-[34rem]">
@@ -78,7 +77,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
                   <p className="text-[18px] truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
                   <p className="flex items-center gap-2 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
                     <Star size={13} fill={GOLD} style={{ color: GOLD }} /><span style={{ color: FG_LIGHT }}>{ratingFor(p.id).toFixed(1)}</span>
-                    · {reviewsFor(p.id).length} review{reviewsFor(p.id).length === 1 ? "" : "s"} · {p.propId}
+                    · {reviewsFor(p.id).length} review{reviewsFor(p.id).length === 1 ? "" : "s"} · {displayRef(p.propId)}
                   </p>
                 </div>
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)}><Eye size={13} />View Property</Button>
