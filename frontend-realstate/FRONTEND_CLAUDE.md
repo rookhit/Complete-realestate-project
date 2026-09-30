@@ -71,7 +71,8 @@ row names the exact function to replace.
 | GET | `/properties/:id` | public | `ALL_PROPS.find(...)` in `PropertyDetailPage` |
 | POST / PATCH / DELETE | `/admin/properties[/:id]` | ADMIN | `saveProperty()`, `deleteProperty()`, `restoreProperty()` (Undo) |
 | PATCH | `/admin/properties/:id` `{ reactionCount }` | ADMIN | `data/reviews.ts` → `setReactionCount()` |
-| POST | `/admin/uploads` (multipart, image ≤ 8 MB) → `{ url }` | ADMIN | every `blob:` URL from `components/ui/photo-picker.tsx` |
+| POST | `/admin/uploads` (multipart, image ≤ 8 MB) → `{ url }` | ADMIN | every `blob:` URL from `components/ui/photo-picker.tsx`; uploaded-video covers (JPEG data URLs) |
+| POST | `/admin/uploads/video` (multipart, video ≤ 500 MB) → `{ url }` | ADMIN | `admin/VideoUpload.tsx` → `sources[0].src` (a `blob:` URL today) |
 | GET / POST | `/properties/:id/reviews` | public | `reviewsFor()`; `ReviewForm` submit in `components/ui/property-reviews.tsx` |
 | GET / DELETE | `/admin/reviews[/:id]` | ADMIN | `admin/AdminReviews.tsx` → `deleteReview()`, `restoreReview()` |
 | POST / DELETE | `/properties/:id/reaction` | public | `components/ui/reaction-button.tsx` → `FAVS` |
@@ -83,9 +84,14 @@ row names the exact function to replace.
 | POST / PATCH / DELETE | `/admin/testimonials[/:id]`, `PUT …/order` | ADMIN | `upsert(TESTIMONIALS…)` etc. |
 | GET | `/videos` | public | `VIDEO_LIST` / `companyVideos()` |
 | POST / PATCH / DELETE | `/admin/videos[/:id]`, `PUT /admin/videos/order` | ADMIN | `upsert(VIDEO_LIST…)` etc. |
-| GET | `/site` → `{ stats, featuredDistricts }` | public | `STATS`, `FEATURED_DISTRICTS` |
+| GET | `/site` → `{ stats, featuredDistricts, contact, services }` (each district with its live `count`) | public | `STATS`, `FEATURED_DISTRICTS`, `CONTACT`, `SERVICES` (all in `data/content.ts`) |
 | PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | `HomePageSection` save buttons in `admin/ContentEditors.tsx` |
-| POST | `/enquiries`, `/callbacks`, `/contact`, `/listings` | public | the four lead forms (§7.5). Nothing is sent today |
+| PUT | `/admin/site/contact` (`ContactInfo`), `/admin/site/services` (whole `Service[]`, in order) | ADMIN | `saveContact()`, `saveServices()` ← `admin/CompanyEditor.tsx` |
+| POST | `/listings` | public | Free Listing form → `addListing()` (`data/listings.ts`), shown in Admin → Free Listings (§7.10) |
+| GET / PATCH / POST | `/admin/listings[/:id]`, `/admin/listings/:id/publish`, `/admin/listings/new-count` | ADMIN | `admin/AdminListings.tsx`: `updateListing()`, publish via `saveProperty()` (§7.10) |
+| GET / PUT | `/site` options, `/admin/site/options/:key` | ADMIN | every dropdown / suggestion list: `data/options.ts` → `setOptions()` |
+| POST | `/enquiries`, `/callbacks`, `/contact` | public | the three lead forms (§7.5). Today each calls `addMessage()` (`data/messages.ts`) so it shows in Admin → Messages |
+| GET / PATCH / DELETE | `/admin/messages[/:id]`, `GET /admin/messages/unread-count` | ADMIN | `admin/AdminMessages.tsx`, the red badges; `updateMessage()`, `deleteMessage()`, `restoreMessage()` (§7.9) |
 | GET/PUT/DELETE | `/me/favourites[/:propertyId]` | signed in | `FAVS` (hearts, lost on reload today) |
 
 Every `upsert` / `removeById` / `moveById` call is in `data/content.ts`; order matters for
@@ -98,7 +104,7 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 
 ### 0.5 Shapes and exact vocabularies
 
-Types: `Prop`, `FloorPlan`, `FloorPlanRoom` in `data/properties.ts`; `BlogPost`, `Testimonial`,
+Types: `Prop`, `PlanBox` in `data/properties.ts`; `Message` in `data/messages.ts`; `BlogPost`, `Testimonial`,
 `TeamMember`, `Stat`, `FeaturedDistrict`, `CompanyVideoInput` in `data/content.ts`; `Review` in
 `data/reviews.ts`; `AuthUser` in `auth.tsx`. Suggested Prisma models: §7.8.
 
@@ -111,13 +117,77 @@ Store these **exact strings** (they are filter keys and dropdown values):
 | `PROPERTY_TYPES` | `data/properties.ts` | House/Bungalow, Land, Apartment, Commercial, Flat |
 | `BADGES` | ″ | Hot, Featured, New, Prime, Rare, Verified, Exclusive |
 | `FACINGS`, `ROAD_SURFACES` | ″ | 8 directions; Black-topped, Concrete, Graveled, Earthen |
-| `LAND_UNITS`, `BUILT_UNITS` | ″ | Ropani, Aana, Bigha, Kattha, Dhur, sq.ft; sq.ft, sq.m |
-| `FLOOR_LABELS`, `ROOM_NAMES` | ″ | Basement … Rooftop; 21 room names |
-| `BLOG_CATEGORIES`, `TEAM_ROLES` | `data/content.ts` | suggestions; the admin may type others |
+| `LAND_UNITS`, `BUILT_UNITS` | ″ | Ropani, Aana, Bigha, Kattha, Dhur, sq.ft; sq.ft, sq.m. Plus `RAPD` ("R-A-P-D"), below |
+| `FLOOR_NAMES`, `PLAN_BOX_SIZES` | ″ | default names for floor-plan boxes; Small / Medium / Large box sizes |
+| `TEAM_ROLES` | `data/content.ts` | suggestions; the admin may type others. Article `cat` is free text; `author` is always `ARTICLE_AUTHOR` ("Nepal Bhoomi") |
+| `MESSAGE_KINDS` | `data/messages.ts` | enquiry, callback, contact, email (free listings have their own page) |
+| `OPTION_LISTS` | `data/options.ts` | **admin-editable** lists: property types, badges, facings, road surfaces, land / built units, floor names, highlight / tagline ideas, team positions, departments, languages, specialities, testimonial starters, contact topics, callback times |
 | `DEPARTMENTS`, `LANGUAGES`, `SPECIALITIES` | ″ | team profile fields |
 
 Prices: `priceNum` is whole rupees (per month for rent); the display string comes from
 `formatPrice()` in `data/properties.ts`.
+
+**Property reference (`propId`), top priority.** Format: `NBS` (for sale) or `NBL` (letting / for rent)
++ a number of at least 3 digits: `NBS345`, `NBL007`. The API stores and returns it **without** the `#`;
+the site shows `#NBS345` on every card, list row, the property page (with a Copy button), in the
+WhatsApp message and in the admin. Rules, all implemented in `data/properties.ts`:
+
+- **One number sequence for sale and rent**, so `NBS345` and `NBL345` never both exist. Store the
+  number (`refNumber Int @unique`) and build the code from it.
+- **The admin chooses it.** The editor's Property ID box has NBS / NBL and a number, pre-filled with
+  the next free one. `POST` / `PATCH /admin/properties` send `propId` (e.g. `"NBL345"`): parse the
+  digits, and answer **409 `REF_TAKEN`** if another property already has that number. `GET
+  /admin/properties/next-ref` → `{ refNumber }` would replace `nextPropRef()`.
+- **The prefix follows `listing`.** Picking NBL in the admin sets the listing to rent and vice versa; when a
+  property changes from sale to rent, `NBS345` becomes `NBL345` and the number stays. Easiest: compute `propId` in the response, don't store the string.
+- **Never reuse a number**, even after a delete (Undo brings the same number back).
+- **Search `q` must match references** typed as `#NBS345`, `nbs345`, `NBS 345` or just `345`: strip
+  `#`, spaces and `-`, then match case-insensitively (`matchesRef()`).
+- Old demo references (`NB-001`) are gone; nothing needs migrating.
+
+Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(propId)`, `displayRef(propId)`,
+`matchesRef(propId, q)`, `nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
+
+**Property map (`mapUrl`), new.** The admin pastes a Google Maps link in the Location step; the property
+page shows it as an embedded map with "Open in Google Maps" (no API key: `maps.google.com/maps?q=…&output=embed`).
+Parsing is in `data/maps.ts` → `resolveMap()`: exact pins from `!3d…!4d…` / `@lat,lng` / `q=lat,lng`,
+place names from `/place/…`, pasted embed `<iframe>` code, or plain `27.67, 85.31`. Please:
+
+- store `mapUrl String?` as typed, plus `lat Float?` / `lng Float?`;
+- on save, if the link is a **short link** (`maps.app.goo.gl/…`), follow its redirect server-side and
+  take the coordinates from the final URL (the browser can't: cross-site redirect). Return `lat` / `lng`;
+- `mapX` / `mapY` (the decorative Buy / Rent map grid) are now derived from coordinates when there are
+  any (`gridFromCoords()`); the pin-placing grid in the admin is gone. With real `lat` / `lng` the map
+  view can become a real map later and `mapX` / `mapY` can be dropped.
+
+**Contact details and services, new.** `CONTACT` (address, phone, whatsapp, email, hours, instagram,
+facebook, youtube, linkedin) and `SERVICES` (`{ id, icon, title, desc }[]`, `icon` one of `SERVICE_ICONS`)
+in `data/content.ts`, edited in Admin → Contact & Services. Every WhatsApp button uses
+`whatsappLink()`, so the number lives in one place. Store both as `SiteSetting` rows.
+
+**Land area in Ropani-Aana-Paisa-Dam, new.** Besides "12 Ropani", the admin can type the Nepali form
+`4-4-0-1` (4 ropani, 4 aana, 0 paisa, 1 dam). The unit is then fixed and `landArea` is stored as
+**`"4-4-0-1 R-A-P-D"`** (always four parts; "4-4" is saved as "4-4-0-0"). Limits: aana 0–15, paisa 0–3,
+dam 0–3 (checked in the editor, please check again on the server). Cards and the property page show the
+string as is, plus "≈ 23,294 sq.ft". Conversion (`rapdToSqft()` in `data/properties.ts`):
+**1 ropani = 16 aana = 5,476 sq.ft; 1 aana = 4 paisa = 342.25 sq.ft; 1 paisa = 4 dam = 85.5625 sq.ft;
+1 dam = 21.390625 sq.ft.** Please store `landAreaSqft Int?` next to the display string (convert every unit,
+not just R-A-P-D) so land can be sorted and filtered by size. Helpers: `isRapd`, `normalizeRapd`,
+`rapdProblem`, `rapdToSqft`, `rapdOf`, `landSqftNote`.
+
+**Floor plan (`floorPlan`), replaced 2026-09-28.** The old floors-and-rooms editor is gone. The admin drags
+Small / Medium / Large boxes onto a plan, moves and resizes them, and types a floor name and area in sq.ft:
+`PlanBox { id, name, area, x, y, w, h }` with x / y / w / h as **percentages** of the plan (0–100), so it
+scales to any screen. Store the array as JSON on the property. Visitors hover a box for its name and area;
+phones show them in the boxes (`components/ui/floor-plan.tsx`).
+
+**Featured district counts come from you.** The admin no longer types a count; the site counts the
+district's listings. Return `count` per district in `GET /site` (count of published properties).
+
+**Messages inbox, new.** Admin → Messages lists every form submission and emails to the business address,
+with a red unread badge on the tab and the site's Admin button, and a pop-up when one arrives. Reply is a
+`mailto:` link (quotes the message, puts `#NBS…` in the subject); Call / WhatsApp for phone-only leads.
+Details and endpoints: §7.9.
 
 ### 0.6 Pages and browser storage
 
@@ -397,10 +467,10 @@ unless we agree otherwise in this file.
 ```ts
 interface Prop {
   id:         number;        // 1..12 today. Use a stable id or uuid
-  propId:     string;        // human reference, "NB-001". Shown on the listing row
+  propId:     string;        // reference, "NBS001" (sale) / "NBL007" (rent). Shown as "#NBS001" on every card. Rules in §0.5
   badge:      string;        // "Hot" | "Featured" | "New" | "Prime" | "Rare" | "Verified"
   title:      string;        // "The Patan Residence"
-  tagline:    string;        // short subtitle. Currently rendered nowhere — dead field
+  tagline:    string;        // optional, e.g. "Heritage Reimagined": shown in italics under the title on the property page and in the home hero
   location:   string;        // "Jawlakhel, Lalitpur" — free text, shown under the title
   district:   string;        // MUST match one of AREAS exactly. This is the filter key
   price:      string;        // DISPLAY string: "NPR 8.5 Cr", "NPR 85,000/mo"
@@ -410,7 +480,7 @@ interface Prop {
   beds:       number;        // 0 means "not applicable" (land, commercial) and hides the row
   baths:      number;        // 0 means hidden
   builtArea:  string;        // "4,850 sq.ft" — or the literal em dash "—" to hide
-  landArea:   string;        // "12 Ropani" — or "—" to hide
+  landArea:   string;        // "12 Ropani", "4-4-0-1 R-A-P-D" (Ropani-Aana-Paisa-Dam, §0.5), or "—" to hide
   roadAccess: string;        // "Black-topped 20ft"
   facing:     string;        // "North-East"
   buildYear:  number;        // 0 renders as "—"
@@ -423,17 +493,17 @@ interface Prop {
   features:   string[];      // amenity chips
   mapX:       number;        // 0-100, % position on a FAKE decorative grid
   mapY:       number;        // 0-100. NOT latitude/longitude
-  floorPlans?: FloorPlan[];  // added 2026-09-28, set in the admin; optional
+  floorPlan?: PlanBox[];     // boxes drawn by the admin; optional. §0.5
+  mapUrl?:    string;        // Google Maps link from the admin; property page map. Rules in §0.5
 }
 
-interface FloorPlan     { id: string; label: string; image?: string; rooms: FloorPlanRoom[] }
-                          // label: "Basement" | "Ground Floor" | "First Floor" | … | "Rooftop"
-interface FloorPlanRoom { name: string; dims: string }   // dims "5.2 × 4.8 m", or "" if unknown
+interface PlanBox { id: string; name: string; area: number; x: number; y: number; w: number; h: number }
+                   // name "1st Floor", area in sq.ft; x, y, w, h are % of the plan (0-100)
 ```
 
 Source of truth: `src/app/data/properties.ts`. It also holds every dropdown vocabulary the admin
-offers (`BADGES`, `FACINGS`, `ROAD_SURFACES`, `LAND_UNITS`, `BUILT_UNITS`, `FLOOR_LABELS`,
-`ROOM_NAMES`, `PROPERTY_TYPES`) and `formatPrice(priceNum, listing)`, which produces the display
+offers (`BADGES`, `FACINGS`, `ROAD_SURFACES`, `LAND_UNITS`, `BUILT_UNITS`, `FLOOR_NAMES`,
+`PLAN_BOX_SIZES`, `PROPERTY_TYPES`) and `formatPrice(priceNum, listing)`, which produces the display
 price ("NPR 8.5 Cr", "NPR 1.2 L/mo", "NPR 85,000/mo").
 
 How the admin form maps onto these fields (so the API can store the parts, not just the strings):
@@ -442,7 +512,7 @@ How the admin form maps onto these fields (so the API can store the parts, not j
 |---|---|---|
 | Amount + Crore/Lakh/Rupees | `priceNum` (rupees) + `price` via `formatPrice` | `priceNum` int; format on the client or send both |
 | Built area number + unit | `builtArea` "4,850 sq.ft" or "—" | `builtAreaValue` decimal? + `builtAreaUnit` enum, null when absent |
-| Land area number + unit | `landArea` "12 Ropani" or "—" | `landAreaValue` + `landAreaUnit` (Ropani, Aana, Bigha, Kattha, Dhur, sq.ft) |
+| Land area number + unit | `landArea` "12 Ropani", "4-4-0-1 R-A-P-D" or "—" | `landAreaValue` + `landAreaUnit` (Ropani, Aana, Bigha, Kattha, Dhur, sq.ft, **R-A-P-D**: value stored as text "4-4-0-1") + `landAreaSqft` |
 | Road surface + width | `roadAccess` "Black-topped 20ft" | `roadSurface` enum + `roadWidthFt` int |
 | Amenity tiles | canonical names inside `features` | **`amenities: string[]`** (canonical only, filterable) |
 | Highlights (free text) | the other entries of `features` | **`highlights: string[]`** |
@@ -473,7 +543,7 @@ All in `src/app/data/content.ts`:
 { id:number; cat:string; date:string;   // "May 2025" — NOT a parseable date. Send ISO 8601
   read:string;                          // "6 min" — the admin computes it from the text (200 wpm)
   title:string; excerpt:string; image:string;
-  author:string;                        // a team member's name (or free text)
+  author:string;                        // always "Nepal Bhoomi" (ARTICLE_AUTHOR); cat is free text
   body?:string }                        // full article, paragraphs split by a blank line. NEW 2026-09-28
 
 // TESTIMONIALS  (Testimonial)
@@ -743,7 +813,7 @@ email, email-verified, name, picture URL, first/last login); Google's own tokens
 `User.passwordHash` is now nullable; password login against a Google-only account returns the
 normal generic 401.
 
-### 7.5 Leads — four forms exist today, all currently fake
+### 7.5 Leads — four forms; each lands in Admin → Messages (§7.9)
 
 | Method | Path | Fired by |
 |---|---|---|
@@ -801,7 +871,7 @@ and use the §7.1 envelope.
 | Method | Path | Body / notes |
 |---|---|---|
 | `GET` | `/admin/properties` | Paginated, `q`, `listing`, `type`, `sort` (`price_desc` \| `price_asc` \| `reactions`) |
-| `POST` | `/admin/properties` | Full property (§6 + table there). Server assigns `id` and `propId` ("NB-013") |
+| `POST` | `/admin/properties` | Full property (§6 + table there). Server assigns `id` and `propId` (`NBS013` / `NBL013`, prefix from `listing`; §0.5) |
 | `PATCH` | `/admin/properties/:id` | Any subset, including `reactionCount` |
 | `DELETE` | `/admin/properties/:id` | The UI refuses to delete the last property; the API may enforce the same |
 
@@ -825,7 +895,10 @@ used as a listing hero). Add the storage host to the CSP in `vite.config.ts`.
 | Testimonials | `POST/PATCH/DELETE /admin/testimonials[/:id]`, `PUT …/order` | Yes |
 | Videos | `POST/PATCH/DELETE /admin/videos[/:id]`, `PUT /admin/videos/order` | Yes: first = centre card |
 | Statistics | `PUT /admin/site/stats` (array of 4 `{ value, label }`) | Yes |
-| Featured districts | `PUT /admin/site/featured-districts` (1–5 `{ name, count, img }`) | Yes |
+| Featured districts | `PUT /admin/site/featured-districts` (1–5 `{ name, img }`; `count` is computed by you) | Yes |
+| Uploaded videos | `POST /admin/uploads/video` then `POST /admin/videos` with `sources: [{ label, src, type }]`, `poster`, `duration` | Yes |
+| Contact details | `PUT /admin/site/contact` (`ContactInfo`, §0.5) | No |
+| Services | `PUT /admin/site/services` (`Service[]`) | Yes: home / About / Services show this order |
 
 **Users** — `admin/AdminUsers.tsx`: already live on `GET /admin/users`. Please add **`lastLoginAt`**
 to `USER_SELECT`; the "Last Sign-in" column is ready and shows "—" until then.
@@ -835,7 +908,7 @@ to `USER_SELECT`; the "Last Sign-in" column is ready and shows "—" until then.
 ```prisma
 model Property {
   id            Int      @id @default(autoincrement())
-  ref           String   @unique              // "NB-013" (UI calls it propId)
+  refNumber     Int      @unique @default(autoincrement()) // API returns propId = (FOR_SALE ? "NBS" : "NBL") + 3-digit number, §0.5
   title         String
   tagline       String   @default("")
   description   String
@@ -853,7 +926,9 @@ model Property {
   builtAreaValue Decimal? @db.Decimal(10,2)
   builtAreaUnit String?                        // sq.ft | sq.m
   landAreaValue Decimal? @db.Decimal(10,2)
-  landAreaUnit  String?                        // Ropani | Aana | Bigha | Kattha | Dhur | sq.ft
+  landAreaUnit  String?                        // Ropani | Aana | Bigha | Kattha | Dhur | sq.ft | R-A-P-D
+  landAreaRapd  String?                        // "4-4-0-1" when the unit is R-A-P-D (landAreaValue stays null)
+  landAreaSqft  Int?                           // every unit converted, for sorting / filtering (§0.5)
   beds          Int      @default(0)           // 0 hides it; land is always 0
   baths         Int      @default(0)
   floors        Int      @default(0)
@@ -863,14 +938,15 @@ model Property {
   highlights    String[]                       // free text
   mapX          Int      @default(50)
   mapY          Int      @default(50)
+  mapUrl        String?                        // Google Maps link as pasted
+  lat           Float?                         // from mapUrl; short links resolved on save (§0.5)
+  lng           Float?
   reactionCount Int      @default(0)
-  floorPlans    FloorPlan[]
+  floorPlan     Json?                          // PlanBox[], §0.5
   reviews       Review[]
   createdAt     DateTime @default(now())       // "newest" sort needs this
   updatedAt     DateTime @updatedAt
 }
-model FloorPlan { id String @id @default(cuid()) propertyId Int property Property @relation(fields:[propertyId], references:[id], onDelete: Cascade)
-                  label String  image String?  rooms Json  /* [{ name, dims }] */  position Int }
 model Review    { id Int @id @default(autoincrement()) propertyId Int property Property @relation(fields:[propertyId], references:[id], onDelete: Cascade)
                   author String  avatar String?  rating Int  text String  verified Boolean @default(false)
                   status ReviewStatus @default(PENDING)  createdAt DateTime @default(now()) }
@@ -882,7 +958,7 @@ model TeamMember  { id Int @id @default(autoincrement()) name String role String
                     phone String? whatsapp String? email String? }
 model Testimonial { id Int @id @default(autoincrement()) name String role String rating Int text String photoUrl String position Int }
 model Video       { id Int @id @default(autoincrement()) title String duration String youtubeUrl String? posterUrl String? position Int }
-model SiteSetting { key String @id  value Json }   // "stats", "featuredDistricts", later "contact"
+model SiteSetting { key String @id  value Json }   // "stats", "featuredDistricts", "contact", "services"
 enum Listing { FOR_SALE FOR_RENT }
 enum ReviewStatus { PENDING PUBLISHED REJECTED }
 ```
@@ -895,7 +971,61 @@ the Services list (its icons are code, so it needs an icon-name field first).
 **Admin UX facts the backend may rely on:** drafts autosave to `localStorage` per property
 (`nb-admin-draft:property:<id|new>`) and are removed on save; photos picked before a reload are
 not kept in drafts. "Duplicate" creates a new property from a copy (new ref, reactions 0). The
-"Write it for me" / idea chips are local templates (`admin/suggestions.ts`), not an AI service.
+"Write it for me" / idea chips are local templates (`admin/suggestions.ts`), not an AI service, and never call
+the backend. The property description uses only what the form holds (title, type, listing, place, rooms,
+areas, build year, facing, road, amenities, highlights, price, verified); nothing is invented.
+
+### 7.9 Messages — UI built, API not
+
+`admin/AdminMessages.tsx`, data in `data/messages.ts` (`Message`: `id, kind, name, email?, phone?, subject, body,
+propertyId?, propRef?, receivedAt, read, replied?`).
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/admin/messages?kind&unread&q&page` | Newest first. `kind`: enquiry, callback, contact, email |
+| `GET` | `/admin/messages/unread-count` | Poll every ~30 s for the badges and the "new message" pop-up |
+| `PATCH` | `/admin/messages/:id` | `{ read }` or `{ replied }` |
+| `DELETE` | `/admin/messages/:id` | Soft delete, so Undo can restore it |
+
+Each §7.5 form creates a message (`kind` from the form; property enquiries carry `propertyId` and `propRef`).
+**Emails:** poll the business mailbox (Gmail API or IMAP, the same Gmail account as SMTP) and store each
+new email as `kind: "email"`. Replies open the admin's mail app today (`mailto:`); a later
+`POST /admin/messages/:id/reply { body }` could send through the existing Gmail SMTP instead.
+
+```prisma
+enum MessageKind { ENQUIRY CALLBACK CONTACT EMAIL }
+model Message { id Int @id @default(autoincrement())  kind MessageKind  name String  email String?  phone String?
+                subject String  body String  propertyId Int?  read Boolean @default(false)  replied Boolean @default(false)
+                deletedAt DateTime?  receivedAt DateTime @default(now())  @@index([read, receivedAt]) }
+```
+
+### 7.10 Free listings — UI built, API not
+
+Sellers submit the Free Listing page; the admin reviews it in **Admin → Free Listings** (red count on the tab
+and the site's Admin button). Two views: a spreadsheet-style table and the site's own property cards. Review
+opens the normal property editor pre-filled from the submission, with the seller's details in a private box.
+The admin fills the gaps and either **Publish Now** (creates a property) or **Save for Later** (keeps the edited
+property as `draft`). Seller name / phone / email are **never** copied to the property. Code: `data/listings.ts`
+(`ListingSubmission`, `listingToProp()`, `listingGaps()`), `admin/AdminListings.tsx`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/listings` | Public, multipart (fields + photos). Status `new`. Rate-limit + captcha like §7.5 |
+| `GET` | `/admin/listings?status&q&page` | `status`: new, draft, published, rejected |
+| `GET` | `/admin/listings/new-count` | For the red badge |
+| `PATCH` | `/admin/listings/:id` | `{ status }` (reject / restore) or `{ status: "draft", draft: Prop }` |
+| `POST` | `/admin/listings/:id/publish` | Body: the edited `Prop`. Creates the property, sets `status: "published"`, `propertyId`. Same validation as `POST /admin/properties` |
+
+**Required before publishing** (red in the UI): title, district, price, at least one photo, a description of
+20+ characters. **Recommended** (gold): bedrooms (not land), an area, road access, a tagline.
+
+```prisma
+enum ListingStatus { NEW DRAFT PUBLISHED REJECTED }
+model ListingSubmission { id Int @id @default(autoincrement())  status ListingStatus @default(NEW)  receivedAt DateTime @default(now())
+  sellerName String  sellerPhone String  sellerEmail String?              // private
+  title String  listing Listing  type String  district String  price String  builtArea String  landArea String  buildYear String
+  description String  amenities String[]  photos String[]  draft Json?  propertyId Int? }
+```
 
 ---
 
@@ -1329,10 +1459,15 @@ Add a row instead of editing the other person's files. Delete the row when resol
 | Date | From | Question / request | Status |
 |---|---|---|---|
 | 2026-09-28 | Frontend | **Admin panel is built, frontend only.** Please build §7.8 (properties, uploads, articles, team, testimonials, videos, site settings) and §7.7 (reviews, reactions). Suggested Prisma models are in §7.8. | **Needs saksham** |
+| 2026-09-28 | Frontend | **Property references `#NBS345` / `#NBL345`** (top priority): one number sequence, prefix from `listing`, `q` search must match them. Rules in §0.5. | **Needs saksham** |
 | 2026-09-28 | Frontend | Add **`lastLoginAt`** to `USER_SELECT` in `GET /admin/users`; the Users page column is ready. | **Needs saksham** |
 | 2026-09-28 | Frontend | Split property `features` into **`amenities`** (canonical, 69 names) and **`highlights`** (free text); the admin already keeps them apart. | Open |
-| 2026-09-28 | Frontend | **Enquiries inbox**: the four §7.5 forms and Free Listing submissions need endpoints and storage before the admin can show them. | Open |
-| 2026-09-28 | Frontend | Editable **contact details** (phone, email, WhatsApp, address, hours) as a `SiteSetting`; today they are hard-coded in several places. | Open |
+| 2026-09-28 | Frontend | **Messages inbox is built** (Admin → Messages). Please build §7.5 + §7.9, and the mailbox import for emails. | **Needs saksham** |
+| 2026-09-29 | Frontend | **Free Listings review** (§7.10) and **editable dropdown options** (`data/options.ts`, one `SiteSetting` per list). | **Needs saksham** |
+| 2026-09-28 | Frontend | **Featured district `count`** is now yours: return it per district in `GET /site`. | **Needs saksham** |
+| 2026-09-28 | Frontend | **Floor plans** changed to `PlanBox[]` (JSON on the property, §0.5). **Video uploads**: `POST /admin/uploads/video`. | **Needs saksham** |
+| 2026-09-28 | Frontend | **Contact details and services** are editable in the admin now (`CONTACT`, `SERVICES`). Please add `PUT /admin/site/contact`, `PUT /admin/site/services` and include both in `GET /site`. | **Needs saksham** |
+| 2026-09-28 | Frontend | **Property maps**: store `mapUrl`, resolve short Google Maps links to `lat` / `lng` on save (§0.5). Property ID is chosen by the admin: 409 `REF_TAKEN` on a duplicate number. | **Needs saksham** |
 | 2026-09-23 | Backend | **Review the `LoginPage` edit on `feat/be-google-auth`.** It touches `App.tsx` (frontend-owned, §10.2): adds the "Continue with Google" button and the `?auth=google` / `?auth_error=google` handling. Done on the product owner's request; flagged here rather than merged silently. | **Needs Prajjwal** |
 | 2026-09-23 | Backend | **Reconcile the two backends.** `feat/monorepo-and-auth-hardening` (`apps/api`, cookie-only, `/api/auth`) and `feat/be-google-auth` (`backend-realstate`, Bearer + refresh cookie, `/api/v1/auth`, forgot/reset-password, agency/agent verification, Google login) diverged from the same commit. Pick one scheme and port the other branch's fixes (rate limiting, reuse detection, password denylist) or features across. | Open |
 | 2026-09-22 | Frontend | **Review `feat/monorepo-and-auth-hardening`.** It edits `apps/api`, which is yours. Seven security fixes plus the repo restructure. Details in the two commits on that branch. | **Needs saksham** |
@@ -1356,6 +1491,34 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-09-29 · frontend · Responsive pass (320 px phones to 1920 px desktops).** No sideways scrolling on any page or
+  size. Desktop menu from 1280 px (side menu below; the bar used to run off laptops). Buy / Rent list rows stack on
+  phones; filter bars and admin filters are one swipeable row; admin tabs become an icon bar so the red counts show
+  on phones; editors scroll as one page on phones with compact pinned buttons. No API changes.
+- **2026-09-29 · frontend · Free Listings, editable options, floor-plan card, tagline.** Free Listing submissions
+  have their own admin page (table + card views, review in the property editor, private seller box, publish now
+  or save for later) and no longer go to Messages. Every dropdown and suggestion list is editable in Dashboard →
+  Dropdown Options (plus "Save to list" / "+ New" inside the team editor). Floor-plan boxes are edited in a card
+  beside the box (no scrolling). The tagline now shows on the property page and home hero. Heart button
+  animation; the extra Search button on Buy / Rent is gone.
+- **2026-09-28 · frontend · Land area in Ropani-Aana-Paisa-Dam.** The editor accepts `4-4-0-1`; with a dash
+  the unit locks to R-A-P-D and the values are checked. Stored as "4-4-0-1 R-A-P-D"; cards show land area
+  on the price line, the property page adds the sq.ft equivalent. Conversion table in §0.5.
+- **2026-09-28 · frontend · Floor-plan builder, Messages, video upload.** Floor plans are drag-and-drop boxes
+  (name + sq.ft; hover on desktop, printed in the box on phones). New Admin → Messages with unread badges,
+  a new-message pop-up and reply by email; every site form feeds it. Videos: "Add from YouTube" or
+  "Upload a Video" (file, auto length and cover). District tiles count listings instead of a typed number.
+  Articles: free-text category, author always Nepal Bhoomi. "Write it for me" uses only form facts.
+- **2026-09-28 · frontend · Property ID box, property maps, Contact & Services.** The editor has a
+  Property ID box (NBS / NBL + number, live `#NBL345` preview, duplicate check). The Location step takes a
+  Google Maps link with a live map under it; the property page gains a Location map. New admin section
+  Contact & Services (contact details, social links, services list) replaces hard-coded values. The live
+  preview now shrinks to fit its column. Mobile menu is a frosted side panel. Backend notes in §0.5.
+- **2026-09-28 · frontend · Property references and team profile redesign.** References are now
+  `NBS` (sale) / `NBL` (rent) + number, shown as `#NBS345` on every card, list row, the property page
+  (Copy button, pre-filled WhatsApp text) and the admin; searchable by `#NBS345`, `nbs345` or `345`.
+  Backend rules in §0.5. Team profile pop-up redesigned (photo strip for large teams, pinned contact bar);
+  no data change.
 - **2026-09-28 · frontend · Clean-up, admin tools, handoff page.** Removed 48 unused shadcn files,
   51 unused packages and Figma Make leftovers (CSS 103 → 45 kB; `npm audit` clean after Vite 6.4.3).
   The admin now loads separately from the public site. Added a "Needs attention" checklist, Ctrl K

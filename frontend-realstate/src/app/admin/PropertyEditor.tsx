@@ -1,21 +1,27 @@
 import { useEffect, useState } from "react";
-import { Check, Eye, Heart, History, Lightbulb, MapPin, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Clock, Eye, Heart, History, Lightbulb, Lock, MapPin, Plus, Sparkles, X } from "lucide-react";
 import {
-  BADGES, BUILT_UNITS, FACINGS, FLOOR_LABELS, LAND_UNITS, LISTINGS, PROPERTY_TYPES,
-  ROAD_SURFACES, ROOM_NAMES, formatPrice, nextPropRef, nextPropertyId, saveProperty,
-  type FloorPlan, type Listing, type Prop,
+  ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
+  ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, saveProperty,
+  type Listing, type PlanBox, type Prop,
 } from "@/app/data/properties";
 import { REACTIONS, setReactionCount } from "@/app/data/reviews";
+import { gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { DistrictCombobox } from "@/app/components/ui/district-combobox";
-import { ImageField, PhotoManager } from "@/app/components/ui/photo-picker";
+import { PhotoManager } from "@/app/components/ui/photo-picker";
 import {
   Button, Field, FormSection, Segmented, Select, Stepper, TextArea, TextInput, Toggle,
 } from "@/app/components/ui/form-controls";
-import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
+import { ListingCard } from "@/app/components/ui/property-cards";
+import { RefTag } from "@/app/components/ui/property-ref";
 import { Chip, Drawer } from "./parts";
-import { HIGHLIGHT_IDEAS, describeProperty, taglineIdeas } from "./suggestions";
+import { describeProperty } from "./suggestions";
+import { HIGHLIGHT_IDEAS, TAGLINE_IDEAS } from "@/app/data/options";
+import { FloorPlanBuilder } from "./FloorPlanBuilder";
+import { listingToProp, type ListingSubmission } from "@/app/data/listings";
+import { timeAgo } from "@/app/data/messages";
 
 // ─── Draft: the form's working copy of a property ─────────────────────────────
 // The form edits friendly pieces (a number and a unit, a road surface and a width);
@@ -25,25 +31,28 @@ type PriceUnit = "Rupees" | "Lakh" | "Crore";
 const PRICE_MULT: Record<PriceUnit, number> = { Rupees: 1, Lakh: 100_000, Crore: 10_000_000 };
 
 type Draft = {
-  id: number; propId: string; isNew: boolean;
+  id: number; propId: string; refNo: string; isNew: boolean;
   title: string; tagline: string; description: string;
   listing: Listing; type: string; badge: string; verified: boolean; featured: boolean;
   district: string; location: string; facing: string; roadSurface: string; roadWidth: number;
   priceAmount: string; priceUnit: PriceUnit;
   builtValue: string; builtUnit: string; landValue: string; landUnit: string;
   beds: number; baths: number; floors: number; buildYear: number;
-  photos: string[]; amenities: string[]; highlights: string[]; floorPlans: FloorPlan[];
-  reactions: number; mapX: number; mapY: number;
+  photos: string[]; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
+  reactions: number; mapX: number; mapY: number; mapUrl: string;
 };
 
 const CANONICAL = new Set(AMENITIES.map(a => a.name));
 
 /** "4,850 sq.ft" → ["4850","sq.ft"]; "—" → ["", fallbackUnit]. */
 function splitArea(s: string, fallbackUnit: string): [string, string] {
+  const rapd = rapdOf(s);
+  if (rapd) return [rapd, RAPD];
   const m = s.match(/^([\d,.]+)\s*(.+)$/);
   return m ? [m[1].replace(/,/g, ""), m[2].trim()] : ["", fallbackUnit];
 }
 const joinArea = (value: string, unit: string) => {
+  if (isRapd(value)) return `${normalizeRapd(value)} ${RAPD}`;
   const n = Number(value);
   return value.trim() && n > 0 ? `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${unit}` : "—";
 };
@@ -55,18 +64,23 @@ function pickPriceUnit(n: number, listing: Listing): [string, PriceUnit] {
   return [String(n), "Rupees"];
 }
 
+/** The number part of a reference, as the admin types it: "004". */
+const refDigits = (propId: string) => String(refNumber(propId)).padStart(3, "0");
+
 function toDraft(p?: Prop): Draft {
   if (!p) {
+    const id = nextPropertyId(), propId = nextPropRef();
     return {
-      id: nextPropertyId(), propId: nextPropRef(), isNew: true,
+      id, propId, refNo: refDigits(propId), isNew: true,
       title: "", tagline: "", description: "",
       listing: "For Sale", type: PROPERTY_TYPES[0], badge: "New", verified: false, featured: false,
       district: "", location: "", facing: "North", roadSurface: ROAD_SURFACES[0], roadWidth: 20,
       priceAmount: "", priceUnit: "Crore",
       builtValue: "", builtUnit: "sq.ft", landValue: "", landUnit: "Ropani",
       beds: 3, baths: 2, floors: 2, buildYear: new Date().getFullYear(),
-      photos: [], amenities: [], highlights: [], floorPlans: [],
-      reactions: 0, mapX: 50, mapY: 50,
+      photos: [], amenities: [], highlights: [], floorPlan: [],
+      // Spread new pins over the Buy / Rent map until a Google Maps link gives the real spot.
+      reactions: 0, mapX: 30 + (id * 37) % 40, mapY: 25 + (id * 23) % 45, mapUrl: "",
     };
   }
   const road = p.roadAccess.match(/^(.*?)\s*(\d+)\s*ft$/i);
@@ -74,7 +88,7 @@ function toDraft(p?: Prop): Draft {
   const [landValue, landUnit] = splitArea(p.landArea, "Ropani");
   const [priceAmount, priceUnit] = pickPriceUnit(p.priceNum, p.listing);
   return {
-    id: p.id, propId: p.propId, isNew: false,
+    id: p.id, propId: p.propId, refNo: refDigits(p.propId), isNew: false,
     title: p.title, tagline: p.tagline, description: p.description,
     listing: p.listing, type: p.type, badge: p.badge, verified: p.verified, featured: p.featured,
     district: p.district, location: p.location, facing: p.facing,
@@ -85,8 +99,8 @@ function toDraft(p?: Prop): Draft {
     photos: p.gallery.length ? [...p.gallery] : [p.hero],
     amenities: p.features.filter(f => CANONICAL.has(f)),
     highlights: p.features.filter(f => !CANONICAL.has(f)),
-    floorPlans: (p.floorPlans ?? []).map(f => ({ ...f, rooms: f.rooms.map(r => ({ ...r })) })),
-    reactions: REACTIONS[p.id] ?? 0, mapX: p.mapX, mapY: p.mapY,
+    floorPlan: (p.floorPlan ?? []).map(b => ({ ...b })),
+    reactions: REACTIONS[p.id] ?? 0, mapX: p.mapX, mapY: p.mapY, mapUrl: p.mapUrl ?? "",
   };
 }
 
@@ -95,8 +109,10 @@ const priceNumOf = (d: Draft) => Math.round((Number(d.priceAmount) || 0) * PRICE
 function toProp(d: Draft): Prop {
   const priceNum = priceNumOf(d);
   const isLand = d.type === "Land";
+  const coords = resolveMap(d.mapUrl, "").coords;
   return {
-    id: d.id, propId: d.propId, badge: d.badge, title: d.title.trim(), tagline: d.tagline.trim(),
+    // NBS for sale, NBL for rent: the prefix is the listing, the number is the admin's.
+    id: d.id, propId: makeRef(d.listing, Number(d.refNo) || 0), badge: d.badge, title: d.title.trim(), tagline: d.tagline.trim(),
     location: d.location.trim() || d.district, district: d.district,
     price: formatPrice(priceNum, d.listing), priceNum, listing: d.listing, type: d.type,
     beds: isLand ? 0 : d.beds, baths: isLand ? 0 : d.baths,
@@ -107,26 +123,37 @@ function toProp(d: Draft): Prop {
     hero: d.photos[0] ?? "", gallery: [...d.photos], description: d.description.trim(),
     // Highlights first (they are the marketing lines), then the canonical amenities.
     features: [...d.highlights, ...d.amenities],
-    mapX: d.mapX, mapY: d.mapY,
-    // Drop half-typed room sizes, and floors with neither a drawing nor a room.
-    floorPlans: (() => {
-      const plans = d.floorPlans
-        .map(f => ({ ...f, rooms: f.rooms.map(r => ({ name: r.name, dims: completeDims(r.dims) })) }))
-        .filter(f => f.image || f.rooms.length > 0);
-      return plans.length ? plans : undefined;
-    })(),
+    ...(coords ? gridFromCoords(coords) : { mapX: d.mapX, mapY: d.mapY }),
+    mapUrl: d.mapUrl.trim() || undefined,
+    floorPlan: d.floorPlan.length ? d.floorPlan.map(b => ({ ...b, name: b.name.trim() })) : undefined,
   };
 }
 
 function problems(d: Draft): string[] {
   const out: string[] = [];
   if (d.title.trim().length < 3) out.push("Give the property a title.");
+  const taken = refTakenBy(d);
+  if (!(Number(d.refNo) > 0)) out.push("Give the property an ID number.");
+  else if (taken) out.push(`ID number ${Number(d.refNo)} is already used by “${taken.title}” (${displayRef(taken.propId)}).`);
   if (!d.district) out.push("Choose the district.");
   if (priceNumOf(d) <= 0) out.push("Enter the price.");
   if (d.photos.length === 0) out.push("Add at least one photo.");
   if (d.description.trim().length < 20) out.push("Write a short description (a sentence or two).");
+  if (isRapd(d.landValue)) { const p = rapdProblem(d.landValue); if (p) out.push(`Land area: ${p}`); }
+  else if (d.landValue.includes("-")) out.push("Write the land area as Ropani-Aana-Paisa-Dam, e.g. 4-4-0-1.");
+  if (d.floorPlan.some(b => !b.name.trim())) out.push("Name every box on the floor plan.");
+  if (d.floorPlan.some(b => !(b.area > 0))) out.push("Enter the area of every box on the floor plan.");
   return out;
 }
+
+/** The property already using this ID number, if any. Sale and rent share one sequence. */
+const refTakenBy = (d: Draft) => {
+  const n = Number(d.refNo);
+  return n > 0 ? ALL_PROPS.find(p => p.id !== d.id && refNumber(p.propId) === n) ?? null : null;
+};
+
+/** A land area was entered: a number, or Ropani-Aana-Paisa-Dam like "4-4-0-1". */
+const landFilled = (d: Draft) => (isRapd(d.landValue) ? rapdToSqft(d.landValue) > 0 : Number(d.landValue) > 0);
 
 const YEARS = (() => {
   const now = new Date().getFullYear();
@@ -142,7 +169,6 @@ const draftKey = (d: Draft) => `nb-admin-draft:property:${d.isNew ? "new" : d.id
 const withoutTempPhotos = (d: Draft): Draft => ({
   ...d,
   photos: d.photos.filter(u => !u.startsWith("blob:")),
-  floorPlans: d.floorPlans.map(f => ({ ...f, image: f.image?.startsWith("blob:") ? undefined : f.image })),
 });
 function readDraft(key: string): Draft | null {
   try { const s = localStorage.getItem(key); return s ? (JSON.parse(s) as Draft) : null; } catch { return null; }
@@ -168,10 +194,10 @@ function stepDone(d: Draft, id: StepId): boolean {
     case "basics": return d.title.trim().length >= 3;
     case "location": return !!d.district;
     case "price": return priceNumOf(d) > 0;
-    case "size": return d.type === "Land" ? Number(d.landValue) > 0 : Number(d.builtValue) > 0 || Number(d.landValue) > 0;
+    case "size": return d.type === "Land" ? landFilled(d) : Number(d.builtValue) > 0 || landFilled(d);
     case "photos": return d.photos.length > 0;
     case "amenities": return d.amenities.length + d.highlights.length > 0;
-    case "plans": return d.floorPlans.length > 0;
+    case "plans": return d.floorPlan.length > 0;
     case "story": return d.description.trim().length >= 20;
   }
 }
@@ -207,53 +233,78 @@ function Progress({ d }: { d: Draft }) {
 // ─── Live preview ─────────────────────────────────────────────────────────────
 
 function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; amenities: string[]; highlights: string[]; plans: number }) {
-  const [tab, setTab] = useState<"card" | "hot" | "page">("card");
+  const [tab, setTab] = useState<"card" | "page">("card");
   const items = [...highlights, ...amenities];
+  const inHot = p.featured || p.badge === "Hot";
+  const facts = [
+    p.beds > 0 && `${p.beds} Beds`, p.baths > 0 && `${p.baths} Baths`,
+    p.builtArea !== "—" && p.builtArea, p.landArea !== "—" && p.landArea,
+  ].filter(Boolean) as string[];
   return (
     <div className="flex flex-col gap-5">
-      <Segmented value={tab} onChange={setTab} options={[
-        { value: "card", label: "Card" }, { value: "hot", label: "Hot" }, { value: "page", label: "Page" },
-      ]} />
-      {tab === "card" && (
-        <div className="mx-auto w-full max-w-[340px]">
-          <ListingCard p={p} light showDetails />
-          <p className="mt-3 text-[12px] text-center" style={{ color: MUTED_L, ...sans }}>As in New Listings and the Buy / Rent pages.</p>
-        </div>
-      )}
-      {tab === "hot" && (
-        <div className="mx-auto w-full max-w-[340px]">
-          <HotCard p={p} />
-          <p className="mt-3 text-[12px] text-center" style={{ color: MUTED_L, ...sans }}>{p.featured || p.badge === "Hot" ? "Shown in Hot Properties on the home page." : "Turn on Featured (or choose the Hot badge) to show it here."}</p>
-        </div>
-      )}
+      <Segmented value={tab} onChange={setTab} options={[{ value: "card", label: "Card" }, { value: "page", label: "Property page" }]} />
+
+      {tab === "card" && <>
+        <div className="mx-auto w-full max-w-[340px]"><ListingCard p={p} light showDetails /></div>
+        <p className="text-[12px] leading-relaxed text-center" style={{ color: MUTED_L, ...sans }}>
+          How visitors see it in New Listings and on the Buy / Rent pages.
+        </p>
+        <p className="flex items-start gap-2 px-4 py-3 text-[12px] leading-relaxed border" style={{ borderColor: BORDER_L, background: WHITE, color: MUTED_L, ...sans }}>
+          <span className="mt-[5px] w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inHot ? GOLD : "rgba(26,22,17,0.2)" }} />
+          {inHot ? "Also shown in Hot Properties on the home page." : "Not in Hot Properties. Turn on Featured or choose the Hot badge to add it."}
+        </p>
+      </>}
+
       {tab === "page" && (
-        <div className="border p-5 flex flex-col gap-4" style={{ borderColor: BORDER_L, background: WHITE }}>
-          <div className="flex flex-wrap gap-1.5"><Chip tone="maroon">{p.badge}</Chip><Chip tone="muted">{p.listing}</Chip></div>
-          <div>
-            <p className="text-[22px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
-            <p className="flex items-center gap-1.5 mt-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location}</p>
-            <p className="mt-2 text-[18px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
-          </div>
-          <div className="pt-4 border-t" style={{ borderColor: BORDER_L }}>
-            <p className="text-[10px] tracking-[0.28em] uppercase mb-3" style={{ color: GOLD, ...sans }}>Features & Amenities</p>
-            {items.length === 0 ? (
-              <p className="text-[13px]" style={{ color: MUTED_L, ...sans }}>Pick amenities in step 6 and they appear here with their icons.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-4">
-                {items.slice(0, 10).map(f => {
-                  const Icon = amenityIcon(f);
-                  return (
-                    <div key={f} className="flex items-center gap-2.5 py-2 border-b" style={{ borderColor: BORDER_L }}>
-                      <span className="w-4 flex justify-center shrink-0" style={{ color: GOLD }}>{Icon ? <Icon size={16} /> : <span className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD }} />}</span>
-                      <span className="text-[12px] truncate" style={{ color: MUTED_L, ...sans }}>{f}</span>
-                    </div>
-                  );
-                })}
-              </div>
+        <div className="border overflow-hidden" style={{ borderColor: BORDER_L, background: WHITE }}>
+          <div className="relative" style={{ aspectRatio: "16/10", background: "#e9e3d8" }}>
+            {p.hero
+              ? <img src={p.hero} alt="" className="w-full h-full object-cover" />
+              : <p className="absolute inset-0 flex items-center justify-center text-[12px]" style={{ color: MUTED_L, ...sans }}>Add a main photo in step 5</p>}
+            {p.gallery.length > 1 && (
+              <span className="absolute right-3 bottom-3 px-2 py-1 text-[10px] tracking-[0.15em]" style={{ background: "rgba(10,9,8,0.6)", color: WHITE, ...sans }}>{p.gallery.length} photos</span>
             )}
-            {items.length > 10 && <p className="mt-2 text-[12px]" style={{ color: MUTED_L, ...sans }}>and {items.length - 10} more</p>}
           </div>
-          {plans > 0 && <p className="text-[12px]" style={{ color: MUTED_L, ...sans }}>Floor plan: {plans} floor{plans === 1 ? "" : "s"} shown on the page.</p>}
+          <div className="p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-1.5"><Chip tone="maroon">{p.badge}</Chip><Chip tone="muted">{p.listing}</Chip></div>
+              <RefTag propId={p.propId} />
+            </div>
+            <div>
+              <p className="text-[22px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title || "Property name"}</p>
+              {p.tagline && <p className="mt-1 text-[14px] italic" style={{ color: MUTED_L, ...serif }}>{p.tagline}</p>}
+              <p className="flex items-center gap-1.5 mt-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location || "Location"}</p>
+              <p className="mt-2 text-[18px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
+            </div>
+            {facts.length > 0 && (
+              <p className="flex flex-wrap gap-x-4 gap-y-1 py-3 border-y text-[12px]" style={{ borderColor: BORDER_L, color: MUTED_L, ...sans }}>
+                {facts.map(f => <span key={f}>{f}</span>)}
+              </p>
+            )}
+            {p.description && (
+              <p className="text-[13px] leading-[1.75] line-clamp-4" style={{ color: MUTED_L, ...sans }}>{p.description}</p>
+            )}
+            <div>
+              <p className="text-[10px] tracking-[0.28em] uppercase mb-2" style={{ color: GOLD, ...sans }}>Features & Amenities</p>
+              {items.length === 0 ? (
+                <p className="text-[12px]" style={{ color: MUTED_L, ...sans }}>Pick amenities in step 6 and they appear here with their icons.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-4">
+                  {items.slice(0, 8).map(f => {
+                    const Icon = amenityIcon(f);
+                    return (
+                      <div key={f} className="flex items-center gap-2.5 py-2 border-b" style={{ borderColor: BORDER_L }}>
+                        <span className="w-4 flex justify-center shrink-0" style={{ color: GOLD }}>{Icon ? <Icon size={16} /> : <span className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD }} />}</span>
+                        <span className="text-[12px] truncate" style={{ color: MUTED_L, ...sans }}>{f}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {items.length > 8 && <p className="mt-2 text-[12px]" style={{ color: MUTED_L, ...sans }}>and {items.length - 8} more on the page</p>}
+            </div>
+            {plans > 0 && <p className="text-[12px]" style={{ color: MUTED_L, ...sans }}>Floor plan: {plans} box{plans === 1 ? "" : "es"}, shown on the property page.</p>}
+          </div>
         </div>
       )}
     </div>
@@ -261,28 +312,60 @@ function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; ameniti
 }
 
 /**
- * Where the pin sits on the Buy / Rent "Map" view. That map is an illustrative grid, not
- * real geography, so this is a simple click-to-place square (0–100 across and down).
- * For the backend: stored as mapX / mapY today; real lat / lng can replace it later (§6).
+ * Property ID: NBS (for sale) or NBL (letting), then a number, with the result shown as it
+ * will appear on the site. Choosing the prefix also sets the listing, so the two never disagree.
  */
-function MapPinPicker({ x, y, onChange }: { x: number; y: number; onChange: (x: number, y: number) => void }) {
-  const place = (e: React.MouseEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const pct = (v: number) => Math.round(Math.min(96, Math.max(4, v * 100)));
-    onChange(pct((e.clientX - r.left) / r.width), pct((e.clientY - r.top) / r.height));
-  };
+function PropertyIdField({ listing, refNo, taken, onListing, onRefNo, className = "" }: {
+  listing: Listing; refNo: string; taken: Prop | null;
+  onListing: (v: Listing) => void; onRefNo: (v: string) => void; className?: string;
+}) {
+  const n = Number(refNo);
+  const nextFree = () => onRefNo(String(refNumber(nextPropRef())).padStart(3, "0"));
   return (
-    <div role="button" tabIndex={0} aria-label="Click to place the property on the map" onClick={place}
-      className="relative w-full cursor-crosshair border overflow-hidden" style={{ aspectRatio: "16/7", borderColor: BORDER_L, background: "#f1ece3" }}>
-      <svg className="absolute inset-0 w-full h-full" aria-hidden="true">
-        <defs><pattern id="pe-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="rgba(26,22,17,0.07)" /></pattern></defs>
-        <rect width="100%" height="100%" fill="url(#pe-grid)" />
-      </svg>
-      <span className="absolute -translate-x-1/2 -translate-y-full transition-all duration-300" style={{ left: `${x}%`, top: `${y}%`, color: MAROON }}>
-        <MapPin size={26} fill={MAROON} stroke={WHITE} strokeWidth={1.5} />
-      </span>
-      <span className="absolute bottom-2 right-3 text-[11px]" style={{ color: MUTED_L, ...sans }}>Click to move the pin</span>
-    </div>
+    <Field label="Property ID" className={className}
+      hint={taken
+        ? <span style={{ color: MAROON }}>Number {n} is already used by “{taken.title}”. <button type="button" onClick={nextFree} className="underline underline-offset-4">Use the next free number</button></span>
+        : "NBS = for sale, NBL = letting (rent). Sale and rent share one number sequence."}>
+      <div className="grid grid-cols-1 sm:grid-cols-[13rem_1fr_11rem] gap-3">
+        <Select value={listing} onChange={v => onListing(v as Listing)}
+          options={[{ value: "For Sale", label: `${REF_PREFIX["For Sale"]} · For Sale` }, { value: "For Rent", label: `${REF_PREFIX["For Rent"]} · Letting (Rent)` }]} />
+        <TextInput value={refNo} onChange={v => onRefNo(v.replace(/\D/g, "").slice(0, 6))} placeholder="e.g. 345" />
+        <div className="h-[50px] flex items-center justify-center gap-0.5 border text-[17px] font-medium tracking-[0.12em] tabular-nums"
+          aria-live="polite" title="As shown on the site"
+          style={{ borderColor: taken ? "rgba(138,32,48,0.45)" : "rgba(176,136,72,0.45)", background: taken ? "rgba(138,32,48,0.05)" : "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>
+          <span style={{ color: GOLD }}>#</span>{n > 0 ? makeRef(listing, n) : `${REF_PREFIX[listing]}···`}
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+/**
+ * A pasted Google Maps link and, right under it, the map the property page will show.
+ * With no link the map shows the area by name, so every property still gets a map.
+ */
+function MapLinkField({ url, area, onChange, className = "" }: {
+  url: string; area: string; onChange: (v: string) => void; className?: string;
+}) {
+  const map = resolveMap(url, area || "Kathmandu");
+  const trimmed = url.trim();
+  const note =
+    !trimmed ? (area ? `No link yet, so the map shows “${area}” by name.` : "Choose the district, or paste a link, to see the map.")
+    : map.source === "pin" || map.source === "embed" ? (map.coords && !inNepal(map.coords) ? "This pin is outside Nepal. Check the link." : "Exact pin found. This is the map visitors will see.")
+    : isShortMapLink(trimmed) ? "Short share links can’t be read in the browser, so the map shows the area by name. For the exact pin, open the link and copy the long address from the browser bar."
+    : map.source === "place" ? "Place found by name. For an exact pin, copy the link after dropping a pin in Google Maps."
+    : "No location found in this link. Paste a Google Maps link or coordinates like 27.6710, 85.3150.";
+  const warn = !!trimmed && (map.source === "area" || (map.coords !== null && !inNepal(map.coords)));
+  return (
+    <Field label="Google Maps Link" className={className} hint="In Google Maps: Share → Copy link. The property page shows this as a map with an “Open in Google Maps” button.">
+      <TextInput value={url} onChange={onChange} placeholder="https://maps.app.goo.gl/…  or  https://www.google.com/maps/place/…" />
+      <div className="relative mt-1 border overflow-hidden" style={{ borderColor: BORDER_L, background: "#e9e3d8", aspectRatio: "16/7" }}>
+        {(trimmed || area) && <iframe key={map.src} src={map.src} title="Map preview" loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="absolute inset-0 w-full h-full border-0" />}
+      </div>
+      <p className="flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: warn ? MAROON : MUTED_L, ...sans }}>
+        <MapPin size={13} className="mt-0.5 shrink-0" style={{ color: warn ? MAROON : GOLD }} />{note}
+      </p>
+    </Field>
   );
 }
 
@@ -307,13 +390,19 @@ function IdeaChips({ label, ideas, onPick }: { label: string; ideas: string[]; o
  * Add, edit or duplicate a property. `template` starts a new listing as a copy of an
  * existing one (new reference, reactions reset), for quickly adding similar units.
  */
-export function PropertyEditor({ property, template = null, open, onClose, onSaved, onViewOnSite }: {
+export function PropertyEditor({ property, template = null, source = null, open, onClose, onSaved, onViewOnSite }: {
   property: Prop | null; template?: Prop | null; open: boolean; onClose: () => void;
   onSaved: (message: string) => void; onViewOnSite: (id: number) => void;
+  /** A seller's free listing being turned into a property (Admin → Free Listings). */
+  source?: { submission: ListingSubmission; onSaveForLater: (p: Prop) => void; onPublished: (p: Prop) => void; onReject: () => void } | null;
 }) {
-  const start = (): Draft => template
-    ? { ...toDraft(template), id: nextPropertyId(), propId: nextPropRef(), isNew: true, title: `${template.title} (copy)`, reactions: 0 }
+  const start = (): Draft => source
+    ? { ...toDraft(listingToProp(source.submission)), isNew: true }
+    : template
+    ? (() => { const propId = nextPropRef(template.listing); return { ...toDraft(template), id: nextPropertyId(), propId, refNo: refDigits(propId), isNew: true, title: `${template.title} (copy)`, reactions: 0 }; })()
     : toDraft(property ?? undefined);
+  // Each free listing gets its own autosave slot, so two reviews never overwrite each other.
+  const keyFor = (x: Draft) => (source ? `nb-admin-draft:listing:${source.submission.id}` : draftKey(x));
 
   const [d, setD] = useState<Draft>(start);
   const [base, setBase] = useState(() => JSON.stringify(d));
@@ -326,15 +415,15 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
     if (!open) return;
     const s = start();
     setD(s); setBase(JSON.stringify(s)); setTried(false); setStyleNo(0);
-    const saved = readDraft(draftKey(s));
+    const saved = readDraft(keyFor(s));
     setRestore(saved && JSON.stringify({ ...saved, id: s.id, propId: s.propId }) !== JSON.stringify(withoutTempPhotos(s)) ? saved : null);
-  }, [open, property, template]);
+  }, [open, property, template, source]);
 
   const dirty = JSON.stringify(d) !== base;
   // Autosave a moment after typing stops.
   useEffect(() => {
     if (!open || !dirty) return;
-    const t = window.setTimeout(() => writeDraft(draftKey(d), d), 700);
+    const t = window.setTimeout(() => writeDraft(keyFor(d), d), 700);
     return () => window.clearTimeout(t);
   }, [d, open, dirty]);
 
@@ -353,19 +442,30 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
     price: priceNum > 0 ? assembled.price : "Price not set",
   };
   const facts = {
-    title: d.title, type: d.type, listing: d.listing, location: d.location.trim() || d.district, district: d.district,
+    title: d.title.trim(), type: d.type, listing: d.listing, location: placeLabel(d.location, d.district), district: d.district,
     facing: d.facing, roadAccess: assembled.roadAccess, beds: d.beds, baths: d.baths, floors: d.floors,
     builtArea: assembled.builtArea, landArea: assembled.landArea, amenities: d.amenities, highlights: d.highlights,
+    buildYear: d.buildYear, price: priceNum > 0 ? assembled.price : "", verified: d.verified,
   };
 
-  const close = () => { clearDraft(draftKey(d)); onClose(); };
+  const close = () => { clearDraft(keyFor(d)); onClose(); };
   const save = () => {
     setTried(true);
     if (issues.length) return;
-    saveProperty(toProp(d));
+    const p = toProp(d);
+    saveProperty(p);
     setReactionCount(d.id, d.reactions);
-    clearDraft(draftKey(d));
-    onSaved(d.isNew ? `“${d.title.trim()}” added to the site` : `“${d.title.trim()}” updated`);
+    clearDraft(keyFor(d));
+    source?.onPublished(p);
+    onSaved(source ? `“${d.title.trim()}” is now live on the website` : d.isNew ? `“${d.title.trim()}” added to the site` : `“${d.title.trim()}” updated`);
+    onClose();
+  };
+  /** Free listings only: keep the edits without publishing. Gaps are allowed. */
+  const saveForLater = () => {
+    if (!source) return;
+    source.onSaveForLater(toProp(d));
+    clearDraft(keyFor(d));
+    onSaved(`“${d.title.trim() || "Listing"}” saved. Publish it whenever it is ready.`);
     onClose();
   };
 
@@ -375,18 +475,23 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
         <p className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{issues[0]}{issues.length > 1 ? ` (+${issues.length - 1} more)` : ""}</p>
       )}
       {!d.isNew && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
-      <Button onClick={save} title="Ctrl + S"><Check size={14} />{d.isNew ? "Publish Property" : "Save Changes"}</Button>
+      {source && <Button variant="quiet" onClick={() => { clearDraft(keyFor(d)); source.onReject(); }}><X size={14} />Reject</Button>}
+      {source && <Button variant="quiet" onClick={saveForLater}><Clock size={14} />Save for Later</Button>}
+      <Button onClick={save} title="Ctrl + S"><Check size={14} />{source ? "Publish Now" : d.isNew ? "Publish Property" : "Save Changes"}</Button>
     </>
   );
 
   return (
-    <Drawer open={open} onClose={close} backLabel="Back to Properties" dirty={dirty} onSave={save}
-      title={template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
-      subtitle={`Reference ${d.propId} · Saved as a draft while you work · Ctrl + S to save`}
+    <Drawer open={open} onClose={close} backLabel={source ? "Back to Free Listings" : "Back to Properties"} dirty={dirty} onSave={save}
+      title={source ? "Review Free Listing" : template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
+      subtitle={source
+        ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.propId)} · Fill the gaps, then publish now or later`
+        : `Property ID ${displayRef(assembled.propId)} · Saved as a draft while you work · Ctrl + S to save`}
       headerExtra={<Progress d={d} />}
-      preview={<PropertyPreview p={previewProp} amenities={d.amenities} highlights={d.highlights} plans={d.floorPlans.length} />}
+      preview={<PropertyPreview p={previewProp} amenities={d.amenities} highlights={d.highlights} plans={d.floorPlan.length} />}
       previewTitle="Live preview" footer={footer}>
       <div className="flex flex-col gap-6">
+        {source && <SellerPanel s={source.submission} />}
         {restore && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 border px-5 py-4" style={{ borderColor: "rgba(176,136,72,0.45)", background: "rgba(176,136,72,0.08)" }}>
             <History size={18} className="shrink-0" style={{ color: GOLD }} />
@@ -395,7 +500,7 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
             </p>
             <div className="flex gap-2 shrink-0">
               <Button variant="quiet" onClick={() => { clearDraft(draftKey(d)); setRestore(null); }}>Discard</Button>
-              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, propId: o.propId, isNew: o.isNew })); setRestore(null); }}>Restore</Button>
+              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, propId: o.propId, isNew: o.isNew, refNo: restore.refNo ?? o.refNo, mapUrl: restore.mapUrl ?? o.mapUrl })); setRestore(null); }}>Restore</Button>
             </div>
           </div>
         )}
@@ -410,12 +515,13 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
         <FormSection id="pe-basics" n={1} title="The Basics" subtitle="What it is and how it is marked on the site.">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="Property Title" className="md:col-span-2"><TextInput value={d.title} onChange={v => set("title", v)} placeholder="e.g. The Patan Residence" maxLength={90} /></Field>
-            <Field label="Listing"><Segmented value={d.listing} onChange={v => set("listing", v)} options={LISTINGS.map(l => ({ value: l, label: l }))} /></Field>
+            <PropertyIdField className="md:col-span-2" listing={d.listing} refNo={d.refNo} taken={refTakenBy(d)}
+              onListing={v => set("listing", v)} onRefNo={v => set("refNo", v)} />
             <Field label="Property Type"><Select value={d.type} onChange={v => set("type", v)} options={PROPERTY_TYPES} /></Field>
             <Field label="Badge" hint="The coloured label on the photo."><Select value={d.badge} onChange={v => set("badge", v)} options={BADGES.includes(d.badge) ? BADGES : [d.badge, ...BADGES]} /></Field>
-            <Field label="Short Tagline" hint="Optional.">
+            <Field label="Short Tagline" hint="Optional. Shown in italics under the property name: on the property page and, for Featured properties, in the home page slideshow.">
               <TextInput value={d.tagline} onChange={v => set("tagline", v)} maxLength={60} placeholder="e.g. Heritage Reimagined" />
-              {!d.tagline && <IdeaChips label="Ideas" ideas={taglineIdeas(d.type).slice(0, 3)} onPick={v => set("tagline", v)} />}
+              {!d.tagline && <IdeaChips label="Ideas" ideas={TAGLINE_IDEAS.slice(0, 4)} onPick={v => set("tagline", v)} />}
             </Field>
             <Toggle checked={d.featured} onChange={v => set("featured", v)} label="Featured" description="Shown in the home page hero and Hot Properties." />
             <Toggle checked={d.verified} onChange={v => set("verified", v)} label="Verified" description="Our team has checked the documents." />
@@ -433,9 +539,8 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
               <Field label="Road Surface"><Select value={d.roadSurface} onChange={v => set("roadSurface", v)} options={ROAD_SURFACES.includes(d.roadSurface) ? ROAD_SURFACES : [d.roadSurface, ...ROAD_SURFACES]} /></Field>
               <Field label="Road Width"><Stepper value={d.roadWidth} onChange={v => set("roadWidth", v)} max={200} suffix="ft" /></Field>
             </div>
-            <Field label="Position on the Site Map" className="md:col-span-2" hint="Where the pin appears on the Buy / Rent map view.">
-              <MapPinPicker x={d.mapX} y={d.mapY} onChange={(x, y) => setD(o => ({ ...o, mapX: x, mapY: y }))} />
-            </Field>
+            <MapLinkField className="md:col-span-2" url={d.mapUrl} onChange={v => set("mapUrl", v)}
+              area={placeLabel(d.location, d.district)} />
           </div>
         </FormSection>
 
@@ -457,10 +562,7 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
                 <Field label="Unit"><Select value={d.builtUnit} onChange={v => set("builtUnit", v)} options={BUILT_UNITS.includes(d.builtUnit) ? BUILT_UNITS : [d.builtUnit, ...BUILT_UNITS]} /></Field>
               </div>
             )}
-            <div className="grid grid-cols-[1fr_7rem] gap-3">
-              <Field label="Land Area"><TextInput value={d.landValue} onChange={v => set("landValue", v.replace(/[^\d.]/g, ""))} placeholder="e.g. 12" /></Field>
-              <Field label="Unit"><Select value={d.landUnit} onChange={v => set("landUnit", v)} options={LAND_UNITS.includes(d.landUnit) ? LAND_UNITS : [d.landUnit, ...LAND_UNITS]} /></Field>
-            </div>
+            <LandAreaField value={d.landValue} unit={d.landUnit} onValue={v => set("landValue", v)} onUnit={v => set("landUnit", v)} />
             {!isLand && <>
               <Field label="Bedrooms"><Stepper value={d.beds} onChange={v => set("beds", v)} max={50} /></Field>
               <Field label="Bathrooms"><Stepper value={d.baths} onChange={v => set("baths", v)} max={50} /></Field>
@@ -482,8 +584,8 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
           </div>
         </FormSection>
 
-        <FormSection id="pe-plans" n={7} title="Floor Plans" subtitle="Optional. One card per floor, with its drawing and rooms. Shown on the property page.">
-          <FloorPlansEditor plans={d.floorPlans} onChange={v => set("floorPlans", v)} />
+        <FormSection id="pe-plans" n={7} title="Floor Plans" subtitle="Optional. Drag boxes onto the plan and give each a floor name and area. Visitors see them when they hover.">
+          <FloorPlanBuilder boxes={d.floorPlan} onChange={v => set("floorPlan", v)} />
         </FormSection>
 
         <FormSection id="pe-story" n={8} title="Description & Engagement">
@@ -503,6 +605,67 @@ export function PropertyEditor({ property, template = null, open, onClose, onSav
         </FormSection>
       </div>
     </Drawer>
+  );
+}
+
+// ─── Free listing: the seller's private details ──────────────────────────────
+
+/** What the seller sent, for reference while editing. None of it is published as is. */
+function SellerPanel({ s }: { s: ListingSubmission }) {
+  const row = (label: string, value: string) => value.trim() ? (
+    <div className="flex gap-3 text-[13px]"><span className="w-28 shrink-0" style={{ color: MUTED_L, ...sans }}>{label}</span><span style={{ color: FG_LIGHT, ...sans }}>{value}</span></div>
+  ) : null;
+  return (
+    <div className="border p-5 md:p-6 flex flex-col gap-4" style={{ borderColor: "rgba(176,136,72,0.45)", background: "rgba(176,136,72,0.06)" }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.26em] uppercase" style={{ color: GOLD, ...sans }}><Lock size={13} />Seller details · private</span>
+        <span className="text-[12px]" style={{ color: MUTED_L, ...sans }}>Never shown on the website. Visitors contact Nepal Bhoomi instead.</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+        {row("Name", s.seller.name)}
+        {row("Phone", s.seller.phone)}
+        {row("Email", s.seller.email ?? "")}
+        {row("Price asked", s.price)}
+        {row("Built area", s.builtArea)}
+        {row("Land area", s.landArea)}
+        {row("Build year", s.buildYear)}
+        {row("Photos sent", String(s.photos.length))}
+      </div>
+      {s.description.trim() && <p className="text-[13px] leading-relaxed border-t pt-3" style={{ borderColor: "rgba(176,136,72,0.3)", color: FG_LIGHT, ...sans }}>“{s.description}”</p>}
+      <p className="text-[12px]" style={{ color: MUTED_L, ...sans }}>
+        The form below starts from what the seller sent. Change or remove anything you don’t want published; the red list at the bottom shows what is still missing.
+      </p>
+    </div>
+  );
+}
+
+// ─── Land area ───────────────────────────────────────────────────────────────
+
+/**
+ * Land area: a number with a unit ("12" Ropani), or Nepali Ropani-Aana-Paisa-Dam typed with
+ * dashes ("4-4-0-1"). As soon as a dash is typed the unit is fixed to R-A-P-D.
+ */
+function LandAreaField({ value, unit, onValue, onUnit }: { value: string; unit: string; onValue: (v: string) => void; onUnit: (v: string) => void }) {
+  const dashed = value.includes("-");
+  const rapd = isRapd(value);
+  // Still typing "4-4-" is fine; a finished value that isn't R-A-P-D gets a hint.
+  const problem = rapd ? rapdProblem(value) : dashed && !value.endsWith("-") ? "Write it as Ropani-Aana-Paisa-Dam, at most four parts, e.g. 4-4-0-1." : null;
+  const hint = problem
+    ? <span style={{ color: MAROON }}>{problem}</span>
+    : rapd ? <>Ropani-Aana-Paisa-Dam · shown as “{normalizeRapd(value)} {RAPD}” · about {rapdToSqft(value).toLocaleString("en-US")} sq.ft</>
+    : "A number, or Ropani-Aana-Paisa-Dam with dashes, e.g. 4-4-0-1.";
+  return (
+    <Field label="Land Area" hint={hint}>
+      <div className="grid grid-cols-[1fr_7rem] gap-3">
+        <TextInput value={value} onChange={v => onValue(v.replace(/[^\d.-]/g, "").replace(/-{2,}/g, "-").replace(/^-/, ""))} placeholder="e.g. 12 or 4-4-0-1" />
+        {dashed ? (
+          <div className="h-[50px] flex items-center justify-center border text-[13px] tracking-[0.08em] cursor-not-allowed" title="Fixed while the area is written with dashes"
+            aria-disabled="true" style={{ borderColor: BORDER_L, background: "rgba(26,22,17,0.04)", color: MUTED_L, ...sans }}>{RAPD}</div>
+        ) : (
+          <Select value={unit === RAPD ? "Ropani" : unit} onChange={onUnit} options={LAND_UNITS.includes(unit) || unit === RAPD ? LAND_UNITS : [unit, ...LAND_UNITS]} />
+        )}
+      </div>
+    </Field>
   );
 }
 
@@ -578,76 +741,6 @@ function HighlightsInput({ values, onChange }: { values: string[]; onChange: (v:
         </div>
       )}
     </Field>
-  );
-}
-
-// ─── Floor plans ──────────────────────────────────────────────────────────────
-
-/**
- * Room sizes are stored as "5.2 × 4.8 m". While typing, one side may still be empty
- * ("5.2 ×  m"), so both halves round-trip exactly; toProp() drops incomplete sizes.
- */
-const splitDims = (s: string): [string, string] => {
-  const m = s.match(/^\s*([\d.]*)\s*[×x]\s*([\d.]*)/i);
-  return m ? [m[1], m[2]] : ["", ""];
-};
-const joinDims = (a: string, b: string) => (a || b ? `${a} × ${b} m` : "");
-const completeDims = (s: string) => {
-  const [a, b] = splitDims(s);
-  return Number(a) > 0 && Number(b) > 0 ? `${a} × ${b} m` : "";
-};
-
-function FloorPlansEditor({ plans, onChange }: { plans: FloorPlan[]; onChange: (v: FloorPlan[]) => void }) {
-  const update = (id: string, patch: Partial<FloorPlan>) => onChange(plans.map(p => (p.id === id ? { ...p, ...patch } : p)));
-  const addFloor = () => {
-    const label = FLOOR_LABELS.find(l => !plans.some(p => p.label === l)) ?? `Floor ${plans.length + 1}`;
-    onChange([...plans, { id: `f${Date.now().toString(36)}`, label, rooms: [{ name: "Living Room", dims: "" }] }]);
-  };
-  return (
-    <div className="flex flex-col gap-5">
-      {plans.map(plan => (
-        <div key={plan.id} className="border p-5" style={{ borderColor: BORDER_L, background: "#fbf9f5" }}>
-          <div className="flex items-end gap-3 mb-5">
-            <Field label="Floor" className="flex-1">
-              <Select value={plan.label} onChange={v => update(plan.id, { label: v })} options={FLOOR_LABELS.includes(plan.label) ? FLOOR_LABELS : [plan.label, ...FLOOR_LABELS]} />
-            </Field>
-            <Button variant="quiet" title="Remove this floor" onClick={() => onChange(plans.filter(p => p.id !== plan.id))}><Trash2 size={14} />Remove</Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-[16rem_1fr] gap-5">
-            <Field label="Drawing" hint="Optional image of the plan.">
-              <ImageField value={plan.image ?? ""} onChange={url => update(plan.id, { image: url })} aspect="4/3" label="Upload plan" />
-            </Field>
-            <Field label="Rooms" hint="Sizes in metres, length × width.">
-              <div className="flex flex-col gap-2">
-                {plan.rooms.map((room, i) => {
-                  const [a, b] = splitDims(room.dims);
-                  const setRoom = (patch: Partial<typeof room>) => update(plan.id, { rooms: plan.rooms.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
-                  return (
-                    <div key={i} className="grid grid-cols-[1fr_4.5rem_auto_4.5rem_auto] items-center gap-2">
-                      <Select value={room.name} onChange={v => setRoom({ name: v })} options={ROOM_NAMES.includes(room.name) ? ROOM_NAMES : [room.name, ...ROOM_NAMES]} />
-                      <TextInput value={a} onChange={v => setRoom({ dims: joinDims(v.replace(/[^\d.]/g, ""), b) })} placeholder="5.2" />
-                      <span className="text-[13px]" style={{ color: MUTED_L }}>×</span>
-                      <TextInput value={b} onChange={v => setRoom({ dims: joinDims(a, v.replace(/[^\d.]/g, "")) })} placeholder="4.8" />
-                      <button type="button" aria-label="Remove room" onClick={() => update(plan.id, { rooms: plan.rooms.filter((_, k) => k !== i) })}
-                        className="p-2 transition-colors hover:text-[#8a2030]" style={{ color: MUTED_L }}><X size={15} /></button>
-                    </div>
-                  );
-                })}
-                <button type="button" onClick={() => update(plan.id, { rooms: [...plan.rooms, { name: "Bedroom", dims: "" }] })}
-                  className="self-start mt-1 inline-flex items-center gap-2 text-[11px] tracking-[0.2em] uppercase transition-colors hover:text-[#8a2030]" style={{ color: MAROON, ...sans }}>
-                  <Plus size={13} />Add Room
-                </button>
-              </div>
-            </Field>
-          </div>
-        </div>
-      ))}
-      <button type="button" onClick={addFloor}
-        className="flex items-center justify-center gap-2 py-5 border border-dashed text-[11px] tracking-[0.24em] uppercase transition-colors hover:border-[#8a2030]"
-        style={{ borderColor: "rgba(176,136,72,0.5)", color: FG_LIGHT, ...sans }}>
-        <Plus size={15} style={{ color: GOLD }} />Add a Floor
-      </button>
-    </div>
   );
 }
 

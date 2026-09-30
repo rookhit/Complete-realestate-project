@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { MessageCircle, Phone } from "lucide-react";
+import { whatsappLink } from "@/app/data/content";
 import { MAROON, WHITE, sans } from "./brand";
-
-/** WhatsApp number the dock links to. Replace with the real business number. */
-export const WHATSAPP_URL = "https://wa.me/9779800000000";
 
 // Quick Enquiry + WhatsApp buttons in the bottom-right corner.
 // With overHero, the dock stays hidden until the visitor scrolls past the home hero
@@ -23,10 +21,12 @@ export function FloatingDock({ onEnquire, overHero = false }: { onEnquire: () =>
 
   // One automatic reveal of the label once the dock appears, so a first-time
   // visitor reads it without the button blinking forever. It does not repeat.
+  // Not on phones: the open label would cover the page, and the icons are clear enough.
+  const small = useMedia("(max-width: 639px)");
   const [peek, setPeek] = useState(false);
   const peeked = useRef(false);
   useEffect(() => {
-    if (!shown || peeked.current) return;
+    if (!shown || peeked.current || small) return;
     peeked.current = true;
     const a = window.setTimeout(() => setPeek(true), 700);
     const b = window.setTimeout(() => setPeek(false), 4200);
@@ -36,7 +36,7 @@ export function FloatingDock({ onEnquire, overHero = false }: { onEnquire: () =>
 
   return (
     <motion.div
-      className="fixed bottom-7 right-7 z-40 flex flex-col items-end gap-3"
+      className="fixed bottom-4 right-4 sm:bottom-7 sm:right-7 z-40 flex flex-col items-end gap-2.5 sm:gap-3"
       initial={false}
       animate={{ opacity: shown ? 1 : 0, y: shown ? 0 : 20, scale: shown ? 1 : 0.9 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
@@ -44,22 +44,36 @@ export function FloatingDock({ onEnquire, overHero = false }: { onEnquire: () =>
       aria-hidden={!shown}
     >
       <DockButton label="Quick Enquiry" bg={MAROON} pulse icon={<Phone size={19} />} onClick={onEnquire} peek={peek} />
-      <DockButton label="WhatsApp" bg="#25D366" icon={<MessageCircle size={19} />} href={WHATSAPP_URL} />
+      <DockButton label="WhatsApp" bg="#25D366" icon={<MessageCircle size={19} />} href={whatsappLink()} />
     </motion.div>
   );
 }
 
-// A round 52px button; the label slides out on hover. pulse adds a slow gold ring.
+/** Whether a CSS media query matches, kept up to date. */
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const fn = () => setOn(m.matches);
+    fn(); m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, [query]);
+  return on;
+}
+
+// A round button (52px, 46px on phones); the label slides out on hover. pulse adds a slow gold ring.
+// On touch screens there is no hover, so a tap must not leave the label stuck open.
 export function DockButton({ icon, label, bg, onClick, href, pulse = false, peek = false }: {
   icon: React.ReactNode; label: string; bg: string;
   onClick?: () => void; href?: string; pulse?: boolean; peek?: boolean;
 }) {
   const [hov, setHov] = useState(false);
-  const open = hov || peek;
+  const touch = useMedia("(hover: none)");
+  const open = (hov && !touch) || peek;
 
   const body = (
     <>
-      <span className="w-[52px] h-[52px] shrink-0 flex items-center justify-center">{icon}</span>
+      <span className="w-[46px] h-[46px] sm:w-[52px] sm:h-[52px] shrink-0 flex items-center justify-center">{icon}</span>
       <span
         className="text-[11px] tracking-[0.2em] uppercase whitespace-nowrap overflow-hidden"
         style={{

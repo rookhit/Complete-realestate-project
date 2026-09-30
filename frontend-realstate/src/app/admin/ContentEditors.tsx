@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowDown, ArrowUp, Calendar, Check, Clock, Lightbulb, Pencil, Plus, Sparkles, Star, Trash2, Youtube } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, Calendar, Check, Clock, Lightbulb, Pencil, Plus, Sparkles, Star, Trash2, Upload, Youtube } from "lucide-react";
 import {
-  BLOGS, BLOG_CATEGORIES, DEPARTMENTS, FEATURED_DISTRICTS, LANGUAGES, MAX_FEATURED_DISTRICTS, SPECIALITIES, STATS, TEAM, TEAM_ROLES, TESTIMONIALS, VIDEO_LIST,
+  ARTICLE_AUTHOR, BLOGS, DEPARTMENTS, FEATURED_DISTRICTS, LANGUAGES, MAX_FEATURED_DISTRICTS, SPECIALITIES, STATS, TEAM, TEAM_ROLES, TESTIMONIALS, VIDEO_LIST,
   monthYear, moveById, nextId, readingTime, removeById, upsert, youtubeIdFrom, youtubeThumb,
   type BlogPost, type CompanyVideoInput, type FeaturedDistrict, type Stat, type TeamMember, type Testimonial,
 } from "@/app/data/content";
@@ -13,16 +13,21 @@ import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { Button, Field, Select, Stepper, TextArea, TextInput } from "@/app/components/ui/form-controls";
 import { Chip, Drawer, EmptyState, SectionHeading, type Notify } from "./parts";
 import { ArticlePreview, TeamPreview, TestimonialPreview, VideoPreview } from "./previews";
-import { TESTIMONIAL_IDEAS, summaryFrom, teamBio } from "./suggestions";
+import { summaryFrom, teamBio } from "./suggestions";
+import { TESTIMONIAL_IDEAS, addOption, optionList } from "@/app/data/options";
+import { VideoUploadEditor } from "./VideoUpload";
 
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 
 const OTHER = "__other__";
 
-/** A dropdown of suggestions plus "Other…", which reveals a text box for anything else. */
-function SelectOrCustom({ value, onChange, options, otherLabel = "Other…" }: {
-  value: string; onChange: (v: string) => void; options: string[]; otherLabel?: string;
+/**
+ * A dropdown of suggestions plus "Other…", which reveals a text box for anything else.
+ * With `listKey`, a typed value can be saved to that option list (data/options.ts).
+ */
+function SelectOrCustom({ value, onChange, options, otherLabel = "Other…", listKey }: {
+  value: string; onChange: (v: string) => void; options: string[]; otherLabel?: string; listKey?: string;
 }) {
   const known = options.includes(value);
   const [custom, setCustom] = useState(!known && value !== "");
@@ -32,12 +37,18 @@ function SelectOrCustom({ value, onChange, options, otherLabel = "Other…" }: {
         onChange={v => { if (v === OTHER) { setCustom(true); onChange(""); } else { setCustom(false); onChange(v); } }}
         options={[...options.map(o => ({ value: o, label: o })), { value: OTHER, label: otherLabel }]} />
       {custom && <TextInput value={value} onChange={onChange} placeholder="Type it here" maxLength={60} />}
+      {custom && listKey && value.trim() && !options.some(o => o.toLowerCase() === value.trim().toLowerCase()) && (
+        <button type="button" onClick={() => { addOption(listKey, value); onChange(value.trim()); setCustom(false); }}
+          className="self-start inline-flex items-center gap-1.5 text-[11px] tracking-[0.14em] uppercase underline underline-offset-4 hover:text-[#8a2030]" style={{ color: GOLD, ...sans }}>
+          <Plus size={12} />Save “{value.trim()}” to the {optionList(listKey).label.toLowerCase()} list
+        </button>
+      )}
     </div>
   );
 }
 
 /** Up / down / edit / delete buttons for a card. Edit is left out for cards edited in place. */
-function CardTools({ onUp, onDown, onEdit, onDelete, first, last }: {
+export function CardTools({ onUp, onDown, onEdit, onDelete, first, last }: {
   onUp?: () => void; onDown?: () => void; onEdit?: () => void; onDelete: () => void; first?: boolean; last?: boolean;
 }) {
   const b = "w-9 h-9 flex items-center justify-center border transition-colors hover:border-[#8a2030] hover:text-[#8a2030] disabled:opacity-30 disabled:hover:border-[rgba(26,22,17,0.1)]";
@@ -140,7 +151,7 @@ export function JournalSection({ notify, openId, onOpened }: { notify: Notify; o
 }
 
 function ArticleEditor({ post, open, onClose, notify }: { post: BlogPost | null; open: boolean; onClose: () => void; notify: Notify }) {
-  const blank = (): BlogPost => ({ id: nextId(BLOGS), cat: BLOG_CATEGORIES[0], date: monthYear(), read: "1 min", title: "", excerpt: "", image: "", author: TEAM[0]?.name ?? "Nepal Bhoomi Editorial", body: "" });
+  const blank = (): BlogPost => ({ id: nextId(BLOGS), cat: "", date: monthYear(), read: "1 min", title: "", excerpt: "", image: "", author: ARTICLE_AUTHOR, body: "" });
   const [d, setD] = useState<BlogPost>(post ?? blank());
   const [tried, setTried] = useState(false);
   const [base, setBase] = useState("");
@@ -152,15 +163,14 @@ function ArticleEditor({ post, open, onClose, notify }: { post: BlogPost | null;
   const issues = [
     d.title.trim().length < 5 && "Give the article a title.",
     !d.image && "Add a cover photo.",
+    !d.cat.trim() && "Enter a category.",
     d.excerpt.trim().length < 20 && "Write a short summary (a sentence or two).",
   ].filter(Boolean) as string[];
-  const authors = [...new Set([...TEAM.map(t => t.name), "Nepal Bhoomi Editorial"])];
-  const categories = [...new Set([...BLOG_CATEGORIES, ...BLOGS.map(b => b.cat)])];
 
   const save = () => {
     setTried(true);
     if (issues.length) return;
-    upsert(BLOGS, { ...d, title: d.title.trim(), excerpt: d.excerpt.trim(), body: d.body?.trim() || undefined, read }, true);
+    upsert(BLOGS, { ...d, cat: d.cat.trim(), author: ARTICLE_AUTHOR, title: d.title.trim(), excerpt: d.excerpt.trim(), body: d.body?.trim() || undefined, read }, true);
     notify(post ? "Article updated" : "Article published");
     onClose();
   };
@@ -177,8 +187,10 @@ function ArticleEditor({ post, open, onClose, notify }: { post: BlogPost | null;
         <Field label="Cover Photo"><ImageField value={d.image} onChange={v => set("image", v)} label="Upload the cover" /></Field>
         <Field label="Title"><TextInput value={d.title} onChange={v => set("title", v)} placeholder="e.g. How to Buy Property in Nepal" maxLength={120} /></Field>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <Field label="Category"><SelectOrCustom value={d.cat} onChange={v => set("cat", v)} options={categories} /></Field>
-          <Field label="Author"><SelectOrCustom value={d.author} onChange={v => set("author", v)} options={authors} otherLabel="Someone else…" /></Field>
+          <Field label="Category" hint="Shown above the title, e.g. Market Report."><TextInput value={d.cat} onChange={v => set("cat", v)} placeholder="e.g. Market Report" maxLength={30} /></Field>
+          <Field label="Author" hint="Every article is published by the firm.">
+            <div className="h-[50px] flex items-center px-4 border text-[15px]" style={{ borderColor: BORDER_L, background: "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>{ARTICLE_AUTHOR}</div>
+          </Field>
           <Field label="Month" hint={`Reading time: ${read} (automatic)`}>
             <TextInput type="month" value={toMonthInput(d.date)} onChange={v => set("date", fromMonthInput(v))} />
           </Field>
@@ -244,7 +256,15 @@ export function TeamSection({ notify, openId, onOpened }: { notify: Notify; open
 }
 
 /** Tap-to-toggle chips for picking several values from a list (specialities, languages). */
-function ChipPicker({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+/** Tick any number of options. With `listKey`, "+ New" adds an option to that list and ticks it. */
+function ChipPicker({ options, value, onChange, listKey }: { options: string[]; value: string[]; onChange: (v: string[]) => void; listKey?: string }) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const commit = () => {
+    const v = text.trim();
+    if (v && listKey) { addOption(listKey, v); if (!value.includes(v)) onChange([...value, v]); }
+    setText(""); setAdding(false);
+  };
   return (
     <div className="flex flex-wrap gap-2">
       {options.map(o => {
@@ -257,6 +277,14 @@ function ChipPicker({ options, value, onChange }: { options: string[]; value: st
           </button>
         );
       })}
+      {listKey && (adding ? (
+        <input autoFocus value={text} onChange={e => setText(e.target.value)} maxLength={40} placeholder="New option, then Enter"
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }}
+          onBlur={commit} className="px-3 py-2 border text-[13px] outline-none w-52 focus:border-[#8a2030]" style={{ borderColor: GOLD, color: FG_LIGHT, ...sans }} />
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-dashed text-[13px] transition-colors hover:border-[#8a2030] hover:text-[#8a2030]"
+          style={{ borderColor: "rgba(176,136,72,0.6)", color: MUTED_L, ...sans }}><Plus size={12} />New</button>
+      ))}
     </div>
   );
 }
@@ -314,7 +342,7 @@ function TeamEditor({ member, open, onClose, notify }: { member: TeamMember | nu
           <div className="flex flex-col gap-5">
             {heading("The Card", "What everyone sees first.")}
             <Field label="Full Name"><TextInput value={d.name} onChange={v => set("name", v)} placeholder="e.g. Priya Shrestha" maxLength={60} /></Field>
-            <Field label="Role"><SelectOrCustom value={d.role} onChange={v => set("role", v)} options={[...new Set([...TEAM_ROLES, ...TEAM.map(t => t.role)])]} /></Field>
+            <Field label="Role"><SelectOrCustom value={d.role} onChange={v => set("role", v)} options={[...new Set([...TEAM_ROLES, ...TEAM.map(t => t.role)])]} listKey="teamRoles" /></Field>
           </div>
         </div>
 
@@ -324,8 +352,8 @@ function TeamEditor({ member, open, onClose, notify }: { member: TeamMember | nu
             <Field label="Department" hint="Used for the filters on the Our Team page."><Select value={d.department ?? ""} onChange={v => set("department", v)} placeholder="Choose…" options={DEPARTMENTS} /></Field>
             <Field label="Years of Experience"><Stepper value={d.experienceYears ?? 0} onChange={v => set("experienceYears", v)} max={60} suffix="years" /></Field>
           </div>
-          <Field label="Specialities"><ChipPicker options={[...new Set([...SPECIALITIES, ...(d.specialities ?? [])])]} value={d.specialities ?? []} onChange={v => set("specialities", v)} /></Field>
-          <Field label="Languages"><ChipPicker options={[...new Set([...LANGUAGES, ...(d.languages ?? [])])]} value={d.languages ?? []} onChange={v => set("languages", v)} /></Field>
+          <Field label="Specialities"><ChipPicker options={[...new Set([...SPECIALITIES, ...(d.specialities ?? [])])]} value={d.specialities ?? []} onChange={v => set("specialities", v)} listKey="specialities" /></Field>
+          <Field label="Languages"><ChipPicker options={[...new Set([...LANGUAGES, ...(d.languages ?? [])])]} value={d.languages ?? []} onChange={v => set("languages", v)} listKey="languages" /></Field>
           <Field label="Short Bio" hint="Two or three sentences. “Write it for me” uses the role, experience, specialities and languages above.">
             <TextArea rows={4} value={d.bio ?? ""} onChange={v => set("bio", v)} placeholder="What clients should know about them" />
             <button type="button" onClick={() => { set("bio", teamBio(d, bioStyle)); setBioStyle(n => n + 1); }}
@@ -439,7 +467,13 @@ function TestimonialEditor({ item, open, onClose, notify }: { item: Testimonial 
 
 export function VideosSection({ notify }: { notify: Notify }) {
   useDataVersion();
-  const [editing, setEditing] = useState<CompanyVideoInput | "new" | null>(null);
+  // "youtube" / "upload" add a new video; an existing one opens the editor that fits it.
+  const [editing, setEditing] = useState<CompanyVideoInput | "youtube" | "upload" | null>(null);
+  const uploaded = (v: CompanyVideoInput | "youtube" | "upload" | null) => v === "upload" || (typeof v === "object" && !!v?.sources?.length);
+  const adders = <>
+    <Button variant="quiet" onClick={() => setEditing("upload")}><Upload size={14} />Upload a Video</Button>
+    <Button onClick={() => setEditing("youtube")}><Youtube size={14} />Add from YouTube</Button>
+  </>;
   const [confirm, askDelete] = useDeleteConfirm<CompanyVideoInput>(
     v => { removeById(VIDEO_LIST, v.id); notify("Video removed"); },
     v => ({ title: "Remove this video?", message: `“${v.title}” will no longer appear in “Explore in Video”.` }),
@@ -447,9 +481,9 @@ export function VideosSection({ notify }: { notify: Notify }) {
   return (
     <div>
       <SectionHeading title="Company Videos" subtitle="The “Explore in Video” carousel on the home page. The first video is shown in the centre."
-        actions={<Button onClick={() => setEditing("new")}><Plus size={14} />Add a Video</Button>} />
+        actions={adders} />
       {VIDEO_LIST.length === 0 ? (
-        <EmptyState title="No videos" text="The video section is hidden on the home page until you add one." action={<Button onClick={() => setEditing("new")}><Plus size={14} />Add a Video</Button>} />
+        <EmptyState title="No videos" text="The video section is hidden on the home page until you add one." action={<div className="flex flex-wrap justify-center gap-3">{adders}</div>} />
       ) : (
         <div className="flex flex-col border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {VIDEO_LIST.map((v, i) => {
@@ -459,7 +493,7 @@ export function VideosSection({ notify }: { notify: Notify }) {
               <div key={v.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
                 <div className="w-full sm:w-44 shrink-0 overflow-hidden" style={{ aspectRatio: "16/9", background: "#1a1611" }}>{thumb && <img src={thumb} alt="" className="w-full h-full object-cover" />}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex gap-1.5 mb-1.5">{i === 0 && <Chip tone="dark">Centre</Chip>}<Chip tone="muted">{v.duration}</Chip>{id && <Chip>YouTube</Chip>}</div>
+                  <div className="flex gap-1.5 mb-1.5">{i === 0 && <Chip tone="dark">Centre</Chip>}<Chip tone="muted">{v.duration}</Chip>{id ? <Chip>YouTube</Chip> : v.sources?.length ? <Chip>Uploaded</Chip> : null}</div>
                   <p className="text-[16px] leading-snug" style={{ color: FG_LIGHT, ...serif }}>{v.title}</p>
                 </div>
                 <CardTools first={i === 0} last={i === VIDEO_LIST.length - 1}
@@ -470,7 +504,8 @@ export function VideosSection({ notify }: { notify: Notify }) {
           })}
         </div>
       )}
-      <VideoEditor video={editing === "new" ? null : editing} open={editing !== null} onClose={() => setEditing(null)} notify={notify} />
+      <VideoEditor video={typeof editing === "object" && !uploaded(editing) ? editing : null} open={editing !== null && !uploaded(editing)} onClose={() => setEditing(null)} notify={notify} />
+      <VideoUploadEditor video={typeof editing === "object" && uploaded(editing) ? editing : null} open={uploaded(editing)} onClose={() => setEditing(null)} notify={notify} />
       {confirm}
     </div>
   );
@@ -500,7 +535,7 @@ function VideoEditor({ video, open, onClose, notify }: { video: CompanyVideoInpu
   return (
     <Drawer open={open} onClose={onClose} backLabel="Back to Videos" dirty={dirty} onSave={save}
       preview={<VideoPreview title={d.title} duration={d.duration} poster={ytId ? youtubeThumb(ytId, "hqdefault") : d.poster ?? ""} isYouTube={!!ytId} />} width={680}
-      title={video ? "Edit Video" : "Add a Video"} subtitle="Upload the film to YouTube first, then paste its link here."
+      title={video ? "Edit YouTube Video" : "Add from YouTube"} subtitle="Paste the video's YouTube link. The cover and player come from YouTube."
       footer={<>
         {tried && issues[0] && <p className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{issues[0]}</p>}
         <Button onClick={save}><Check size={14} />Save</Button>
@@ -571,7 +606,7 @@ export function HomePageSection({ notify }: { notify: Notify }) {
         <SectionHeading title="Featured Districts" subtitle={`The large photo tiles under “Prestige Properties Across Nepal”. Between 1 and ${MAX_FEATURED_DISTRICTS} fit the design.`}
           actions={<>
             <Button variant="quiet" disabled={districts.length >= MAX_FEATURED_DISTRICTS}
-              onClick={() => setDistricts(l => [...l, { id: Math.max(0, ...l.map(x => x.id), ...FEATURED_DISTRICTS.map(x => x.id)) + 1, name: "", count: 0, img: "" }])}>
+              onClick={() => setDistricts(l => [...l, { id: Math.max(0, ...l.map(x => x.id), ...FEATURED_DISTRICTS.map(x => x.id)) + 1, name: "", img: "" }])}>
               <Plus size={14} />Add District
             </Button>
             <Button onClick={saveDistricts}><Check size={14} />Save Districts</Button>
@@ -581,7 +616,6 @@ export function HomePageSection({ notify }: { notify: Notify }) {
             <div key={d.id} className="border p-5 flex flex-col gap-4" style={{ borderColor: BORDER_L, background: WHITE }}>
               <ImageField value={d.img} onChange={v => setDistrict(d.id, { img: v })} aspect="4/3" label="Upload a photo" />
               <Field label="District"><DistrictCombobox value={d.name} onChange={v => setDistrict(d.id, { name: v })} /></Field>
-              <Field label="Properties Shown on the Tile"><Stepper value={d.count} onChange={v => setDistrict(d.id, { count: v })} max={9999} /></Field>
               <div className="flex justify-end">
                 <CardTools first={i === 0} last={i === districts.length - 1}
                   onUp={() => moveDistrict(i, -1)} onDown={() => moveDistrict(i, 1)}

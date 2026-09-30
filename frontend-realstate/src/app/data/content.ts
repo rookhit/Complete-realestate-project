@@ -1,6 +1,6 @@
 /**
  * Site content other than properties: the journal, testimonials, team, home-page statistics,
- * featured districts and company videos.
+ * featured districts, company videos, contact details and services.
  *
  * For the backend: each array is mock data and each save/delete function at the bottom is where
  * the matching API call goes. Endpoints and field notes are in FRONTEND_CLAUDE.md §7.3 and §7.8.
@@ -13,13 +13,13 @@ import { emitChange } from "./store";
 
 export interface BlogPost {
   id: number;
-  cat: string;       // one of BLOG_CATEGORIES (or a new one the admin types)
+  cat: string;       // free text typed by the admin, e.g. "Market Report"
   date: string;      // display string, "May 2025". The API should send ISO 8601
   read: string;      // "6 min"; the admin computes it from the body
   title: string;
   excerpt: string;   // the summary shown on cards and as the article's standfirst
   image: string;
-  author: string;    // a team member's name
+  author: string;    // always ARTICLE_AUTHOR ("Nepal Bhoomi")
   body?: string;     // the full article; paragraphs separated by blank lines
 }
 
@@ -45,9 +45,11 @@ export interface TeamMember {
 export interface Stat { id: number; value: string; label: string }
 
 /** A tile in the home page's "Prestige Properties Across Nepal" strip. 1–5 tiles fit the design. */
-export interface FeaturedDistrict { id: number; name: string; count: number; img: string }
+/** A district tile on the home page. Its property count is not stored: the site counts the district's listings. */
+export interface FeaturedDistrict { id: number; name: string; img: string }
 
-export const BLOG_CATEGORIES = ["Market Update", "Buyer's Guide", "Investment", "Vastu", "Legal & Documentation", "Lifestyle", "Company News"];
+/** Every article is published under the firm's name. */
+export const ARTICLE_AUTHOR = "Nepal Bhoomi";
 export const TEAM_ROLES = [
   "Founder & Principal Advisor", "Managing Director", "Senior Property Consultant", "Property Consultant",
   "Investment Specialist", "Legal Advisor", "Marketing Manager", "Client Relations", "Vastu Consultant",
@@ -59,16 +61,16 @@ export const MAX_FEATURED_DISTRICTS = 5;
 export const BLOGS: BlogPost[] = [
   { id:1, cat:"Market Update", date:"May 2025", read:"6 min", title:"Nepal Real Estate Rebounds: Q1 2025 Market Report",
     excerpt:"After a cautious 2024, Nepal's property market has shown strong signs of recovery in Q1 2025, with Kathmandu Valley recording a 14% uptick in premium transactions.",
-    image:img("photo-1544735716-392fe2489ffa",800,500), author:"Arjun Thapa" },
+    image:img("photo-1544735716-392fe2489ffa",800,500), author:ARTICLE_AUTHOR },
   { id:2, cat:"Buyer's Guide", date:"Apr 2025", read:"8 min", title:"How to Buy Property in Nepal: The Complete 2025 Guide",
     excerpt:"From land registration to bank financing, we break down every step of the property purchase process in Nepal in plain language.",
-    image:img("photo-1512917774080-9991f1c4c750",800,500), author:"Priya Shrestha" },
+    image:img("photo-1512917774080-9991f1c4c750",800,500), author:ARTICLE_AUTHOR },
   { id:3, cat:"Investment", date:"Mar 2025", read:"5 min", title:"Pokhara International Airport: What It Means for Property Prices",
     excerpt:"Pokhara's new international airport has catalyzed a significant shift in property values across the western region. Here's what investors need to know.",
-    image:img("photo-1600585154526-990dced4db0d",800,500), author:"Rajan Maharjan" },
+    image:img("photo-1600585154526-990dced4db0d",800,500), author:ARTICLE_AUTHOR },
   { id:4, cat:"Vastu", date:"Feb 2025", read:"4 min", title:"Vastu Shastra for Modern Homes: Principles That Still Work",
     excerpt:"Ancient Vastu principles continue to influence homebuying decisions in Nepal. Our consultants explain which guidelines genuinely improve living quality.",
-    image:img("photo-1600596542815-ffad4c1539a9",800,500), author:"Sita Karki" },
+    image:img("photo-1600596542815-ffad4c1539a9",800,500), author:ARTICLE_AUTHOR },
 ];
 
 export const TESTIMONIALS: Testimonial[] = [
@@ -113,9 +115,9 @@ export const STATS: Stat[] = [
 ];
 
 export const FEATURED_DISTRICTS: FeaturedDistrict[] = [
-  { id:1, name:"Kathmandu", count:24, img:img("photo-1613977257363-707ba9348227",900,1100) },
-  { id:2, name:"Lalitpur", count:18, img:img("photo-1600596542815-ffad4c1539a9",900,1100) },
-  { id:3, name:"Bhaktapur", count:7, img:img("photo-1568605114967-8130f3a36994",900,1100) },
+  { id:1, name:"Kathmandu", img:img("photo-1613977257363-707ba9348227",900,1100) },
+  { id:2, name:"Lalitpur", img:img("photo-1600596542815-ffad4c1539a9",900,1100) },
+  { id:3, name:"Bhaktapur", img:img("photo-1568605114967-8130f3a36994",900,1100) },
 ];
 
 // ─── Company videos ───────────────────────────────────────────────────────────
@@ -178,6 +180,58 @@ export function companyVideos(): CompanyVideo[] {
     const youtubeId = youtubeIdFrom(youtubeUrl ?? v.youtubeId);
     return { ...v, youtubeId, poster: v.poster ?? (youtubeId ? youtubeThumb(youtubeId) : "") };
   });
+}
+
+// ─── Contact details and services ─────────────────────────────────────────────
+// Edited in Admin → Contact & Services. Used by the Contact page, the footer, every
+// WhatsApp button and the Services lists (home, About, Services).
+
+export interface ContactInfo {
+  address: string;   // shown as typed; line breaks kept
+  phone: string;     // "+977 1 400 0000"
+  whatsapp: string;  // any format; only the digits are used in wa.me links
+  email: string;
+  hours: string;     // line breaks kept
+  instagram: string; facebook: string; youtube: string; linkedin: string;  // full URLs, or empty to hide
+}
+
+export const CONTACT: ContactInfo = {
+  address: "Jhamsikhel Road, Lalitpur\nKathmandu Valley, Nepal",
+  phone: "+977 1 400 0000",
+  whatsapp: "+977 980 000 0000",
+  email: "info@nepalbhoomi.com",
+  hours: "Sunday–Friday: 9:00 AM – 6:00 PM\nSaturday: By Appointment",
+  instagram: "", facebook: "", youtube: "", linkedin: "",
+};
+
+/** wa.me link to the business number, optionally with a message typed in. */
+export const whatsappLink = (text?: string) =>
+  `https://wa.me/${CONTACT.whatsapp.replace(/\D/g, "")}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+
+/** API: PUT /admin/site/contact. */
+export function saveContact(c: ContactInfo): void {
+  Object.assign(CONTACT, c);
+  emitChange();
+}
+
+/** Icon names a service can use; components/ui/service-icon.tsx draws them. */
+export const SERVICE_ICONS = ["home", "key", "briefcase", "award", "building", "landmark", "scale", "hammer", "compass", "chart", "shield", "handshake"] as const;
+export type ServiceIcon = (typeof SERVICE_ICONS)[number];
+export interface Service { id: number; icon: ServiceIcon; title: string; desc: string }
+
+export const SERVICES: Service[] = [
+  { id: 1, icon: "home", title: "Property Sales", desc: "Full-service representation for residential and commercial property transactions across Nepal." },
+  { id: 2, icon: "key", title: "Letting", desc: "Specialist letting advisory for landlords and tenants seeking premium rental properties." },
+  { id: 3, icon: "briefcase", title: "Property Consulting", desc: "Expert market analysis, investment advisory and portfolio strategy for all property types." },
+  { id: 4, icon: "award", title: "Vastu Advisory", desc: "Authentic Vastu Shastra assessment and consultation for new constructions and existing properties." },
+  { id: 5, icon: "building", title: "Construction Works", desc: "End-to-end construction project management for residential and commercial developments." },
+  { id: 6, icon: "landmark", title: "Engineering Consulting", desc: "Structural, civil and MEP engineering consulting for projects of all scales across Nepal." },
+];
+
+/** API: PUT /admin/site/services with the whole list, in display order. */
+export function saveServices(list: Service[]): void {
+  SERVICES.splice(0, SERVICES.length, ...list);
+  emitChange();
 }
 
 // ─── Save / delete / reorder ──────────────────────────────────────────────────

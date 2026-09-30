@@ -10,6 +10,7 @@ export type PropertyFacts = {
   title: string; type: string; listing: "For Sale" | "For Rent";
   location: string; district: string; facing: string; roadAccess: string;
   beds: number; baths: number; floors: number; builtArea: string; landArea: string;
+  buildYear: number; price: string; verified: boolean;
   amenities: string[]; highlights: string[];
 };
 
@@ -18,108 +19,66 @@ const list = (items: string[]) =>
   items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 
 const noun = (type: string) => ({
-  "House/Bungalow": "residence", Apartment: "apartment", Flat: "flat", Land: "plot", Commercial: "commercial property",
+  "House/Bungalow": "house", Apartment: "apartment", Flat: "flat", Land: "plot of land", Commercial: "commercial property",
 } as Record<string, string>)[type] ?? "property";
 
-/** The most telling amenities first, so a description names the ones buyers care about. */
-const PRIORITY = [
-  "Swimming Pool", "Mountain Views", "Waterfront", "Garden", "Terrace", "Heritage Architecture", "Earthquake Resistant",
-  "Home Theater", "Smart Home", "Solar Power", "Elevator", "Security", "Parking", "Garage", "Fully Furnished",
-  "Modular Kitchen", "Puja Room", "Balcony", "Gated Community", "Boring Water", "Drinking Water",
-];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-/** How an amenity reads inside a sentence ("with a swimming pool, …"). Others are lower-cased. */
-const PHRASE: Record<string, string> = {
-  "Swimming Pool": "a swimming pool", "Mountain Views": "mountain views", Waterfront: "waterfront living",
-  Garden: "a private garden", Terrace: "a terrace", Balcony: "a balcony", "Heritage Architecture": "heritage architecture",
-  "Earthquake Resistant": "earthquake-resistant construction", "Home Theater": "a home theatre", "Smart Home": "smart-home controls",
-  "Solar Power": "solar power", Elevator: "a lift", Security: "round-the-clock security", Parking: "private parking",
-  Garage: "a garage", "Fully Furnished": "full furnishing", "Modular Kitchen": "a modular kitchen", "Puja Room": "a puja room",
-  "Gated Community": "a gated setting", "Boring Water": "its own boring water", "Drinking Water": "a reliable drinking-water supply",
-  "Reserve Tank": "a reserve water tank", Internet: "high-speed internet", Marble: "marble floors", Parquet: "parquet floors",
-};
-
-/** Highlights about the surroundings ("Near …", "Walk to …") read as their own line, not as features. */
+/** Highlights about the surroundings ("Near …", "Walk to …") read as their own sentence. */
 const isNearby = (h: string) => /^(near|close to|walk to|walking distance)\b/i.test(h.trim());
 
-/** The admin's own highlights first (they are the selling points), then amenities by importance. */
-const topFeatures = (f: PropertyFacts, n: number) => {
-  const ranked = [...f.highlights.filter(h => !isNearby(h)), ...PRIORITY.filter(a => f.amenities.includes(a)), ...f.amenities.filter(a => !PRIORITY.includes(a))];
-  return [...new Set(ranked)].slice(0, n).map(a => PHRASE[a] ?? a.toLowerCase());
-};
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
 /**
- * A listing description in one of three styles. Call with 0, 1, 2 (then it repeats),
- * so "Write it for me" can offer a different take each time it is pressed.
+ * A listing description built only from what the form holds: nothing is added that the
+ * admin did not enter (no "sought-after", no "ready to move in"). Every filled-in field
+ * is used; empty ones are simply left out. Three wordings, for 0, 1, 2 (then it repeats),
+ * so "Write it for me" can offer a different take each time.
  */
 export function describeProperty(f: PropertyFacts, variant: number): string {
-  const place = f.location || f.district || "a sought-after neighbourhood";
   const isLand = f.type === "Land";
   const rent = f.listing === "For Rent";
-  const thing = noun(f.type);
+  const place = f.location || f.district;
+  const where = place ? ` in ${place}` : "";
   const land = f.landArea !== "—" ? f.landArea : "";
   const built = !isLand && f.builtArea !== "—" ? f.builtArea : "";
-  const subject = isLand
-    ? (land ? `${land} of land` : "prime land")
-    : `${f.beds > 0 ? `${f.beds}-bedroom ` : ""}${thing}`;
-  const feats = topFeatures(f, 3);
-  // "Location perks: Near International School and Walk to Ring Road."
-  const nearby = f.highlights.filter(isNearby);
-  const perks = nearby.length ? ` Location perks: ${list(nearby)}.` : "";
+  const nearby = f.highlights.filter(isNearby).map(h => h.charAt(0).toLowerCase() + h.slice(1));
+  const features = [...f.highlights.filter(h => !isNearby(h)), ...f.amenities];
 
-  // "It faces north-east and is reached by a black-topped 20ft road."
-  const facing = f.facing ? `faces ${f.facing.toLowerCase()}` : "";
-  const road = f.roadAccess ? `is reached by a ${f.roadAccess.toLowerCase()} road` : "";
-  const setting = facing || road ? ` It ${[facing, road].filter(Boolean).join(" and ")}.` : "";
+  const rooms = !isLand ? [f.beds > 0 && plural(f.beds, "bedroom"), f.baths > 0 && plural(f.baths, "bathroom"), f.floors > 0 && plural(f.floors, "floor")].filter(Boolean) as string[] : [];
+  const size = [built && `${built} built`, land && (isLand ? land : `on ${land} of land`)].filter(Boolean).join(" ");
+  const year = !isLand && f.buildYear > 0 ? f.buildYear : 0;
+  const orient = [f.facing && `faces ${f.facing.toLowerCase()}`, f.roadAccess && `has ${f.roadAccess.toLowerCase()} road access`].filter(Boolean) as string[];
 
-  const close = rent
-    ? "Ready to move in, and ideal for anyone who wants space, light and calm."
-    : isLand
-      ? "A rare chance to secure land in one of the valley's most desirable settings."
-      : "A rare opportunity to own a home of real character in one of the valley's most desirable settings.";
+  const s = {
+    intro: `${f.title ? `${f.title} is a` : "A"} ${noun(f.type)} ${rent ? "for rent" : "for sale"}${where}.`,
+    rooms: rooms.length ? `It has ${list(rooms)}.` : "",
+    size: isLand ? (land ? `The plot measures ${land}.` : "") : size ? `${cap(size)}.` : "",
+    year: year ? `Built in ${year}.` : "",
+    orient: orient.length ? `It ${list(orient)}.` : "",
+    feats: features.length ? `Features: ${list(features)}.` : "",
+    near: nearby.length ? `Location: ${list(nearby)}.` : "",
+    price: f.price ? `${rent ? "Rent" : "Asking price"}: ${f.price}.` : "",
+    verified: f.verified ? "Documents verified by Nepal Bhoomi." : "",
+  };
 
   const styles = [
-    // Warm and descriptive
-    `${isLand ? cap(subject) : `A beautifully presented ${subject}`} in ${place}${feats.length ? `, with ${list(feats)}` : ""}.${setting}${perks} ${close}`,
-    // Short and factual, for busy buyers
-    `${isLand ? cap(subject) : f.beds > 0 ? `${f.beds} bedrooms and ${f.baths} bathroom${f.baths === 1 ? "" : "s"}` : cap(thing)}${built ? `, ${built} built` : ""}${!isLand && land ? ` on ${land}` : ""} in ${place}.${feats.length ? ` Highlights include ${list(feats)}.` : ""}${f.roadAccess ? ` ${cap(f.roadAccess)} road access.` : ""}${perks} ${rent ? "Viewings available this week." : "Documents verified and ready for a smooth transfer."}`,
-    // Lifestyle-led
-    `Imagine ${isLand ? "building your future" : "coming home"} in ${place}. This ${isLand ? (land ? `${land} plot` : "plot") : subject} brings together ${feats.length ? list(feats) : "comfort, privacy and considered design"}${f.facing ? `, with ${f.facing.toLowerCase()}-facing light` : ""}.${perks} ${rent ? "Book a viewing and see why it rarely stays available for long." : "Book a private viewing with our advisors and see it for yourself."}`,
-  ];
-  return styles[((variant % 3) + 3) % 3].replace(/\s+/g, " ").replace(/ \./g, ".").trim();
+    // Complete sentences, in the order a buyer reads a listing
+    [s.intro, s.rooms, s.size, s.year, s.orient, s.feats, s.near, s.price, s.verified],
+    // Short and factual: figures first
+    [
+      `${rooms.length ? cap(list(rooms)) : cap(noun(f.type))}${size ? `, ${size}` : ""}${place ? `, in ${place}` : ""}${rent ? ", for rent" : ", for sale"}.`,
+      s.year, s.orient, s.feats, s.near, s.price, s.verified,
+    ],
+    // Features first
+    [
+      features.length ? `${f.title || cap(noun(f.type))}${where}, with ${list(features)}.` : s.intro,
+      s.rooms, s.size, s.year, s.orient, s.near, s.price, s.verified,
+    ],
+  ][((variant % 3) + 3) % 3];
+  return styles.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
-/** Short taglines that suit the property type. */
-export function taglineIdeas(type: string): string[] {
-  const common = ["Refined Living", "A Rare Opportunity", "Light, Space & Calm"];
-  const byType: Record<string, string[]> = {
-    "House/Bungalow": ["Heritage Reimagined", "Family Sanctuary", "Quiet Hilltop Retreat"],
-    Apartment: ["Sanctuary Above the City", "Urban Elegance", "City Views, Every Day"],
-    Flat: ["City Centre Living", "Move-in Ready", "Urban Elegance"],
-    Land: ["Build Your Vision", "Nature Reserve Living", "Prime Development Land"],
-    Commercial: ["Premier Business Address", "Urban Investment", "High-Footfall Location"],
-  };
-  return [...(byType[type] ?? []), ...common].slice(0, 5);
-}
-
-/**
- * Selling points agents often add, offered as one-tap chips. None of these may be an
- * amenity name: amenities are picked from the icon tiles, highlights are the free-text extras.
- */
-export const HIGHLIGHT_IDEAS = [
-  "Walk to Ring Road", "Near International School", "Valley Views", "Newly Renovated", "Private Rooftop",
-  "Two Road Access", "Peaceful Neighbourhood", "Ready to Move In", "Wide Road Frontage", "Close to Hospital",
-];
-
-/** Polished client quotes to start a testimonial from. */
-export const TESTIMONIAL_IDEAS = [
-  "Nepal Bhoomi found us the right home in weeks, not months. Every question was answered honestly and every document was ready on time.",
-  "As an NRN buying from abroad, I needed people I could trust. The team handled the legal and banking steps with complete transparency.",
-  "Professional, patient and genuinely knowledgeable about the market. They negotiated a fair price and made the whole process feel effortless.",
-  "From the first viewing to the final handover, the service was calm and precise. We would not buy property in Nepal any other way.",
-];
+// Tagline, highlight and testimonial ideas are admin-editable lists in data/options.ts.
 
 /** A short profile bio from what the team form knows. Two styles, alternating. */
 export function teamBio(m: { name: string; role: string; experienceYears?: number; specialities?: string[]; languages?: string[] }, variant: number): string {

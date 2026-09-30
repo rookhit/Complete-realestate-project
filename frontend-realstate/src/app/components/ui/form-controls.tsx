@@ -24,11 +24,11 @@ export function Field({ label, hint, children, className = "" }: {
   );
 }
 
-export function TextInput({ value, onChange, placeholder, type = "text", maxLength }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; type?: string; maxLength?: number;
+export function TextInput({ value, onChange, placeholder, type = "text", maxLength, autoFocus }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; type?: string; maxLength?: number; autoFocus?: boolean;
 }) {
   return (
-    <input type={type} value={value} maxLength={maxLength} placeholder={placeholder}
+    <input type={type} value={value} maxLength={maxLength} placeholder={placeholder} autoFocus={autoFocus}
       onChange={e => onChange(e.target.value)} className={inputCls} style={inputStyle} />
   );
 }

@@ -11,7 +11,7 @@ export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 
 // Count, search box and sort menu above the Buy/Rent results.
-// API: query -> ?q= (title, location, district, type, ref like NB-004), sort -> ?sort=
+// API: query -> ?q= (title, location, district, type, ref like #NBS004, NBL007 or 004), sort -> ?sort=
 export function ResultsToolbar({ count, query, onQuery, sort, onSort }: {
   count: number;
   query: string;
