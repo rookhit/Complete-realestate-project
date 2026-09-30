@@ -10,7 +10,7 @@ Backend for a real estate website, built with Next.js (App Router), TypeScript, 
 
 The developer works on Windows with PowerShell. Give commands that work there.
 
-Current phase: authentication and authorization foundation only.
+Current phase (updated 2026-09-30): authentication and authorization are built; the database schema for all site content is built and applied (tables only). Next: the content API endpoints from FRONTEND_CLAUDE.md §0.4, starting with properties (requested 2026-09-30).
 
 Scope
 
@@ -34,10 +34,10 @@ Database schema (tables only, no endpoints yet) for properties, locations, ameni
 Out of scope. Do NOT build these unless I ask:
 
 Middleware / proxy route protection (I will add it later).
-API endpoints for the content tables above, and inquiries (the inquiry channel, WhatsApp or email, is not decided yet).
+API endpoints for the content tables above until each one is requested (properties are next, 2026-09-30). The four website forms now land in the Message table (Admin → Messages), so the old "inquiry channel not decided" note is resolved.
 OAuth / social login other than Google, admin dashboard. (TOTP 2FA was added by explicit request on 2026-09-24; email verification + real email delivery on 2026-09-26.)
 
-Reactions, comments and inquiries will later call requireAuth() on the server. Keep the guards generic and easy to reuse.
+Reactions (hearts), comments (reviews) and free listings are SIGNED-IN ONLY (decision 2026-09-30): their routes call requireAuth() and take userId from the token, never the body. The enquiry / callback / contact forms stay public (rate-limited). Keep the guards generic and easy to reuse.
 
 Commands
 npm run dev: start the dev server (http://localhost:3000)
@@ -107,6 +107,12 @@ AuditLog: id, userId (optional, SetNull on user delete), event, ipAddress, userA
 RateLimit: key ("<action>:<ip>", primary key), count, windowStart.
 PasswordResetToken: id, tokenHash (unique), userId, expiresAt, usedAt (optional), createdAt. Relation to User with cascade delete. Index on userId.
 OAuthAccount: id, userId, provider (AuthProvider), providerAccountId (Google sub), email, emailVerified, name (optional), pictureUrl (optional), lastLoginAt, createdAt, updatedAt. Unique (provider, providerAccountId). Relation to User with cascade delete. Index on userId. Stores only the profile Google returns, never Google access/refresh tokens.
+Data model (content, current as of 2026-09-30 — the dated entries below explain how it got here)
+Property: id (generated) + nbNumber (unique, admin-chosen; API returns nbId = "NBS"/"NBL" + 3-digit number by listing), title, tagline, description, listing (enum FOR_SALE | FOR_RENT), type / badge / facing / roadSurface / builtAreaUnit / landAreaUnit as text (validated against SiteSetting "options:<key>"), featured, verified, price BigInt? (NULL = Negotiable), bedrooms/bathrooms/floors/buildYear nullable, builtAreaValue, landAreaValue or landAreaRapd ("4-4-0-1") + landAreaSqft, roadWidthFt, gallery[], videoUrl, highlights[], floorPlan Json (PlanBox[]), reactionCount, deletedAt (soft delete for Undo).
+PropertyLocation (1:1): district, address, googleMapsUrl + latitude/longitude (ADMIN-ONLY), locationMode (APPROXIMATE default | EXACT), approxLatitude/approxLongitude (stored shifted centre), mapX/mapY. Public responses send one point: approx = real point when EXACT, shifted centre when APPROXIMATE.
+Amenity (69, seeded) + PropertyAmenity. PropertyReaction (one heart per user per property; the only like, no favourites). PropertyComment (review: rating 1-5, authorName + authorAvatarUrl snapshot, status PENDING | PUBLISHED | REJECTED, deletedAt).
+Message (Admin → Messages: kind ENQUIRY | CALLBACK | CONTACT | EMAIL, propertyId SetNull, read, replied, deletedAt). ListingSubmission (Free Listings: status NEW | DRAFT | PUBLISHED | REJECTED, statusBeforeReject, userId, private seller fields, fields as typed, amenities, photos, draft Json, propertyId unique).
+TeamMember, Article (slug, publishedAt NULL = draft), Testimonial (rating 1-5), Video (youtubeUrl or sources Json), SiteSetting (key → Json: stats, featuredDistricts, contact, services, options:<key>). Every table has RLS enabled.
 File layout
 app/api/v1/auth/register/route.ts
 app/api/v1/auth/login/route.ts
@@ -245,7 +251,7 @@ Not yet updated: the frontend repo's own CLAUDE.md (a different repo, not checke
 - Property: title required (NOT NULL + CHECK not blank); listing enum FOR_SALE | FOR_RENT (exactly one); type enum of the 5 PROPERTY_TYPES; featured and verified are independent booleans; price BigInt? in whole rupees (per month for rent), NULL = no price given = "Negotiable" (no separate flag; CHECK price > 0); furnishing enum UNFURNISHED | SEMI_FURNISHED | FULLY_FURNISHED (nullable); bedrooms/bathrooms/floors/buildYear nullable instead of the frontend's 0 / "—"; areas as value + unit enum; facing/roadSurface enums; gallery String[] (0+ image URLs) + videoUrl String? (at most one video, added in migration 20260928*_property_video_url; files for both live in Cloudflare R2, the DB stores URLs only; no PropertyVideo table by decision) + highlights String[]; admin-editable reactionCount; deletedAt soft delete (the admin's Undo keeps id and ref); ref "NB-013" unique, assigned by the server.
 - PropertyLocation (1:1): district required (CHECK not blank; must be one of the frontend's 77 spellings — validate in the API), address, googleMapsUrl (stored only, the frontend doesn't use it yet), optional latitude/longitude, mapX/mapY (0-100 decorative grid).
 - Amenity (name unique + group MAIN_FEATURES | ROOMS | FURNISHED) with PropertyAmenity join table. The 69 names live in prisma/amenities.ts (copy of the frontend's AMENITIES) and are upserted by prisma/seed.ts (never deleted).
-- FloorPlan (label, imageUrl, position) → Room (name, dimensions, position).
+- FloorPlan (label, imageUrl, position) → Room (name, dimensions, position). SUPERSEDED 2026-09-30: dropped; the floor plan is Property.floorPlan Json.
 - PropertyReaction: one per (user, property), signed-in users only. PropertyComment: star rating 1-5 (CHECK), body, authorName snapshot, userId SetNull, server-set verified, status PENDING | PUBLISHED | REJECTED (moderation).
 - TeamMember (frontend TeamMember shape + position) and Article (journal; slug unique, optional authorId → TeamMember SetNull + authorName, publishedAt NULL = draft, position).
 - RLS enabled on all 10 new tables. Verified against Supabase inside rolled-back transactions (valid property with location/amenities/rooms, NULL price, both flags, duplicate reaction, blank title, bad enums, price 0, missing/blank district, rating 6, duplicate slug). Next: the API endpoints in FRONTEND_CLAUDE.md §0.4 (map enums to the frontend's display strings; BigInt price needs converting for JSON).
@@ -261,7 +267,7 @@ Not yet updated: the frontend repo's own CLAUDE.md (a different repo, not checke
 
 2026-09-30 (later) — signed-in only, by explicit decision: liking (PropertyReaction), reviewing (PropertyComment) and free listings (ListingSubmission) require a logged-in user — use requireAuth() on those POST/DELETE routes and take userId from the token, never the body. The heart is the only like: there is no favourites table or /me/favourites endpoint. Migration 20260930140000_signed_in_reviews_listings: PropertyComment.authorAvatarUrl (copied from the account at posting, e.g. the Google pictureUrl; NULL = initials) and ListingSubmission.userId (→ User, SetNull, indexed; the seller contact fields stay, pre-filled from the account and editable). userId stays nullable on both only so the row survives account deletion. The review body no longer carries a name: authorName comes from User.name. Verified in a rolled-back transaction (4 checks), applied with migrate deploy; tsc + lint clean. Frontend: requestSignIn() in auth.tsx, login prompts on the heart / Write a Review / Free Listing page.
 
-2026-09-30 (map) — approximate location, by explicit decision. Visitors see a ~500 m irregular area, never the exact point (frontend: data/maps.ts, components/ui/leaflet-maps.tsx; FRONTEND_CLAUDE.md §0.5 "Approximate location"). Backend job when building the property endpoints: PropertyLocation.googleMapsUrl / latitude / longitude are ADMIN-ONLY (never in public responses). Add a stored shifted centre (e.g. approxLatitude / approxLongitude on PropertyLocation — not in the schema yet): generated once on save with a random bearing and distance 350 × √(0.2 + 0.8·u) m, regenerated only when the location changes, sent publicly as `approx: { lat, lng }`. Resolve maps.app.goo.gl short links server-side on save to get the coordinates.
+2026-09-30 (map) — approximate location, by explicit decision. Visitors see a ~500 m irregular area, never the exact point (frontend: data/maps.ts, components/ui/leaflet-maps.tsx; FRONTEND_CLAUDE.md §0.5 "Approximate location"). Backend job when building the property endpoints: PropertyLocation.googleMapsUrl / latitude / longitude are ADMIN-ONLY (never in public responses). Add a stored shifted centre (approxLatitude / approxLongitude on PropertyLocation, added in migration 20260930160000_location_mode): generated once on save with a random bearing and distance 350 × √(0.2 + 0.8·u) m, regenerated only when the location changes, sent publicly as `approx: { lat, lng }`. Resolve maps.app.goo.gl short links server-side on save to get the coordinates.
 
 2026-09-30 (location mode) — the admin chooses per property: Approximate area (default) or Exact location. Migration 20260930160000_location_mode: enum LocationMode (APPROXIMATE | EXACT), PropertyLocation.locationMode (default APPROXIMATE), approxLatitude / approxLongitude (the stored shifted centre from the "map" entry above, now in the schema), CHECKs that both coordinate pairs are all-or-nothing. Public responses: `approx` = latitude/longitude when EXACT, approxLatitude/approxLongitude when APPROXIMATE, plus `locationMode`; googleMapsUrl and (in APPROXIMATE) latitude/longitude never. Verified in a rolled-back transaction (6 checks), applied; tsc + lint clean.
 

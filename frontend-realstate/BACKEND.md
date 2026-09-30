@@ -7,61 +7,44 @@ in your code and why, and what the frontend is currently blocked on.
 
 | File | Owner | What it is |
 |---|---|---|
-| `CLAUDE.md` (root) | Both | The **contract**. Data shapes, endpoint specs, auth rules. The spec. |
-| **`BACKEND.md`** (this) | **Backend** | The **status**. What is built, what is next, what is blocking. |
-| `apps/api/API.md` | Backend | Your reference docs for the endpoints you shipped |
-| `apps/api/CLAUDE.md` | Backend | Your own project instructions for `apps/api` |
+| `frontend-realstate/FRONTEND_CLAUDE.md` | Both | The **contract**. Data shapes, endpoint specs, auth rules. The spec. |
+| **`frontend-realstate/BACKEND.md`** (this) | **Backend** | The **status**. What is built, what is next, what is blocking. |
+| `backend-realstate/API.md` | Backend | Reference docs for the endpoints already shipped |
+| `backend-realstate/CLAUDE.md` | Backend | The backend's own project instructions (auth design, data model, change history) |
+
+(Older sections below say `apps/api` / `apps/web`: in this repo those are `backend-realstate/` and `frontend-realstate/`.)
 
 Rule of thumb: **`CLAUDE.md` says what it should be. This file says where we are.** When you
 finish something, tick it here and update the matching section of `CLAUDE.md` in the same commit.
 
 ---
 
-## 1. Where we are
+## 1. Where we are (updated 2026-09-30)
 
 | | Status |
 |---|---|
-| **Auth API** | Built and hardened. Register, login, refresh, logout, me |
-| **Database** | Postgres on Supabase. `User`, `RefreshToken`, `RateLimit`. Two migrations |
-| **Everything else** | Not started. No properties, articles, leads, uploads, favourites, videos |
-| **Frontend** | Feature-complete as a prototype, wired to **nothing**. Still reads hardcoded arrays |
-
-The frontend makes **zero network calls today**. Nothing breaks when the API is down, and nothing
-improves when it is up, until we write the client layer. That is frontend work and is not
-blocking you.
+| **Auth API** | Built and hardened: register with 6-digit email verification, login, TOTP 2FA (required for the admin), Google sign-in, refresh, logout, me, forgot / reset password (Gmail SMTP), `GET /admin/users` |
+| **Database** | Postgres on Supabase, 12 migrations, RLS on every table. **The content schema for every admin screen is built and applied** (tables only): properties with NB ID, locations with exact / approximate mode, amenities, hearts, reviews, messages, free listings, articles, team, testimonials, videos, site settings. Summary: `backend-realstate/CLAUDE.md` → "Data model (content)" |
+| **Content API** | **Next.** Nothing yet; starting with properties (§4.1) |
+| **Frontend** | Auth screens call the real API. Everything else (site and admin) still reads the mock arrays in `src/app/data/`; each function there names the endpoint that replaces it |
 
 ---
 
 ## 2. Running it
 
 ```bash
-npm run install:all     # from the repo root
-npm run dev:api         # http://localhost:3000
-npm run dev:web         # http://localhost:5173
+cd backend-realstate && npm install && npx prisma generate && npm run dev          # http://localhost:3000
+cd frontend-realstate && npm install && npm run dev -- --port 5173 --strictPort    # must match FRONTEND_ORIGIN
 ```
 
-`apps/api` needs a `.env`. Copy `apps/api/.env.example` and fill it in.
-
-> **The `.env` currently in the repo folder is throwaway.** It holds dummy values that only exist
-> so `next build` could run during review. Replace `DATABASE_URL`, `DIRECT_URL` and
-> `JWT_ACCESS_SECRET` with real ones. It is git-ignored, so it never left this machine.
-
-Two variables are **fail-closed on purpose** — the app refuses to start without them:
-
-- `JWT_ACCESS_SECRET` — 32+ characters. Generate with `openssl rand -base64 48`.
-- `FRONTEND_ORIGIN` — the browser origin allowed to call the API. This is the cross-site request
-  forgery defence, so it must never be optional.
-
-```bash
-cd apps/api
-npx prisma migrate deploy
-npx prisma generate
-npm run db:seed
-```
+`backend-realstate/.env` (never committed) needs the variables listed in `backend-realstate/CLAUDE.md`.
+New database: `npx prisma migrate deploy` then `npm run db:seed` (the admin + the 69 amenities).
 
 ---
 
-## 3. Changes made to your code — please review
+## 3. History: review of the old `apps/api` (2026-09-22)
+
+Kept for the record. The auth scheme has changed since (access token in memory + httpOnly refresh cookie, §5).
 
 All on `feat/monorepo-and-auth-hardening`. `apps/api` is yours under the working agreement, so
 this was an exception, not a precedent.
@@ -103,95 +86,46 @@ carries a dated banner explaining this and the changed error shape.
 
 ---
 
-## 4. What the frontend is blocked on
+## 4. What the frontend is waiting for, in build order
 
-Ranked. The top two have shipped UI with nowhere to send data.
+Full list with shapes: `FRONTEND_CLAUDE.md` §0.4. Forgot / reset password (old §4.2) is done.
 
-### 4.1 `POST /uploads` — blocking
+### 4.1 Properties — first
+Public `GET /properties` (filters, search incl. NB ID, sort, pages) and `GET /properties/:id`; admin
+create / edit / delete / restore (Undo), `GET /admin/properties/next-ref`, 409 `REF_TAKEN`. Rules that bite:
+- **NB ID**: `nbId` = "NBS" (sale) / "NBL" (rent) + `nbNumber` padded to 3 digits; one number sequence; never reused.
+- **Location privacy**: never send `googleMapsUrl`; send one point `approx` + `locationMode` (the real point
+  only when the admin chose EXACT). Resolve `maps.app.goo.gl` short links on save; generate the shifted centre once.
+- **Exact strings**: `district` is one of the 77 spellings; type / badge / facing / road surface / units come from
+  the admin-editable option lists. Price: send `priceNum` (BigInt → number) and the display `price`.
 
-Free Listing now accepts multiple photos with previews, a cover image, removal, and 8 MB and
-count limits. It has nowhere to send them.
+### 4.2 Uploads — Cloudflare R2
+`POST /admin/uploads` (images ≤ 8 MB) and `/admin/uploads/video` → `{ url }`. Needs the R2 bucket and keys.
 
-```
-POST /uploads          multipart/form-data, field "files" (repeatable)
-  -> { data: { files: [{ id, url, width, height, bytes }] } }
-```
+### 4.3 Hearts and reviews — signed in only
+`POST / DELETE /properties/:id/reaction`, `GET / POST /properties/:id/reviews` (name and photo from the account),
+admin moderation. The heart is the only like: there is **no** `/me/favourites`.
 
-Needs: object storage (Supabase Storage is already there), a size and MIME allowlist, and a
-limit on how many an unauthenticated caller can push.
+### 4.4 Free listings and Messages
+`POST /listings` (signed in), `/admin/listings…`; the public enquiry / callback / contact forms and
+`/admin/messages…` with unread counts.
 
-### 4.2 `POST /auth/forgot-password` and `/auth/reset-password` — blocking
-
-The UI ships. Enter an email, get "check your inbox", link expires in one hour.
-
-```
-POST /auth/forgot-password   { email }            -> 204 ALWAYS, even if unknown
-POST /auth/reset-password    { token, password }  -> 204
-```
-
-Always return 204 on forgot-password. Anything else tells an attacker which emails have accounts.
-Needs an email provider — Resend, Postmark or SES. That is a product decision, not just a
-technical one.
-
-### 4.3 Properties — the big one
-
-Everything on the site is a property. Shape is in `CLAUDE.md` §6, query parameters in §7.2.
-
-```
-GET /properties            filtered + paginated
-GET /properties/:id        full detail + gallery
-GET /properties/:id/related
-```
-
-Three things that will bite:
-
-- **`district` is an exact-match filter key** and there are now **77 canonical spellings** in
-  `apps/web/src/app/data/districts.ts`. Send "Kathmandu ", with a trailing space, and the filter
-  silently returns nothing. Normalise server-side. Note Nawalparasi splits into **Nawalpur** and
-  **Parasi**, and Rukum into **Rukum East** and **Rukum West**.
-- **`price` and `priceNum` are both needed.** One is the display string ("NPR 8.5 Cr"), one is the
-  integer rupees we sort and filter on.
-- **`"—"` as a "not applicable" value** is what the UI expects today. `null` would be cleaner;
-  say so in `CLAUDE.md` §12 and we will adapt the renderers.
-
-### 4.4 Lead capture — four forms, all currently fake
-
-```
-POST /enquiries   { propertyId, name, email, phone, message }
-POST /callbacks   { name, phone, preferredTime }
-POST /contact     { name, email, phone, interest, message }
-POST /listings    { propertyTitle, contactName, contactPhone, ..., imageIds[] }
-```
-
-All four are **public and unauthenticated**. They need rate limiting (the limiter already exists,
-reuse it), a honeypot or captcha, and server-side validation that does not trust the client.
-
-### 4.5 Content and the rest
-
-```
-GET /districts/featured   { name, propertyCount, imageUrl }[]   — 3 to 5 only, see §7.3
-GET /videos               company films — sources[] is what makes quality switching work
-GET /articles, /articles/:slug, /testimonials, /reference
-GET/PUT/DELETE /me/favourites/:propertyId
-```
-
-`propertyCount` on a district tile must match what `GET /properties?district=X` actually returns.
-The hardcoded values currently claim 24 where the data holds 5 — one click exposes it.
+### 4.5 Site content
+Articles, team, testimonials, videos, `GET /site` (stats, featured districts with live counts, contact,
+services, dropdown options) and their admin `PUT`s.
 
 ---
 
 ## 5. Decisions already made
 
-- **Cookie-only auth wins.** Your scheme, not the one originally written in `CLAUDE.md` §8. No
-  token in any response body; both live in `httpOnly` cookies. It is safer, because an in-memory
-  token is readable by any cross-site-scripting bug. The frontend will use
-  `credentials: "include"` and no `Authorization` header.
-- **Register is members-only.** Agency and agent sign-up was removed from the frontend, so your
-  `{ email, password, name }` schema now matches. Only `phone` is collected and unstored.
-- **Deploy same-site.** One origin with `/api` proxied, or `api.domain.com` beside `domain.com`.
-  Then `SameSite` cookies work, no CORS runs, and no `SameSite=None` downgrade is needed.
-  Splitting across unrelated domains forces `SameSite=None`, which switches off the browser's own
-  forgery protection and leaves `FRONTEND_ORIGIN` as the only defence.
+- **Auth tokens**: access token in the JSON body, kept in memory, sent as `Authorization: Bearer`; refresh
+  token in an httpOnly, SameSite=Strict cookie. (This replaced the older "cookie-only" plan.)
+- **Register is members-only**; exactly one ADMIN, created by the seed, with 2FA required.
+- **Hearts, reviews and free listings need a signed-in user**; the three other forms stay public, rate-limited.
+- **NB ID** is chosen by the admin; the database `id` is separate and never shown.
+- **Maps**: Leaflet + OpenStreetMap tiles. Per property the admin picks an approximate ~500 m area (default) or
+  the exact point; the exact point stays admin-only otherwise.
+- **Deploy same-site** (`domain.com` + `/api`, or `api.domain.com`), so the SameSite cookie works.
 
 ---
 
@@ -206,6 +140,13 @@ splitting the 2,700-line `App.tsx`.
 ## 7. Backend change log
 
 Newest first, one line each. Append only.
+
+- **2026-09-30 · saksham · Content schema complete + map privacy.** Migrations `20260930120000`,
+  `20260930140000`, `20260930160000`: NB ID, text dropdown values, R-A-P-D, floor plan JSON, Message,
+  ListingSubmission, Testimonial, Video, SiteSetting, signed-in reviews / listings, location mode. Frontend:
+  approximate-location maps, `propId` → `nbId`, login prompts. Details: `FRONTEND_CLAUDE.md` §13.
+- **2026-09-24 → 26 · saksham · Auth completed.** 2FA, Google sign-in, email verification, Gmail reset links,
+  rate limits, audit log, RLS (see `backend-realstate/CLAUDE.md`).
 
 - **2026-09-22 · frontend · Hardened the auth API.** Seven operational fixes on
   `feat/monorepo-and-auth-hardening`, listed in §3. Needs saksham's review.

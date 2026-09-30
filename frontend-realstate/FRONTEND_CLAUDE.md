@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 0. Backend handoff: quick reference (updated 2026-09-28)
+## 0. Backend handoff: quick reference (updated 2026-09-30)
 
 Start here. Everything the backend needs from the frontend is on this page; the numbered
 sections below go into detail. **Older sections say `apps/web` and `apps/api`: in this repo those
@@ -28,8 +28,13 @@ npm run typecheck      # frontend: strict TypeScript, unused code is an error
 npm run build          # frontend production build
 ```
 
-`FRONTEND_ORIGIN` in the backend `.env` must equal the frontend's address exactly (here
-`http://localhost:5175`), or the browser's requests are refused.
+`FRONTEND_ORIGIN` in the backend `.env` must equal the frontend's address exactly, or the browser's
+requests are refused. Use the port that matches your `.env` (the backend developer's is `http://localhost:5173`,
+so run `npm run dev -- --port 5173 --strictPort` there).
+
+**State on 2026-09-30:** auth API built; **database schema for every admin screen built and applied**
+(backend-realstate/prisma/schema.prisma, see the 2026-09-30 change-log entries); content endpoints (§0.4) are
+next, starting with properties. Until then the site and admin still run on the mock arrays in `src/app/data/`.
 
 ### 0.2 Environment variables
 
@@ -213,7 +218,7 @@ Details and endpoints: §7.9.
 
 `Page` values (`App.tsx`): home, buy, rent, hot, new-listings, map, area, property, about, team,
 blog, blog-post, services, emi, contact, login, register, reset-password, free-listing, videos,
-admin, admin-users, admin-reviews. There are still no URLs per page (§5); only `/reset-password`
+admin, admin-users, admin-reviews, admin-listings (Free Listings), admin-messages (Messages). There are still no URLs per page (§5); only `/reset-password`
 is read from the address bar.
 
 The only thing the frontend stores in the browser: admin drafts in `localStorage` under
