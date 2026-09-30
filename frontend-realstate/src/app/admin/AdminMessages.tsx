@@ -18,7 +18,7 @@ type Filter = "all" | "unread" | MessageKind;
 
 /** A reply in the admin's own email program, with the original message quoted. */
 function replyLink(m: Message): string {
-  const subject = m.subject.startsWith("Re:") ? m.subject : `Re: ${m.propRef ? `${displayRef(m.propRef)} ` : ""}${m.subject}`;
+  const subject = m.subject.startsWith("Re:") ? m.subject : `Re: ${m.nbId ? `${displayRef(m.nbId)} ` : ""}${m.subject}`;
   const quoted = m.body.split("\n").map(l => `> ${l}`).join("\n");
   const body = `Dear ${m.name.split(" ")[0]},\n\n\n\nKind regards,\nNepal Bhoomi\n${CONTACT.phone}\n\nOn ${new Date(m.receivedAt).toLocaleString("en-GB")}, ${m.name} wrote:\n${quoted}`;
   return `mailto:${encodeURIComponent(m.email ?? "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -47,7 +47,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
     const s = q.trim().toLowerCase();
     return MESSAGES.filter(m =>
       (filter === "all" || (filter === "unread" ? !m.read : m.kind === filter)) &&
-      (!s || [m.name, m.email ?? "", m.phone ?? "", m.subject, m.body, m.propRef ?? ""].some(v => v.toLowerCase().includes(s))));
+      (!s || [m.name, m.email ?? "", m.phone ?? "", m.subject, m.body, m.nbId ?? ""].some(v => v.toLowerCase().includes(s))));
   }, [filter, q, MESSAGES.length, unreadCount()]);
   const shown = paginate(list, page, PER_PAGE);
   const open = MESSAGES.find(m => m.id === openId) ?? null;
@@ -86,7 +86,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
           );
         })}
       </div>
-      <div className="mb-6 max-w-xl"><SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by name, email, phone, property ID or text" /></div>
+      <div className="mb-6 max-w-xl"><SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by name, email, phone, NB ID or text" /></div>
 
       {MESSAGES.length === 0 ? (
         <EmptyState title="No messages yet" text="Enquiries from the website and emails will appear here." />
@@ -147,7 +147,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
                   {open.propertyId && (
                     <button type="button" onClick={() => nav.openProperty(open.propertyId!)}
                       className="mt-4 inline-flex items-center gap-2 px-3 py-2 border text-[12px] transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: FG_LIGHT, ...sans }}>
-                      <Building2 size={14} style={{ color: GOLD }} />About {open.propRef ? displayRef(open.propRef) : "a property"}: view on site
+                      <Building2 size={14} style={{ color: GOLD }} />About {open.nbId ? displayRef(open.nbId) : "a property"}: view on site
                     </button>
                   )}
                 </div>

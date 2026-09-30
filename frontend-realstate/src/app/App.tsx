@@ -10,13 +10,14 @@ import {
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
   Tag as TagIcon,
-  ExternalLink, LogOut,
+  ExternalLink, LogOut, Lock,
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
 import { DISTRICTS } from "@/app/data/districts";
 import { reviewsFor } from "@/app/data/reviews";
 import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, matchesRef, type Prop } from "@/app/data/properties";
-import { placeLabel, resolveMap } from "@/app/data/maps";
+import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
+import { AreaMap, PropertiesMap } from "@/app/components/ui/maps";
 import { addMessage, unreadCount } from "@/app/data/messages";
 import { addListing, newListingsCount } from "@/app/data/listings";
 import { CALLBACK_TIMES, CONTACT_TOPICS } from "@/app/data/options";
@@ -27,7 +28,7 @@ import {
 } from "@/app/data/content";
 import { ServiceIcon } from "@/app/components/ui/service-icon";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
-import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
+import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, onSignInRequest, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 import {
   BG_LIGHT, FG_DARK, FG_LIGHT, CREAM, WHITE, MAROON, GOLD, GOLD_DIM,
   MUTED_D, MUTED_L, BORDER_L, BORDER_D, serif, sans, img,
@@ -1208,7 +1209,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
     p.title.toLowerCase().includes(q) ||
     p.location.toLowerCase().includes(q) ||
     p.district.toLowerCase().includes(q) ||
-    matchesRef(p.propId,q) ||
+    matchesRef(p.nbId,q) ||
     p.type.toLowerCase().includes(q);
   const props=ALL_PROPS.filter(p=>{
     if(p.listing!==listing) return false;
@@ -1355,7 +1356,7 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
                   <div>
                     {/* Phones: price under the title. Wider: price on the right. */}
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-4 mb-1.5">
-                      <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag propId={p.propId}/></div>
+                      <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag nbId={p.nbId}/></div>
                         <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</h3></div>
                       <div className="sm:text-right shrink-0">
                         <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{p.price}</p>
@@ -1392,11 +1393,18 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
 }
 
 // ─── Map View (Image 4 style — sidebar + map) ─────────────────────────────────
+/** The pin's hover card on both maps: photo, price, title, place and a few facts. */
+function mapCardOf(p:Prop) {
+  const facts=[p.beds>0?`${p.beds} bed${p.beds===1?"":"s"}`:"", p.baths>0?`${p.baths} bath${p.baths===1?"":"s"}`:"",
+    p.builtArea!=="—"?p.builtArea:"", p.landArea!=="—"?p.landArea:""].filter(Boolean);
+  return { title:p.title, price:p.price, image:p.hero, location:p.location, listing:p.listing, facts };
+}
+
 function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=>void }) {
   const [hovPin,setHovPin]=useState<number|null>(null);
   const [activeCard,setActiveCard]=useState<number|null>(null);
-  const [zoom,setZoom]=useState(1);
-  const hovProp=hovPin?props.find(p=>p.id===hovPin):null;
+  const mapItems=useMemo(()=>props.flatMap(p=>{ const area=approxFor(p); return area?[{ id:p.id, area, ...mapCardOf(p), exact:import.meta.env.DEV ? exactFor(p) : null }]:[]; }),[props]);
+  const unmapped=props.length-mapItems.length;
   return (
     <div className="flex gap-0 border h-[760px] overflow-hidden" style={{borderColor:BORDER_L}}>
       {/* Sidebar list */}
@@ -1425,57 +1433,16 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
           </div>
         ))}
       </div>
-      {/* Map canvas */}
+      {/* Map: price markers when zoomed out, the approximate areas from street level.
+          Never the exact points (data/maps.ts). Hovering a card highlights it on the map. */}
       <div className="flex-1 relative overflow-hidden" style={{background:"#e8e4df"}}>
-        <div className="absolute inset-0" style={{transform:`scale(${zoom})`,transformOrigin:"center center",transition:"transform 0.28s ease"}}>
-          {/* Grid background (street-map aesthetic) */}
-          <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-            {Array.from({length:20}).map((_,i)=><line key={`h${i}`} x1="0%" y1={`${i*5.5}%`} x2="100%" y2={`${i*5.5}%`} stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>)}
-            {Array.from({length:30}).map((_,i)=><line key={`v${i}`} x1={`${i*3.8}%`} y1="0%" x2={`${i*3.8}%`} y2="100%" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>)}
-            {[15,35,55,75].map(v=><line key={`mh${v}`} x1="0%" y1={`${v}%`} x2="100%" y2={`${v}%`} stroke="white" strokeWidth="4"/>)}
-            {[20,40,60,80].map(v=><line key={`mv${v}`} x1={`${v}%`} y1="0%" x2={`${v}%`} y2="100%" stroke="white" strokeWidth="4"/>)}
-          </svg>
-          {/* Property markers */}
-          {props.map(p=>(
-            <div key={p.id} className="absolute" style={{left:`${p.mapX}%`,top:`${p.mapY}%`,transform:"translate(-50%,-100%)",zIndex:hovPin===p.id?30:5}}>
-              <button className="relative flex flex-col items-center group"
-                onMouseEnter={()=>setHovPin(p.id)} onMouseLeave={()=>setHovPin(null)}
-                onClick={()=>{setId(p.id);go("property");}}>
-                <div className="px-2.5 py-1 text-[12px] font-medium mb-0.5 transition-all group-hover:scale-105" style={{background:hovPin===p.id?"#8a2030":"#1a1611",color:WHITE,...sans,borderRadius:2}}>{p.price}</div>
-                <div className="w-0 h-0" style={{borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:`6px solid ${hovPin===p.id?"#8a2030":"#1a1611"}`}}/>
-              </button>
-            </div>
-          ))}
-        </div>
-        {/* Zoom controls */}
-        <div className="absolute top-3 left-3 flex flex-col border bg-white z-10" style={{borderColor:BORDER_L}}>
-          <button aria-label="Zoom in" onClick={()=>setZoom(z=>Math.min(2.2,+(z+0.2).toFixed(2)))} className="px-3 py-2 text-lg leading-none border-b transition-colors hover:bg-gray-50" style={{borderColor:BORDER_L,color:FG_LIGHT}}>+</button>
-          <button aria-label="Zoom out" onClick={()=>setZoom(z=>Math.max(0.6,+(z-0.2).toFixed(2)))} className="px-3 py-2 text-lg leading-none border-b transition-colors hover:bg-gray-50" style={{borderColor:BORDER_L,color:FG_LIGHT}}>&minus;</button>
-          <button aria-label="Reset zoom" onClick={()=>setZoom(1)} className="px-3 py-1.5 text-[10px] tracking-[0.2em] uppercase transition-colors hover:bg-gray-50" style={{color:MUTED_L,...sans}}>{Math.round(zoom*100)}%</button>
-        </div>
-        {/* Hover popup card */}
-        <AnimatePresence>
-          {hovProp&&(
-            <motion.div className="absolute z-20 w-64 border bg-white overflow-hidden shadow-lg pointer-events-none"
-              style={{left:hovProp.mapX>65?`calc(${hovProp.mapX}% - 280px)`:`${hovProp.mapX}%`,top:`${Math.min(hovProp.mapY+2,62)}%`,borderColor:BORDER_L}}
-              initial={{opacity:0,scale:0.92}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:0.92}} transition={{duration:0.18}}>
-              <div className="relative">
-                <img src={hovProp.hero} alt={hovProp.title} className="w-full h-28 object-cover"/>
-              </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <p className="text-[15px] leading-tight" style={{color:MAROON,...sans,fontWeight:600}}>{hovProp.price}</p>
-                  {hovProp.verified&&<CheckCircle2 size={15} style={{color:GOLD,flexShrink:0}}/>}
-                </div>
-                <p className="text-[14px] leading-snug" style={{color:FG_LIGHT,...sans}}>{hovProp.title}</p>
-                <div className="flex gap-3 mt-1.5">
-                  {hovProp.builtArea!=="—"&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Square size={11}/>{hovProp.builtArea}</span>}
-                  {hovProp.beds>0&&<span className="flex items-center gap-1 text-[11px]" style={{color:MUTED_L,...sans}}><Bed size={11}/>{hovProp.beds}</span>}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <PropertiesMap items={mapItems} hoveredId={hovPin} onHover={setHovPin} onOpen={id=>{setId(id);go("property");}}
+          fallback={<div className="absolute inset-0 flex items-center justify-center text-[14px]" style={{color:MUTED_L,...sans}}>The map could not be loaded.</div>}/>
+        {unmapped>0&&(
+          <div className="absolute bottom-3 left-3 z-10 px-3 py-2 text-[12px] border bg-white/95" style={{borderColor:BORDER_L,color:MUTED_L,...sans}}>
+            {unmapped} listing{unmapped===1?" has":"s have"} no map location yet
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1484,18 +1451,27 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPERTY DETAIL PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
-  const p=ALL_PROPS.find(x=>x.id===propId)||ALL_PROPS[0];
-  const map=resolveMap(p.mapUrl,placeLabel(p.location,p.district));
+function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { propertyId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
+  const p=ALL_PROPS.find(x=>x.id===propertyId)||ALL_PROPS[0];
+  // Visitors get only what the admin chose to show; "Open in Google Maps" goes to that point, never the admin's link.
+  const area=approxFor(p);
+  const mapOpen=area ? googleMapsAt(area.centre) : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${placeLabel(p.location,p.district)}, Nepal`)}`;
+  const mapFallback=(
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6">
+      <MapPin size={22} style={{color:GOLD}}/>
+      <p className="text-[15px]" style={{color:FG_LIGHT,...sans}}>{placeLabel(p.location,p.district)}</p>
+      <p className="text-[13px]" style={{color:MUTED_L,...sans}}>Map not available for this listing yet.</p>
+    </div>
+  );
   // WhatsApp opens with the reference already typed, so the advisor knows which property it is.
-  const waLink=whatsappLink(`Hello, I'm interested in ${displayRef(p.propId)} (${p.title}).`);
+  const waLink=whatsappLink(`Hello, I'm interested in ${displayRef(p.nbId)} (${p.title}).`);
   const [galIdx,setGalIdx]=useState(0);
   const [lightbox,setLightbox]=useState(false);
   const [form,setForm]=useState({name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
   const [shared,setShared]=useState(false);
-  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setShared(false); },[propId]);
+  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setShared(false); },[propertyId]);
   useEffect(()=>{
     if(!lightbox) return;
     const k=(e:KeyboardEvent)=>{
@@ -1516,7 +1492,7 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
   };
   // Same facts as the results list, so the same icons.
   const details=[
-    {l:"Reference",v:displayRef(p.propId),i:<FileText size={14}/>},
+    {l:"NB ID",v:displayRef(p.nbId),i:<FileText size={14}/>},
     {l:"Property Type",v:p.type,i:<Home size={14}/>},
     {l:"Listing",v:p.listing,i:<TagIcon size={14}/>},
     {l:"Built Area",v:p.builtArea,i:<Square size={14}/>},
@@ -1566,7 +1542,7 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
         {[p.type,p.builtArea,p.landArea].filter(v=>v!=="—").map(v=><span key={v} className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}>{v}</span>)}
         {p.beds>0&&<span className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}><Bed size={14}/>{p.beds} Beds</span>}
         {p.baths>0&&<span className="flex items-center gap-1.5 text-[14px]" style={{color:MUTED_L,...sans}}><Bath size={14}/>{p.baths} Baths</span>}
-        <RatingLink propId={p.id}/>
+        <RatingLink propertyId={p.id}/>
         <div className="ml-auto flex gap-2.5">
           <ReactionButton id={p.id}/>
           <button aria-label="Share property" onClick={share} className="relative p-2.5 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}}>
@@ -1580,7 +1556,7 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
         {/* Left */}
         <div className="lg:col-span-2 flex flex-col gap-14">
           <div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3"><GoldLine/><Tag c={GOLD}>{p.badge}</Tag><span className="ml-auto"><RefTag propId={p.propId} copy/></span></div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3"><GoldLine/><Tag c={GOLD}>{p.badge}</Tag><span className="ml-auto"><RefTag nbId={p.nbId} copy/></span></div>
             <h1 className="leading-[0.92] mb-2" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.8rem,4vw,3.5rem)"}}>{p.title}</h1>
             {p.tagline&&<p className="mb-3 text-[16px] italic" style={{color:MUTED_L,...serif}}>{p.tagline}</p>}
             <div className="flex items-center gap-1.5 mb-3"><MapPin size={14} style={{color:GOLD}}/><span className="text-[14px]" style={{color:MUTED_L,...sans}}>{p.location}</span></div>
@@ -1636,16 +1612,20 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
             </div>
           </>}
           <div className="h-px" style={{background:BORDER_L}}/>
-          {/* Location: the admin's Google Maps link, or the area by name. Lazy, so the map
-              only loads when the visitor scrolls near it. */}
+          {/* Location: the admin chooses per property: an approximate area about 500 m across (the
+              default), or the exact point with a pin (data/maps.ts → approxFor).
+              The map only loads when the visitor scrolls near it. No coordinates yet (e.g. a short
+              share link the backend hasn't resolved): the area by name. */}
           <div>
             <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Location</p>
-            <div className="relative border overflow-hidden" style={{borderColor:BORDER_L,background:"#e9e3d8",aspectRatio:"16/8"}}>
-              <iframe src={map.src} title={`Map of ${p.title}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="absolute inset-0 w-full h-full border-0"/>
+            <div className="relative border overflow-hidden" style={{borderColor:BORDER_L,background:"#e9e3d8",aspectRatio:"16/8",minHeight:260}}>
+              {area
+                ? <AreaMap area={area} card={mapCardOf(p)} exact={import.meta.env.DEV ? exactFor(p) : null} fallback={mapFallback}/>
+                : mapFallback}
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <span className="flex items-center gap-2 text-[14px]" style={{color:MUTED_L,...sans}}><MapPin size={14} style={{color:GOLD}}/>{placeLabel(p.location,p.district)}</span>
-              <a href={map.open} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 border text-[11px] tracking-[0.2em] uppercase transition-colors hover:border-[#8a2030] hover:text-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
+              <span className="flex items-center gap-2 text-[14px]" style={{color:MUTED_L,...sans}}><MapPin size={14} style={{color:GOLD}}/>{placeLabel(p.location,p.district)}{area&&!area.precise&&<span style={{color:MUTED_L}}> · approximate area</span>}</span>
+              <a href={mapOpen} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 border text-[11px] tracking-[0.2em] uppercase transition-colors hover:border-[#8a2030] hover:text-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
                 <ExternalLink size={13}/>Open in Google Maps
               </a>
             </div>
@@ -1653,7 +1633,7 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
           {reviewsFor(p.id).length>0&&<>
             <div className="h-px" style={{background:BORDER_L}}/>
             {/* Reviews: social proof after the facts, before "You May Also Like". */}
-            <ReviewsSection propId={p.id}/>
+            <ReviewsSection propertyId={p.id}/>
           </>}
         </div>
         {/* Right — sticky enquiry */}
@@ -1677,9 +1657,9 @@ function PropertyDetailPage({ propId, go, setId, onBack, backLabel }: { propId:n
               ))}
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>Message</label>
-                <textarea rows={3} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-3 py-2.5 text-[14px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder={`I'm interested in ${displayRef(p.propId)}...`} style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
+                <textarea rows={3} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-3 py-2.5 text-[14px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder={`I'm interested in ${displayRef(p.nbId)}...`} style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
-              <button onClick={()=>{ if(form.name.trim()&&(form.email.trim()||form.phone.trim())){ addMessage({kind:"enquiry",name:form.name.trim(),email:form.email.trim()||undefined,phone:form.phone.trim()||undefined,propertyId:p.id,propRef:p.propId,subject:p.title,body:form.msg.trim()||`Interested in ${displayRef(p.propId)}.`}); setSent(true);setErr(false);} else setErr(true); }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>Send Enquiry</button>
+              <button onClick={()=>{ if(form.name.trim()&&(form.email.trim()||form.phone.trim())){ addMessage({kind:"enquiry",name:form.name.trim(),email:form.email.trim()||undefined,phone:form.phone.trim()||undefined,propertyId:p.id,nbId:p.nbId,subject:p.title,body:form.msg.trim()||`Interested in ${displayRef(p.nbId)}.`}); setSent(true);setErr(false);} else setErr(true); }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>Send Enquiry</button>
               {err&&<p className="text-[12px]" style={{color:MAROON,...sans}}>Please add your name and either an email or a phone number.</p>}
             </>)}
             <a href={waLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3.5 border text-[11px] tracking-[0.22em] uppercase transition-colors hover:bg-[rgba(37,211,102,0.12)]" style={{borderColor:"#25D366",color:"#1f9e4d",background:"rgba(37,211,102,0.07)",...sans}}><MessageCircle size={15}/>Chat on WhatsApp</a>
@@ -2486,8 +2466,14 @@ function ResetPasswordPage({ go, token }: { go:Go; token:string }) {
 // The admin area (Dashboard, Users, Reviews) lives in src/app/admin/.
 
 // ─── Free Listing Page ─────────────────────────────────────────────────────────
-function FreeListingPage() {
+// Signed-in users only: the listing is tied to the account that sent it (the API reads it from
+// the token). The contact fields start from the account, and the seller can change them.
+function FreeListingPage({ go }: { go:Go }) {
+  const { user, status } = useAuth();
   const [vals,setVals]=useState<Record<string,string>>({});
+  useEffect(()=>{
+    if(user) setVals(o=>({ "Contact Name":user.name??"", "Contact Phone":user.phone, "Contact Email":user.email, ...o }));
+  },[user]);
   const [district,setDistrict]=useState("");
   const [images,setImages]=useState<PickedImage[]>([]);
   const [amenities,setAmenities]=useState<string[]>([]);
@@ -2532,14 +2518,28 @@ function FreeListingPage() {
 
       <div className="px-6 md:px-12 lg:px-20 py-16 grid grid-cols-1 lg:grid-cols-3 gap-10">
         <div className="lg:col-span-2 border p-8" style={{background:WHITE,borderColor:BORDER_L}}>
-          {done?(
+          {!user?(
+            <div className="flex flex-col items-center text-center gap-4 py-16">
+              <Lock size={32} style={{color:GOLD}}/>
+              <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>{status==="loading"?"Checking your account…":"Log in to list your property"}</h2>
+              {status!=="loading"&&<>
+                <p className="text-[15px] leading-relaxed max-w-md" style={{color:MUTED_L,...sans}}>
+                  Free listings are for members, so our team knows who sent each property. It takes a minute to create an account.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3 mt-2">
+                  <button onClick={()=>go("login")} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Log In</button>
+                  <button onClick={()=>go("register")} className="px-8 py-4 border text-[11px] tracking-[0.25em] uppercase transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>Create Account</button>
+                </div>
+              </>}
+            </div>
+          ):done?(
             <div className="flex flex-col items-center text-center gap-4 py-16">
               <CheckCircle2 size={36} style={{color:GOLD}}/>
               <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Listing submitted</h2>
               <p className="text-[15px] leading-relaxed max-w-md" style={{color:MUTED_L,...sans}}>
                 Thank you. Our listings team will review {vals["Property Title"]} in {district} with {images.length} photo{images.length===1?"":"s"} and contact {vals["Contact Name"]} within one working day.
               </p>
-              <button onClick={()=>{ setDone(false); setVals({}); setDistrict(""); setImages([]); setAmenities([]); }} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Submit Another</button>
+              <button onClick={()=>{ setDone(false); setVals(user?{ "Contact Name":user.name??"", "Contact Phone":user.phone, "Contact Email":user.email }:{}); setDistrict(""); setImages([]); setAmenities([]); }} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Submit Another</button>
             </div>
           ):(<>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -2749,6 +2749,8 @@ export default function App() {
     // jumping back to the top. Everything else opens at the top.
     if(!(from.page.startsWith("admin")&&p.startsWith("admin"))) window.scrollTo(0,0);
   },[]);
+  // A signed-out visitor tapped the heart or "Write a Review" (auth.tsx → requestSignIn).
+  useEffect(()=>onSignInRequest(()=>go("login")),[go]);
 
   /** Where the Back button leads: the previous page, or the natural parent if there is none. */
   const backTarget=():Visit=>{
@@ -2820,7 +2822,7 @@ export default function App() {
             {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
             {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
             {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
-            {page==="property"&&<PropertyDetailPage propId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>}
+            {page==="property"&&<PropertyDetailPage propertyId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>}
             {page==="about"&&<AboutPage go={go}/>}
             {page==="team"&&<TeamPage onBack={goBack} backLabel={backLabel}/>}
             {page==="blog"&&<BlogPage go={go}/>}
@@ -2830,7 +2832,7 @@ export default function App() {
             {page==="contact"&&<ContactPage/>}
             {page==="login"&&<LoginPage go={go} googleResult={googleResult}/>}
             {page==="register"&&<RegisterPage go={go}/>}
-            {page==="free-listing"&&<FreeListingPage/>}
+            {page==="free-listing"&&<FreeListingPage go={go}/>}
             {page.startsWith("admin")&&(
               <Suspense fallback={<div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}><p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading the admin…</p></div>}>
                 {page==="admin"&&<AdminDashboard nav={adminNav}/>}

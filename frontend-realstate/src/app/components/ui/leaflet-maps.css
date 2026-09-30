@@ -1,0 +1,34 @@
+/* Buy / Rent map: the pin and its hover card (components/ui/leaflet-maps.tsx). Loaded with the map. */
+
+.nb-map-pin { background: none; border: 0; cursor: pointer; }
+
+.leaflet-tooltip.nb-map-card {
+  padding: 0;
+  width: 250px;
+  white-space: normal;
+  background: #ffffff;
+  border: 1px solid rgba(26, 22, 17, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 10px 28px rgba(26, 22, 17, 0.22);
+  overflow: visible;
+  font-family: 'Jost', system-ui, sans-serif;
+  color: #1a1611;
+}
+/* The little arrow under the card points at the pin. */
+.leaflet-tooltip-top.nb-map-card::before { border-top-color: #ffffff; }
+
+.nb-map-card__inner { border-radius: 4px; overflow: hidden; }
+.nb-map-card__photo { position: relative; height: 130px; background: #e9e3d8; }
+.nb-map-card__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nb-map-card__tag {
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 8px; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: #ffffff; background: #8a2030;
+}
+.nb-map-card__body { padding: 10px 12px 12px; }
+.nb-map-card__price { margin: 0; font-size: 15px; font-weight: 600; color: #8a2030; }
+.nb-map-card__title { margin: 2px 0 0; font-size: 14px; line-height: 1.3; }
+.nb-map-card__place { margin: 3px 0 0; font-size: 11px; color: #6b6154; }
+.nb-map-card__facts { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; }
+.nb-map-card__fact { font-size: 11px; color: #6b6154; }
+.nb-map-card__fact + .nb-map-card__fact::before { content: "·"; margin-right: 10px; color: #b08848; }

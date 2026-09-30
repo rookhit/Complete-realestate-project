@@ -97,9 +97,9 @@ export function listingToProp(l: ListingSubmission): Prop {
   if (l.draft) return l.draft;
   const priceNum = priceFromText(l.price);
   const isLand = l.type === "Land";
-  const propId = makeRef(l.listing, refNumber(nextPropRef()));
+  const nbId = makeRef(l.listing, refNumber(nextPropRef()));
   return {
-    id: nextPropertyId(), propId, badge: "New", title: l.title, tagline: "",
+    id: nextPropertyId(), nbId, badge: "New", title: l.title, tagline: "",
     location: l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing) : "", priceNum,
     listing: l.listing, type: l.type || "House/Bungalow",
     beds: 0, baths: 0, builtArea: isLand || !l.builtArea.trim() ? "—" : l.builtArea.trim(), landArea: landFromText(l.landArea),

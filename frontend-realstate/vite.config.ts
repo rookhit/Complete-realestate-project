@@ -27,7 +27,8 @@ function contentSecurityPolicy(apiUrl) {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://images.unsplash.com https://i.ytimg.com",
+    // Map tiles (components/ui/leaflet-maps.tsx) are images from OpenStreetMap.
+    "img-src 'self' data: blob: https://images.unsplash.com https://i.ytimg.com https://tile.openstreetmap.org",
     "media-src 'self' blob:",
     "frame-src https://www.youtube-nocookie.com",
     `connect-src 'self' ${apiOrigin}`,

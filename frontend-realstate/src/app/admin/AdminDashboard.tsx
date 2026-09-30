@@ -79,7 +79,7 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
       act("a-reviews", "Reviews", <MessageSquare size={15} />, () => nav.go("admin-reviews"), "comments moderate"),
       act("a-site", "View the website", <Eye size={15} />, () => nav.go("home"), "public site"),
       ...ALL_PROPS.map<PaletteItem>(p => ({
-        id: `p-${p.id}`, group: "Properties", label: p.title, hint: displayRef(p.propId), keywords: `${p.location} ${p.district} ${p.type} ${p.listing}`,
+        id: `p-${p.id}`, group: "Properties", label: p.title, hint: displayRef(p.nbId), keywords: `${p.location} ${p.district} ${p.type} ${p.listing}`,
         icon: <Building2 size={15} />, run: () => setEditing(p),
       })),
       ...BLOGS.map<PaletteItem>(b => ({
@@ -293,7 +293,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
     const s = q.trim().toLowerCase();
     const list = ALL_PROPS.filter(p =>
       (listing === "All" || p.listing === listing) && (type === "All" || p.type === type) &&
-      (!s || ([p.title, p.location, p.district].some(v => v.toLowerCase().includes(s)) || matchesRef(p.propId, s))));
+      (!s || ([p.title, p.location, p.district].some(v => v.toLowerCase().includes(s)) || matchesRef(p.nbId, s))));
     if (sort === "price_desc") list.sort((a, b) => b.priceNum - a.priceNum);
     if (sort === "price_asc") list.sort((a, b) => a.priceNum - b.priceNum);
     if (sort === "reactions") list.sort((a, b) => (REACTIONS[b.id] ?? 0) - (REACTIONS[a.id] ?? 0));
@@ -346,7 +346,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                 </div>
                 <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
                 <p className="flex items-center gap-1.5 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
-                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{displayRef(p.propId)}
+                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{displayRef(p.nbId)}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   <p className="mr-2 text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
@@ -386,7 +386,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
       <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={setPage} noun="properties" />
 
       <ConfirmDialog open={toDelete !== null} title="Delete this property?"
-        message={toDelete ? `“${toDelete.title}” (${displayRef(toDelete.propId)}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}
+        message={toDelete ? `“${toDelete.title}” (${displayRef(toDelete.nbId)}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}
         onCancel={() => setToDelete(null)}
         onConfirm={() => { if (toDelete) remove(toDelete); setToDelete(null); }} />
     </div>

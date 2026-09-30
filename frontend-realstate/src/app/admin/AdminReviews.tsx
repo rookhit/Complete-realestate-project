@@ -46,7 +46,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
   const total = groups.reduce((n, g) => n + g.reviews.length, 0);
   const current = Math.min(page, Math.max(1, Math.ceil(groups.length / GROUPS_PER_PAGE)));
   const propertyOptions = [{ value: "all", label: "All properties" },
-    ...reviewedPropertyIds().map(id => ALL_PROPS.find(p => p.id === id)).filter(Boolean).map(p => ({ value: String(p!.id), label: `${p!.title} (${displayRef(p!.propId)})` }))];
+    ...reviewedPropertyIds().map(id => ALL_PROPS.find(p => p.id === id)).filter(Boolean).map(p => ({ value: String(p!.id), label: `${p!.title} (${displayRef(p!.nbId)})` }))];
 
   return (
     <AdminLayout nav={nav} current="admin-reviews" tag="Administration" title="Reviews"
@@ -77,7 +77,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
                   <p className="text-[18px] truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
                   <p className="flex items-center gap-2 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
                     <Star size={13} fill={GOLD} style={{ color: GOLD }} /><span style={{ color: FG_LIGHT }}>{ratingFor(p.id).toFixed(1)}</span>
-                    · {reviewsFor(p.id).length} review{reviewsFor(p.id).length === 1 ? "" : "s"} · {displayRef(p.propId)}
+                    · {reviewsFor(p.id).length} review{reviewsFor(p.id).length === 1 ? "" : "s"} · {displayRef(p.nbId)}
                   </p>
                 </div>
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)}><Eye size={13} />View Property</Button>

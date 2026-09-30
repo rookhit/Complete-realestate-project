@@ -27,7 +27,7 @@ export interface Message {
   subject: string;
   body: string;          // line breaks kept
   propertyId?: number;   // property enquiries
-  propRef?: string;      // "NBS004", so the admin can quote it back
+  nbId?: string;      // "NBS004", so the admin can quote it back
   receivedAt: string;    // ISO 8601
   read: boolean;
   replied?: boolean;     // set when the admin opens a reply
@@ -36,7 +36,7 @@ export interface Message {
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 export const MESSAGES: Message[] = [
-  { id: 8, kind: "enquiry", name: "Anita Gurung", email: "anita.gurung@example.com", phone: "9841234567", propertyId: 4, propRef: "NBS004",
+  { id: 8, kind: "enquiry", name: "Anita Gurung", email: "anita.gurung@example.com", phone: "9841234567", propertyId: 4, nbId: "NBS004",
     subject: "Godavari Forest Estate", body: "Hello, is the land still available? We would like to visit this Saturday if possible. Is the road access usable in the monsoon?", receivedAt: ago(18), read: false },
   { id: 7, kind: "callback", name: "Bikash Shrestha", phone: "9803456789",
     subject: "Please call: Evening (4pm-6pm)", body: "Requested a call back: Evening (4pm-6pm).", receivedAt: ago(95), read: false },
@@ -44,7 +44,7 @@ export const MESSAGES: Message[] = [
     subject: "Selling my house in Bhaktapur", body: "Namaste,\n\nI have a 4-bedroom house in Bhaktapur (6 aana, built 2016) and I am thinking of selling. Could someone from your team come for a valuation next week?\n\nThank you,\nRamesh", receivedAt: ago(240), read: false },
   { id: 5, kind: "contact", name: "Sarah Mitchell", email: "sarah.m@example.com", phone: "+44 7700 900123",
     subject: "Buying as an NRN", body: "I'm a Non-Resident Nepali living in the UK. What documents do I need to buy an apartment in Kathmandu, and can the process be done remotely?", receivedAt: ago(60 * 26), read: true, replied: true },
-  { id: 3, kind: "enquiry", name: "Deepak Rai", email: "deepak.rai@example.com", propertyId: 7, propRef: "NBL007",
+  { id: 3, kind: "enquiry", name: "Deepak Rai", email: "deepak.rai@example.com", propertyId: 7, nbId: "NBL007",
     subject: "Jhamsikhel Luxury Flat", body: "Is the flat pet-friendly? I have a small dog. Also, is parking included in the rent?", receivedAt: ago(60 * 50), read: true },
   { id: 2, kind: "email", name: "Kathmandu Post Property Desk", email: "property@example.com",
     subject: "Interview request: valley land prices", body: "Dear Nepal Bhoomi team,\n\nWe are preparing a feature on land prices in the Kathmandu Valley and would welcome a short comment from your founder.\n\nBest regards", receivedAt: ago(60 * 75), read: true },

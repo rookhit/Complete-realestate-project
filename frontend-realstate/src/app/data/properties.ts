@@ -18,8 +18,10 @@ export type Listing = "For Sale" | "For Rent";
  */
 export interface PlanBox { id: string; name: string; area: number; x: number; y: number; w: number; h: number }
 
+export type LocationMode = "exact" | "approximate";
+
 export interface Prop {
-  id: number; propId: string; badge: string; title: string; tagline: string;
+  id: number; nbId: string; badge: string; title: string; tagline: string;
   location: string; district: string; price: string; priceNum: number;
   listing: Listing; type: string;
   beds: number; baths: number; builtArea: string; landArea: string;
@@ -27,14 +29,21 @@ export interface Prop {
   verified: boolean; featured: boolean;
   hero: string; gallery: string[]; description: string; features: string[];
   mapX: number; mapY: number;
-  /** Google Maps link pasted by the admin; the property page shows it as a map (data/maps.ts). */
+  /** Google Maps link pasted by the admin. ADMIN ONLY: it holds the exact point, so the public API
+   *  must not send it. What visitors see depends on locationMode (approxFor() in data/maps.ts). */
   mapUrl?: string;
+  /** The admin's choice: "exact" shows the real point on the site; "approximate" (the default)
+   *  shows a ~500 m area around a shifted centre, so the house can't be pinpointed. */
+  locationMode?: LocationMode;
+  /** The point the public API sends instead of mapUrl: the real point when locationMode is
+   *  "exact", otherwise the shifted centre of the approximate area. */
+  approx?: { lat: number; lng: number };
   /** Added by the admin editor. Properties without it show the illustrative plan. */
   floorPlan?: PlanBox[];
 }
 
 export const ALL_PROPS: Prop[] = [
-  { id:1, propId:"NBS001", badge:"Hot", title:"The Patan Residence", tagline:"Heritage Reimagined",
+  { id:1, nbId:"NBS001", mapUrl:"https://www.google.com/maps/@27.6727,85.3137,17z", badge:"Hot", title:"The Patan Residence", tagline:"Heritage Reimagined",
     location:"Jawlakhel, Lalitpur", district:"Lalitpur", price:"NPR 8.5 Cr", priceNum:85000000,
     listing:"For Sale", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,850 sq.ft", landArea:"12 Ropani",
     roadAccess:"Black-topped 20ft", facing:"North-East", buildYear:2019, floors:3, verified:true, featured:true,
@@ -49,7 +58,7 @@ export const ALL_PROPS: Prop[] = [
       { id:"f2", name:"2nd Floor", area:1350, x:6, y:58, w:40, h:34 },
       { id:"r", name:"Rooftop Terrace", area:600, x:50, y:58, w:30, h:34 },
     ], },
-  { id:2, propId:"NBS002", badge:"Featured", title:"Boudha Heights Penthouse", tagline:"Sanctuary Above the City",
+  { id:2, nbId:"NBS002", mapUrl:"https://www.google.com/maps/@27.7215,85.3620,17z", badge:"Featured", title:"Boudha Heights Penthouse", tagline:"Sanctuary Above the City",
     location:"Boudhanath, Kathmandu", district:"Kathmandu", price:"NPR 4.2 Cr", priceNum:42000000,
     listing:"For Sale", type:"Apartment", beds:3, baths:3, builtArea:"2,800 sq.ft", landArea:"—",
     roadAccess:"Black-topped 30ft", facing:"South", buildYear:2021, floors:1, verified:true, featured:true,
@@ -63,7 +72,7 @@ export const ALL_PROPS: Prop[] = [
       { id:"b", name:"Bedroom Level", area:1700, x:60, y:12, w:34, h:50 },
       { id:"t", name:"Terrace", area:900, x:8, y:66, w:56, h:24 },
     ], },
-  { id:3, propId:"NBS003", badge:"New", title:"Pokhara Lakeside Villa", tagline:"Himalayan Vistas & Serenity",
+  { id:3, nbId:"NBS003", mapUrl:"https://www.google.com/maps/@28.2096,83.9580,17z", badge:"New", title:"Pokhara Lakeside Villa", tagline:"Himalayan Vistas & Serenity",
     location:"Lakeside, Pokhara", district:"Kaski", price:"NPR 12 Cr", priceNum:120000000,
     listing:"For Sale", type:"House/Bungalow", beds:6, baths:5, builtArea:"6,800 sq.ft", landArea:"18 Ropani",
     roadAccess:"Black-topped 16ft", facing:"East", buildYear:2020, floors:2, verified:true, featured:false,
@@ -72,7 +81,7 @@ export const ALL_PROPS: Prop[] = [
     description:"A rare lakeside estate with direct Phewa Lake frontage and unobstructed Annapurna views. The pinnacle of refined living in Pokhara.",
     features:["Lakefront Access","Heated Pool","Boat Dock","Mountain Deck","Guest Cottage","Yoga Terrace","Earthquake Resistant","Parquet","Balcony","Parking","Terrace","Master Bedroom","Living Room","Dining Room","Internet","Drinking Water"],
     mapX:28, mapY:38 },
-  { id:4, propId:"NBS004", badge:"Prime", title:"Godavari Forest Estate", tagline:"Nature Reserve Living",
+  { id:4, nbId:"NBS004", mapUrl:"https://www.google.com/maps/@27.5937,85.3822,17z", badge:"Prime", title:"Godavari Forest Estate", tagline:"Nature Reserve Living",
     location:"Godavari, Lalitpur", district:"Lalitpur", price:"NPR 6.8 Cr", priceNum:68000000,
     listing:"For Sale", type:"Land", beds:0, baths:0, builtArea:"—", landArea:"25 Ropani",
     roadAccess:"Graveled 12ft", facing:"North", buildYear:0, floors:0, verified:true, featured:false,
@@ -81,7 +90,7 @@ export const ALL_PROPS: Prop[] = [
     description:"25 ropani of pristine forested land at the foot of the Godavari botanical reserve. Complete privacy and a profound connection to nature.",
     features:["Private Forest","Botanical Access","Spring Water","Trekking Trails","Development Ready","Drinking Water","Drainage","Parking","Reserve Tank"],
     mapX:68, mapY:56 },
-  { id:5, propId:"NBS005", badge:"Verified", title:"Thamel Commercial Tower", tagline:"Urban Investment",
+  { id:5, nbId:"NBS005", mapUrl:"https://www.google.com/maps/@27.7154,85.3123,17z", locationMode:"exact", badge:"Verified", title:"Thamel Commercial Tower", tagline:"Urban Investment",
     location:"Thamel, Kathmandu", district:"Kathmandu", price:"NPR 15 Cr", priceNum:150000000,
     listing:"For Sale", type:"Commercial", beds:0, baths:6, builtArea:"8,200 sq.ft", landArea:"4 Ropani",
     roadAccess:"Black-topped 40ft", facing:"South-East", buildYear:2018, floors:5, verified:true, featured:false,
@@ -90,7 +99,7 @@ export const ALL_PROPS: Prop[] = [
     description:"A prime commercial building in Kathmandu's most cosmopolitan district. Fully tenanted with excellent rental yield.",
     features:["5 Floors","Elevator","Generator Backup","24/7 Security","Ground Floor Retail","4 Commercial Units","Earthquake Resistant","Parking","Drainage","Reserve Tank","Internet","Bathroom","Pantry"],
     mapX:48, mapY:30 },
-  { id:6, propId:"NBS006", badge:"Rare", title:"Bhaktapur Heritage Villa", tagline:"Living Within History",
+  { id:6, nbId:"NBS006", mapUrl:"https://www.google.com/maps/@27.6620,85.4290,17z", badge:"Rare", title:"Bhaktapur Heritage Villa", tagline:"Living Within History",
     location:"Suryabinayak, Bhaktapur", district:"Bhaktapur", price:"NPR 5.5 Cr", priceNum:55000000,
     listing:"For Sale", type:"House/Bungalow", beds:4, baths:4, builtArea:"3,800 sq.ft", landArea:"4-4-0-1 R-A-P-D",
     roadAccess:"Black-topped 14ft", facing:"East", buildYear:2015, floors:3, verified:true, featured:false,
@@ -99,7 +108,7 @@ export const ALL_PROPS: Prop[] = [
     description:"A sensitively restored heritage villa near Bhaktapur's UNESCO-listed Durbar Square, blending Newari architecture with modern amenities.",
     features:["Heritage Architecture","Traditional Courtyard","Durbar Views","Restored Woodwork","Earthquake Resistant","Marble","Parquet","Balcony","Terrace","Master Bedroom","Living Room","Dining Room","Kitchen","Bathroom"],
     mapX:73, mapY:39 },
-  { id:7, propId:"NBL007", badge:"Featured", title:"Jhamsikhel Luxury Flat", tagline:"Urban Elegance",
+  { id:7, nbId:"NBL007", mapUrl:"https://www.google.com/maps/@27.6795,85.3070,17z", badge:"Featured", title:"Jhamsikhel Luxury Flat", tagline:"Urban Elegance",
     location:"Jhamsikhel, Lalitpur", district:"Lalitpur", price:"NPR 85,000/mo", priceNum:85000,
     listing:"For Rent", type:"Flat", beds:3, baths:2, builtArea:"1,850 sq.ft", landArea:"—",
     roadAccess:"Black-topped 20ft", facing:"South", buildYear:2022, floors:1, verified:true, featured:true,
@@ -108,7 +117,7 @@ export const ALL_PROPS: Prop[] = [
     description:"A beautifully finished luxury flat in one of Lalitpur's most sought-after addresses. Fully furnished and ready to move in.",
     features:["Fully Furnished","Parking","Security","Gym Access","Balcony Views","Balcony","Modular Kitchen","Internet","Bed","Closet","Sofa","Dining Table","Bathroom"],
     mapX:59, mapY:44 },
-  { id:8, propId:"NBL008", badge:"Verified", title:"Lazimpat Premium Apartment", tagline:"Diplomatic Quarter",
+  { id:8, nbId:"NBL008", mapUrl:"https://www.google.com/maps/@27.7230,85.3200,17z", badge:"Verified", title:"Lazimpat Premium Apartment", tagline:"Diplomatic Quarter",
     location:"Lazimpat, Kathmandu", district:"Kathmandu", price:"NPR 1.2 L/mo", priceNum:120000,
     listing:"For Rent", type:"Apartment", beds:4, baths:3, builtArea:"2,400 sq.ft", landArea:"—",
     roadAccess:"Black-topped 30ft", facing:"North-East", buildYear:2020, floors:1, verified:true, featured:false,
@@ -117,7 +126,7 @@ export const ALL_PROPS: Prop[] = [
     description:"Premium 4-bedroom apartment in Kathmandu's prestigious diplomatic quarter. Minutes from embassies and international schools.",
     features:["4 Bedrooms","Gym","Swimming Pool","24/7 Concierge","International Kitchen","Balcony","Parking","Terrace","Master Bedroom","Living Room","Modular Kitchen","Internet","Closet","Sofa"],
     mapX:44, mapY:40 },
-  { id:9, propId:"NBL009", badge:"New", title:"Budhanilkantha Villa", tagline:"Quiet Hilltop Retreat",
+  { id:9, nbId:"NBL009", mapUrl:"https://www.google.com/maps/@27.7765,85.3620,17z", badge:"New", title:"Budhanilkantha Villa", tagline:"Quiet Hilltop Retreat",
     location:"Budhanilkantha, Kathmandu", district:"Kathmandu", price:"NPR 95,000/mo", priceNum:95000,
     listing:"For Rent", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,200 sq.ft", landArea:"6-2-1-0 R-A-P-D",
     roadAccess:"Black-topped 16ft", facing:"South", buildYear:2017, floors:3, verified:false, featured:false,
@@ -131,7 +140,7 @@ export const ALL_PROPS: Prop[] = [
       { id:"f1", name:"1st Floor", area:1250, x:54, y:14, w:38, h:40 },
       { id:"s", name:"Garden", area:800, x:8, y:60, w:84, h:28 },
     ], },
-  { id:10, propId:"NBL010", badge:"Hot", title:"Durbar Marg Office Suite", tagline:"Premier Business Address",
+  { id:10, nbId:"NBL010", mapUrl:"https://www.google.com/maps/@27.7110,85.3175,17z", badge:"Hot", title:"Durbar Marg Office Suite", tagline:"Premier Business Address",
     location:"Durbar Marg, Kathmandu", district:"Kathmandu", price:"NPR 2.5 L/mo", priceNum:250000,
     listing:"For Rent", type:"Commercial", beds:0, baths:2, builtArea:"3,500 sq.ft", landArea:"—",
     roadAccess:"Black-topped 40ft", facing:"East", buildYear:2016, floors:1, verified:true, featured:true,
@@ -140,7 +149,7 @@ export const ALL_PROPS: Prop[] = [
     description:"Full-floor office suite on Kathmandu's most prestigious commercial address. Perfect for corporate headquarters and premium businesses.",
     features:["3,500 sq.ft Open Plan","Board Room","Reception Area","Pantry","High-speed Internet","Parking","Drainage","Reserve Tank","Internet","Bathroom"],
     mapX:69, mapY:27 },
-  { id:11, propId:"NBL011", badge:"Verified", title:"Pulchowk Modern Flat", tagline:"City Centre Living",
+  { id:11, nbId:"NBL011", mapUrl:"https://www.google.com/maps/@27.6780,85.3170,17z", badge:"Verified", title:"Pulchowk Modern Flat", tagline:"City Centre Living",
     location:"Pulchowk, Lalitpur", district:"Lalitpur", price:"NPR 45,000/mo", priceNum:45000,
     listing:"For Rent", type:"Flat", beds:2, baths:1, builtArea:"950 sq.ft", landArea:"—",
     roadAccess:"Black-topped 20ft", facing:"West", buildYear:2023, floors:1, verified:true, featured:false,
@@ -149,7 +158,7 @@ export const ALL_PROPS: Prop[] = [
     description:"A modern 2-bedroom flat in vibrant Pulchowk. Walking distance to restaurants, cafes and the Lalitpur commercial district.",
     features:["Modern Interiors","Covered Parking","Security","Balcony","WiFi Ready","Parking","Modular Kitchen","Internet","Bed","Closet","Bathroom"],
     mapX:36, mapY:52 },
-  { id:12, propId:"NBS012", badge:"New", title:"Sauraha Riverside Retreat", tagline:"Nature at Your Doorstep",
+  { id:12, nbId:"NBS012", mapUrl:"https://maps.app.goo.gl/SampleShortLink", badge:"New", title:"Sauraha Riverside Retreat", tagline:"Nature at Your Doorstep",
     location:"Sauraha, Chitwan", district:"Chitwan", price:"NPR 3.2 Cr", priceNum:32000000,
     listing:"For Sale", type:"House/Bungalow", beds:4, baths:3, builtArea:"3,200 sq.ft", landArea:"15 Ropani",
     roadAccess:"Graveled 14ft", facing:"South", buildYear:2021, floors:2, verified:false, featured:false,
@@ -252,20 +261,20 @@ export function formatPrice(priceNum: number, listing: Listing): string {
  * Stored without the "#"; visitors see "#NBS345" (displayRef).
  */
 export const REF_PREFIX: Record<Listing, string> = { "For Sale": "NBS", "For Rent": "NBL" };
-export const refNumber = (propId: string) => Number(propId.replace(/\D/g, "")) || 0;
+export const refNumber = (nbId: string) => Number(nbId.replace(/\D/g, "")) || 0;
 export const makeRef = (listing: Listing, n: number) => `${REF_PREFIX[listing]}${String(n).padStart(3, "0")}`;
-export const displayRef = (propId: string) => `#${propId}`;
+export const displayRef = (nbId: string) => `#${nbId}`;
 
 /** True when a search like "#NBS345", "nbs 345" or "345" points at this reference. */
-export function matchesRef(propId: string, query: string): boolean {
+export function matchesRef(nbId: string, query: string): boolean {
   const q = query.replace(/[#\s-]/g, "").toLowerCase();
-  return !!q && propId.toLowerCase().includes(q);
+  return !!q && nbId.toLowerCase().includes(q);
 }
 
 /** Next numeric id and the next reference. The API assigns both once it exists. */
 export const nextPropertyId = () => ALL_PROPS.reduce((m, p) => Math.max(m, p.id), 0) + 1;
 export function nextPropRef(listing: Listing = "For Sale"): string {
-  return makeRef(listing, ALL_PROPS.reduce((m, p) => Math.max(m, refNumber(p.propId)), 0) + 1);
+  return makeRef(listing, ALL_PROPS.reduce((m, p) => Math.max(m, refNumber(p.nbId)), 0) + 1);
 }
 
 /** Create or update. API: POST /admin/properties (new) or PATCH /admin/properties/:id. */

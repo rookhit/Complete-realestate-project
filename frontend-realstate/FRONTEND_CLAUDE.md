@@ -73,9 +73,9 @@ row names the exact function to replace.
 | PATCH | `/admin/properties/:id` `{ reactionCount }` | ADMIN | `data/reviews.ts` → `setReactionCount()` |
 | POST | `/admin/uploads` (multipart, image ≤ 8 MB) → `{ url }` | ADMIN | every `blob:` URL from `components/ui/photo-picker.tsx`; uploaded-video covers (JPEG data URLs) |
 | POST | `/admin/uploads/video` (multipart, video ≤ 500 MB) → `{ url }` | ADMIN | `admin/VideoUpload.tsx` → `sources[0].src` (a `blob:` URL today) |
-| GET / POST | `/properties/:id/reviews` | public | `reviewsFor()`; `ReviewForm` submit in `components/ui/property-reviews.tsx` |
+| GET / POST | `/properties/:id/reviews` | GET public, POST **signed in** | `reviewsFor()`; `ReviewForm` submit in `components/ui/property-reviews.tsx` |
 | GET / DELETE | `/admin/reviews[/:id]` | ADMIN | `admin/AdminReviews.tsx` → `deleteReview()`, `restoreReview()` |
-| POST / DELETE | `/properties/:id/reaction` | public | `components/ui/reaction-button.tsx` → `FAVS` |
+| POST / DELETE | `/properties/:id/reaction` | **signed in** | `components/ui/reaction-button.tsx` → `FAVS` |
 | GET | `/articles`, `/articles/:slug` | public | `data/content.ts` → `BLOGS` |
 | POST / PATCH / DELETE | `/admin/articles[/:id]`, `PUT /admin/articles/order` | ADMIN | `upsert(BLOGS…)`, `removeById`, `moveById` |
 | GET | `/team` | public | `TEAM` |
@@ -87,12 +87,11 @@ row names the exact function to replace.
 | GET | `/site` → `{ stats, featuredDistricts, contact, services }` (each district with its live `count`) | public | `STATS`, `FEATURED_DISTRICTS`, `CONTACT`, `SERVICES` (all in `data/content.ts`) |
 | PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | `HomePageSection` save buttons in `admin/ContentEditors.tsx` |
 | PUT | `/admin/site/contact` (`ContactInfo`), `/admin/site/services` (whole `Service[]`, in order) | ADMIN | `saveContact()`, `saveServices()` ← `admin/CompanyEditor.tsx` |
-| POST | `/listings` | public | Free Listing form → `addListing()` (`data/listings.ts`), shown in Admin → Free Listings (§7.10) |
+| POST | `/listings` | **signed in** | Free Listing form → `addListing()` (`data/listings.ts`), shown in Admin → Free Listings (§7.10) |
 | GET / PATCH / POST | `/admin/listings[/:id]`, `/admin/listings/:id/publish`, `/admin/listings/new-count` | ADMIN | `admin/AdminListings.tsx`: `updateListing()`, publish via `saveProperty()` (§7.10) |
 | GET / PUT | `/site` options, `/admin/site/options/:key` | ADMIN | every dropdown / suggestion list: `data/options.ts` → `setOptions()` |
 | POST | `/enquiries`, `/callbacks`, `/contact` | public | the three lead forms (§7.5). Today each calls `addMessage()` (`data/messages.ts`) so it shows in Admin → Messages |
 | GET / PATCH / DELETE | `/admin/messages[/:id]`, `GET /admin/messages/unread-count` | ADMIN | `admin/AdminMessages.tsx`, the red badges; `updateMessage()`, `deleteMessage()`, `restoreMessage()` (§7.9) |
-| GET/PUT/DELETE | `/me/favourites[/:propertyId]` | signed in | `FAVS` (hearts, lost on reload today) |
 
 Every `upsert` / `removeById` / `moveById` call is in `data/content.ts`; order matters for
 articles (first = featured on home), team (first 6 on About), testimonials and videos (first = centre).
@@ -127,29 +126,50 @@ Store these **exact strings** (they are filter keys and dropdown values):
 Prices: `priceNum` is whole rupees (per month for rent); the display string comes from
 `formatPrice()` in `data/properties.ts`.
 
-**Property reference (`propId`), top priority.** Format: `NBS` (for sale) or `NBL` (letting / for rent)
+**NB ID (`nbId`), top priority.** Two different ids, don't mix them up: `id` is the internal number the
+database generates (URLs, relations, `propertyId` fields); `nbId` is the reference the **admin** chooses and
+visitors see. (Renamed from `propId` / `propRef` on 2026-09-30.) Format: `NBS` (for sale) or `NBL` (letting / for rent)
 + a number of at least 3 digits: `NBS345`, `NBL007`. The API stores and returns it **without** the `#`;
 the site shows `#NBS345` on every card, list row, the property page (with a Copy button), in the
 WhatsApp message and in the admin. Rules, all implemented in `data/properties.ts`:
 
-- **One number sequence for sale and rent**, so `NBS345` and `NBL345` never both exist. Store the
-  number (`refNumber Int @unique`) and build the code from it.
-- **The admin chooses it.** The editor's Property ID box has NBS / NBL and a number, pre-filled with
-  the next free one. `POST` / `PATCH /admin/properties` send `propId` (e.g. `"NBL345"`): parse the
+- **One number sequence for sale and rent**, so `NBS345` and `NBL345` never both exist. The backend stores
+  the number (`Property.nbNumber Int @unique`, already in the schema) and builds the code from it.
+- **The admin chooses it.** The editor's NB ID box has NBS / NBL and a number, pre-filled with
+  the next free one. `POST` / `PATCH /admin/properties` send `nbId` (e.g. `"NBL345"`): parse the
   digits, and answer **409 `REF_TAKEN`** if another property already has that number. `GET
   /admin/properties/next-ref` → `{ refNumber }` would replace `nextPropRef()`.
 - **The prefix follows `listing`.** Picking NBL in the admin sets the listing to rent and vice versa; when a
-  property changes from sale to rent, `NBS345` becomes `NBL345` and the number stays. Easiest: compute `propId` in the response, don't store the string.
+  property changes from sale to rent, `NBS345` becomes `NBL345` and the number stays. Easiest: compute `nbId` in the response, don't store the string.
 - **Never reuse a number**, even after a delete (Undo brings the same number back).
 - **Search `q` must match references** typed as `#NBS345`, `nbs345`, `NBS 345` or just `345`: strip
   `#`, spaces and `-`, then match case-insensitively (`matchesRef()`).
 - Old demo references (`NB-001`) are gone; nothing needs migrating.
 
-Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(propId)`, `displayRef(propId)`,
-`matchesRef(propId, q)`, `nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
+Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(nbId)`, `displayRef(nbId)`,
+`matchesRef(nbId, q)`, `nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
 
-**Property map (`mapUrl`), new.** The admin pastes a Google Maps link in the Location step; the property
-page shows it as an embedded map with "Open in Google Maps" (no API key: `maps.google.com/maps?q=…&output=embed`).
+**Approximate location (replaced the Google embed on 2026-09-30).** Visitors never see the exact
+point. The property page and the Buy / Rent map (Leaflet + OpenStreetMap tiles, no API key; a name-free MapLibre/OpenFreeMap background was tried on 2026-09-30 and dropped: ~480 KB) show a soft,
+irregular area about 500 m across (`APPROX_RADIUS_M`; edge 425–575 m) with a Google Maps style pin at its centre (hover: a card with photo, price, title, place, facts; `mapCardOf()` in App.tsx), shifted up to 350 m
+from the real point, the same way on every visit; the real point is always inside. Buy / Rent: the pins
+(grouped when they overlap), plus the areas from street level (zoom 14); the mouse wheel zooms the map, not the page. "Open in Google Maps" goes to the
+shifted centre. The admin editor shows the exact pin on top of the area; development builds also draw a blue
+debug pin (`import.meta.env.DEV`, gone from production builds). Code: `data/maps.ts` (`approxFor`, `blobRing`,
+`exactFor`), `components/ui/maps.tsx` (lazy wrappers: Leaflet loads only when a map scrolls into view, with a
+fallback if it fails), `components/ui/leaflet-maps.tsx`. CSP: `img-src` allows `https://tile.openstreetmap.org`.
+**Exact or approximate, per property (2026-09-30).** In the editor's Location step the admin picks
+**Approximate area** (the default) or **Exact location** (`Prop.locationMode`: `"approximate"` | `"exact"`;
+DB `PropertyLocation.locationMode` APPROXIMATE | EXACT). Exact: visitors see a pin on the real point, no
+shaded area, no "approximate area" label, and "Open in Google Maps" goes to the real point.
+**Privacy rule for the API:** `mapUrl` and the real `lat` / `lng` are admin-only. Public endpoints send one
+point, `approx: { lat, lng }`, plus `locationMode`: the real point when EXACT, otherwise the shifted centre
+(`approxLatitude` / `approxLongitude`, generated once on save with a random bearing and a distance of
+350 × √(0.2 + 0.8·u) m, regenerated only when the real point changes). The blob shape
+comes from the property `id` (`blobRing`), which reveals nothing. Then delete `shiftedCentre()` in `data/maps.ts`.
+The map chunk is ~54 KB gzipped, loaded only when a map is on screen. OpenStreetMap's free tiles suit a small site; for heavy traffic switch `TILES` to a tile provider.
+
+**Property map link (`mapUrl`).** The admin pastes a Google Maps link in the Location step.
 Parsing is in `data/maps.ts` → `resolveMap()`: exact pins from `!3d…!4d…` / `@lat,lng` / `q=lat,lng`,
 place names from `/place/…`, pasted embed `<iframe>` code, or plain `27.67, 85.31`. Please:
 
@@ -467,7 +487,7 @@ unless we agree otherwise in this file.
 ```ts
 interface Prop {
   id:         number;        // 1..12 today. Use a stable id or uuid
-  propId:     string;        // reference, "NBS001" (sale) / "NBL007" (rent). Shown as "#NBS001" on every card. Rules in §0.5
+  nbId:     string;        // reference, "NBS001" (sale) / "NBL007" (rent). Shown as "#NBS001" on every card. Rules in §0.5
   badge:      string;        // "Hot" | "Featured" | "New" | "Prime" | "Rare" | "Verified"
   title:      string;        // "The Patan Residence"
   tagline:    string;        // optional, e.g. "Heritage Reimagined": shown in italics under the title on the property page and in the home hero
@@ -820,18 +840,17 @@ normal generic 401.
 | `POST` | `/enquiries` | Property detail sidebar. Include `propertyId` |
 | `POST` | `/callbacks` | Home "Let Us Call You" |
 | `POST` | `/contact` | Contact page |
-| `POST` | `/listings` | Free Listing page (seller submission) |
+| `POST` | `/listings` | Free Listing page (seller submission). **Signed in only** since 2026-09-30; it goes to Admin → Free Listings (§7.10), not Messages |
 
-All four are **public, unauthenticated and spam-exposed.** They need rate limiting, a honeypot or
-captcha, and server-side validation that does not trust the client.
+The first three are **public, unauthenticated and spam-exposed.** They need rate limiting, a honeypot or
+captcha, and server-side validation that does not trust the client. `/listings` requires a signed-in
+user (like hearts and reviews), plus rate limiting.
 
 ### 7.6 Authenticated user
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/me/favourites` | Saved properties |
-| `PUT` | `/me/favourites/:propertyId` | Idempotent save |
-| `DELETE` | `/me/favourites/:propertyId` | |
+| — | ~~`/me/favourites`~~ | **Dropped 2026-09-30:** the heart (`/properties/:id/reaction`) is the only like; there is no favourites list |
 | `POST` | `/uploads` | Multipart. **Free Listing has no image upload yet** — a real gap |
 | `POST` | `/concierge/messages` | The floating chat. Canned reply today |
 
@@ -848,8 +867,8 @@ interface Review { id:number; author:string; avatar:string; rating:number /*1-5*
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/properties/:id/reviews` | Published reviews, newest first, paginated |
-| `POST` | `/properties/:id/reviews` | `{ rating, name, text }`. Rate-limit; goes to **moderation**, not straight live |
-| `POST` / `DELETE` | `/properties/:id/reaction` | The visitor's heart. Anonymous visitors: decide how to de-duplicate |
+| `POST` | `/properties/:id/reviews` | **Signed in only.** `{ rating, text }`; name and photo come from the account (`authorName`, `authorAvatarUrl`). Rate-limit; goes to **moderation**, not straight live |
+| `POST` / `DELETE` | `/properties/:id/reaction` | The heart. **Signed in only**, one per user per property; a signed-out tap opens Login (`requestSignIn()` in `auth.tsx`) |
 | `GET` | `/admin/reviews` | ADMIN. All reviews with `propertyId`, filterable by property / rating |
 | `DELETE` | `/admin/reviews/:reviewId` | ADMIN. The Reviews page's delete button |
 
@@ -871,7 +890,7 @@ and use the §7.1 envelope.
 | Method | Path | Body / notes |
 |---|---|---|
 | `GET` | `/admin/properties` | Paginated, `q`, `listing`, `type`, `sort` (`price_desc` \| `price_asc` \| `reactions`) |
-| `POST` | `/admin/properties` | Full property (§6 + table there). Server assigns `id` and `propId` (`NBS013` / `NBL013`, prefix from `listing`; §0.5) |
+| `POST` | `/admin/properties` | Full property (§6 + table there). Server assigns `id` and `nbId` (`NBS013` / `NBL013`, prefix from `listing`; §0.5) |
 | `PATCH` | `/admin/properties/:id` | Any subset, including `reactionCount` |
 | `DELETE` | `/admin/properties/:id` | The UI refuses to delete the last property; the API may enforce the same |
 
@@ -908,7 +927,7 @@ to `USER_SELECT`; the "Last Sign-in" column is ready and shows "—" until then.
 ```prisma
 model Property {
   id            Int      @id @default(autoincrement())
-  refNumber     Int      @unique @default(autoincrement()) // API returns propId = (FOR_SALE ? "NBS" : "NBL") + 3-digit number, §0.5
+  nbNumber      Int      @unique   // BUILT under this name; chosen by the admin. API returns nbId = (FOR_SALE ? "NBS" : "NBL") + 3-digit number, §0.5
   title         String
   tagline       String   @default("")
   description   String
@@ -978,7 +997,7 @@ areas, build year, facing, road, amenities, highlights, price, verified); nothin
 ### 7.9 Messages — UI built, API not
 
 `admin/AdminMessages.tsx`, data in `data/messages.ts` (`Message`: `id, kind, name, email?, phone?, subject, body,
-propertyId?, propRef?, receivedAt, read, replied?`).
+propertyId?, nbId?, receivedAt, read, replied?`).
 
 | Method | Path | Notes |
 |---|---|---|
@@ -987,7 +1006,7 @@ propertyId?, propRef?, receivedAt, read, replied?`).
 | `PATCH` | `/admin/messages/:id` | `{ read }` or `{ replied }` |
 | `DELETE` | `/admin/messages/:id` | Soft delete, so Undo can restore it |
 
-Each §7.5 form creates a message (`kind` from the form; property enquiries carry `propertyId` and `propRef`).
+Each §7.5 form creates a message (`kind` from the form; property enquiries carry `propertyId` and `nbId`).
 **Emails:** poll the business mailbox (Gmail API or IMAP, the same Gmail account as SMTP) and store each
 new email as `kind: "email"`. Replies open the admin's mail app today (`mailto:`); a later
 `POST /admin/messages/:id/reply { body }` could send through the existing Gmail SMTP instead.
@@ -1010,7 +1029,7 @@ property as `draft`). Seller name / phone / email are **never** copied to the pr
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/listings` | Public, multipart (fields + photos). Status `new`. Rate-limit + captcha like §7.5 |
+| `POST` | `/listings` | **Signed in only** (the page shows Log In / Create Account otherwise); `userId` from the token. Multipart (fields + photos). Status `new`. Rate-limit |
 | `GET` | `/admin/listings?status&q&page` | `status`: new, draft, published, rejected |
 | `GET` | `/admin/listings/new-count` | For the red badge |
 | `PATCH` | `/admin/listings/:id` | `{ status }` (reject / restore) or `{ status: "draft", draft: Prop }` |
@@ -1174,7 +1193,7 @@ the insertion points for the admin's writes.
 | `REACTIONS`, reviews | `data/reviews.ts` | Hearts, `ReviewsSection`, admin Reviews | §7.7 |
 | `AREAS` | `App.tsx` (= `DISTRICTS`) | District filters | `GET /reference` |
 | `SERVICES_LIST` | `App.tsx` | `ServicesSectionHome`, `ServicesPage`, `AboutPage` | `GET /services` (icon by name) |
-| `FAVS: Set<number>` | `components/ui/reaction-button.tsx` | `FavButton`, `ReactionButton` | `GET/PUT/DELETE /me/favourites` |
+| `FAVS: Set<number>` | `components/ui/reaction-button.tsx` | `FavButton`, `ReactionButton` | `POST/DELETE /properties/:id/reaction` (+ the user's hearts in `GET /auth/me` or the property list) |
 
 Line numbers drift with every edit. The **variable names** are the reliable anchor — grep for
 them rather than trusting the numbers.
@@ -1312,7 +1331,7 @@ selected property id; the child is responsible for calling `go("property")` afte
 | `MapView` | `{ props: Prop[]; go; setId }` |
 | `PropertyCard` | `{ p: Prop; go; setId; light?: boolean }` — `light` = light background variant |
 | `FavButton` | `{ id: number; light?: boolean }` |
-| `PropertyDetailPage` | `{ propId: number; go; setId }` |
+| `PropertyDetailPage` | `{ nbId: number; go; setId }` |
 | `BlogPage` | `{ go }` |
 | `BlogPostPage` | `{ id: number; go }` |
 | `AboutPage` | `{ go }` |
@@ -1490,6 +1509,38 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-09-30 · backend (frontend code) · Exact or approximate location, per property.** Editor → Location has
+  two buttons, Approximate area (default) / Exact location (`Prop.locationMode`). Exact shows a pin on the real
+  point on the property page and the Buy / Rent map. Migration `20260930160000_location_mode`:
+  `PropertyLocation.locationMode` plus `approxLatitude` / `approxLongitude` (the stored shifted centre). Public API:
+  send `approx` + `locationMode`, never `mapUrl` / the real lat / lng in approximate mode (§0.5). Sample #NBS005 is exact.
+
+- **2026-09-30 · backend (frontend code) · Approximate-location maps.** The Google iframe is gone. Property page,
+  Buy / Rent map and the admin preview use Leaflet + OpenStreetMap and show a ~500 m irregular area around a
+  shifted centre, never the exact point (details in §0.5 "Approximate location"). New packages: `leaflet`,
+  `leaflet.markercluster` (+ types), loaded only when a map is on screen (~54 KB gzipped chunk). Sample
+  properties got `mapUrl` links (12 = a short link, to show the no-map fallback). `Prop.approx` added; the
+  public API must send it and must not send `mapUrl`. Fixes the production CSP, which blocked the old Google map.
+
+- **2026-09-30 · backend · Hearts, reviews and free listings are signed-in only; no favourites.** Decision by the
+  project owner. The heart is the only like (`/me/favourites` is dropped). A signed-out tap on the heart or
+  "Write a Review" opens Login (`requestSignIn()` / `onSignInRequest()` in `auth.tsx`); the Free Listing page
+  shows Log In / Create Account instead of the form and pre-fills the contact fields from the account. The
+  review form no longer asks for a name: the API takes name and photo from the account (migration
+  `20260930140000_signed_in_reviews_listings`: `PropertyComment.authorAvatarUrl`, `ListingSubmission.userId`).
+  Also fixed from the rename below: props that held the **internal** id (`PropertyDetailPage`,
+  `ReviewsSection`, `RatingLink`) are called `propertyId`, not `nbId`.
+
+- **2026-09-30 · backend · Schema for the whole admin, and `propId` → `nbId`.** Migration
+  `20260930120000_admin_content_nb_id` (tables only, no endpoints yet). The admin-chosen reference is now called
+  **NB ID** everywhere: `Prop.propId` and `Message.propRef` are renamed `nbId` in the frontend code (labels say
+  "NB ID"); the database stores `Property.nbNumber` (unique, shared by sale and rent) next to the generated `id`.
+  Type, badge, facing, road surface and area units are plain text (admin-editable lists), not enums. Added
+  `landAreaRapd` / `landAreaSqft`, `floorPlan Json` (PlanBox[], the old FloorPlan/Room tables are dropped),
+  review soft delete, and tables `Message`, `ListingSubmission`, `Testimonial`, `Video`, `SiteSetting`
+  (stats, featured districts, contact, services, `options:<key>`). Field names follow §0.5 / §6 / §7.8–7.10
+  except: `googleMapsUrl` = `mapUrl`, `latitude` / `longitude` = `lat` / `lng` (the API maps them).
 
 - **2026-09-29 · frontend · Responsive pass (320 px phones to 1920 px desktops).** No sideways scrolling on any page or
   size. Desktop menu from 1280 px (side menu below; the bar used to run off laptops). Buy / Rent list rows stack on

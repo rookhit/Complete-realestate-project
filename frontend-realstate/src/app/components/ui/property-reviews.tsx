@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronDown, MessageSquare, Send, Star, X } from "lucide-
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StarRow } from "./star-row";
 import { ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
+import { requestSignIn, useAuth } from "@/app/auth";
 
 /** How many reviews show before "Show all". */
 const VISIBLE = 2;
@@ -11,12 +12,13 @@ const VISIBLE = 2;
 // "Resident Reviews" on the property page: rating summary, two reviews (rest behind a
 // button) and a write-a-review form. id="reviews" is the target of the rating link.
 // Data: data/reviews.ts until GET /properties/:id/reviews exists.
-export function ReviewsSection({ propId }: { propId: number }) {
-  const all = reviewsFor(propId);
+export function ReviewsSection({ propertyId }: { propertyId: number }) {
+  const { user } = useAuth();
+  const all = reviewsFor(propertyId);
   const [expanded, setExpanded] = useState(false);
   const [writing, setWriting] = useState(false);
 
-  const avg = ratingFor(propId);
+  const avg = ratingFor(propertyId);
   const shown = expanded ? all : all.slice(0, VISIBLE);
   const hidden = all.length - VISIBLE;
 
@@ -61,17 +63,17 @@ export function ReviewsSection({ propId }: { propId: number }) {
           </div>
 
           {!writing && (
-            <button onClick={() => setWriting(true)}
+            <button onClick={() => (user ? setWriting(true) : requestSignIn())}
               className="shrink-0 sm:ml-auto flex items-center justify-center gap-2 px-6 py-3.5 border text-[11px] tracking-[0.25em] uppercase transition-all hover:border-[#8a2030]"
               style={{ borderColor: BORDER_L, color: FG_LIGHT, ...sans }}>
-              <MessageSquare size={14} />Write a Review
+              <MessageSquare size={14} />{user ? "Write a Review" : "Log in to Write a Review"}
             </button>
           )}
         </div>
       </div>
 
       <AnimatePresence>
-        {writing && (
+        {writing && user && (
           <motion.div
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden mb-6">
@@ -106,8 +108,8 @@ export function ReviewsSection({ propId }: { propId: number }) {
 }
 
 // "★ 4.8 · 5 reviews" in the property info bar; scrolls down to the reviews.
-export function RatingLink({ propId }: { propId: number }) {
-  const count = reviewsFor(propId).length;
+export function RatingLink({ propertyId }: { propertyId: number }) {
+  const count = reviewsFor(propertyId).length;
   if (!count) return null;
   return (
     <button
@@ -115,7 +117,7 @@ export function RatingLink({ propId }: { propId: number }) {
       className="flex items-center gap-2 text-[14px] transition-colors hover:text-[#8a2030]"
       style={{ color: MUTED_L, ...sans }}>
       <Star size={14} fill={GOLD} style={{ color: GOLD }} />
-      <span style={{ color: FG_LIGHT }}>{ratingFor(propId).toFixed(1)}</span>
+      <span style={{ color: FG_LIGHT }}>{ratingFor(propertyId).toFixed(1)}</span>
       <span className="underline underline-offset-4 decoration-[rgba(26,22,17,0.2)]">
         {count} review{count === 1 ? "" : "s"}
       </span>
@@ -150,19 +152,20 @@ export function ReviewCard({ r }: { r: Review }) {
   );
 }
 
-// Write-a-review form. Only validates for now; POST /properties/:id/reviews
-// with { rating, name, text } goes where setSent(true) is.
+// Write-a-review form, signed-in users only. Only validates for now; POST /properties/:id/reviews
+// with { rating, text } goes where setSent(true) is. The name (and photo, if any) come from the
+// account on the server, so nobody can post under someone else's name.
 export function ReviewForm({ onClose }: { onClose: () => void }) {
+  const { user } = useAuth();
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
-  const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
 
   const submit = () => {
+    if (!user)                   { requestSignIn(); return; }
     if (!rating)                 { setErr("Please choose a star rating."); return; }
-    if (!name.trim())            { setErr("Please enter your name."); return; }
     if (text.trim().length < 20) { setErr("Please write at least a couple of sentences."); return; }
     setErr(""); setSent(true);
   };
@@ -197,12 +200,9 @@ export function ReviewForm({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] tracking-[0.28em] uppercase" style={{ color: MUTED_L, ...sans }}>Your Name</label>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name"
-          className="border px-4 py-3 text-[15px] outline-none transition-all focus:border-[#8a2030]"
-          style={{ borderColor: BORDER_L, color: FG_LIGHT, ...sans }} />
-      </div>
+      <p className="text-[14px]" style={{ color: MUTED_L, ...sans }}>
+        Posting as <span style={{ color: FG_LIGHT }}>{user?.name || user?.email}</span>
+      </p>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] tracking-[0.28em] uppercase" style={{ color: MUTED_L, ...sans }}>Your Review</label>

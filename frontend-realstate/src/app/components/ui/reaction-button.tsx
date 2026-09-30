@@ -3,9 +3,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { Heart } from "lucide-react";
 import { BORDER_L, GOLD, MAROON, MUTED_L, sans } from "./brand";
 import { reactionCount } from "@/app/data/reviews";
+import { requestSignIn, useAuth } from "@/app/auth";
 
-// Properties this visitor has hearted. Lost on reload for now;
-// becomes GET/PUT/DELETE /api/v1/me/favourites once that exists.
+// Properties the signed-in user has hearted. The heart is the only "like": there is no separate
+// favourites list, and only signed-in users can use it (a signed-out tap opens the login page).
+// Lost on reload for now; becomes POST / DELETE /api/v1/properties/:id/reaction.
 export const FAVS = new Set<number>();
 
 const PARTICLES = Array.from({ length: 8 }, (_, i) => {
@@ -60,25 +62,30 @@ function RollingCount({ value, className }: { value: number; className: string }
 }
 
 function useHeart(id: number) {
-  const [on, setOn] = useState(FAVS.has(id));
+  const { user } = useAuth();
+  const [liked, setLiked] = useState(FAVS.has(id));
   const [burst, setBurst] = useState(0);
+  // Signed out, nothing shows as liked (not even the previous user's hearts).
+  const on = !!user && liked;
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!user) { requestSignIn(); return; }
     const next = !on;
     if (next) { FAVS.add(id); setBurst(b => b + 1); } else FAVS.delete(id);
-    setOn(next);
+    setLiked(next);
   };
-  return { on, burst, toggle };
+  return { on, burst, toggle, signedIn: !!user };
 }
 
 /** Heart button with the reaction count next to it. */
 export function ReactionButton({ id, size = "md" }: { id: number; size?: "sm" | "md" }) {
-  const { on, burst, toggle } = useHeart(id);
+  const { on, burst, toggle, signedIn } = useHeart(id);
   const sm = size === "sm";
   return (
     <button
       onClick={toggle}
-      aria-label={on ? "Remove your reaction" : "React to this property"}
+      aria-label={!signedIn ? "Log in to like this property" : on ? "Remove your like" : "Like this property"}
+      title={signedIn ? undefined : "Log in to like"}
       aria-pressed={on}
       className={`group flex items-center border transition-all duration-200 hover:border-[#8a2030] hover:bg-[rgba(138,32,48,0.05)] hover:shadow-[0_4px_14px_rgba(138,32,48,0.12)] active:scale-95 ${sm ? "gap-1.5 px-2.5 py-2" : "gap-2 px-3.5 py-2.5"}`}
       style={{ borderColor: on ? MAROON : BORDER_L, color: on ? MAROON : MUTED_L, background: on ? "rgba(138,32,48,0.06)" : "transparent" }}
@@ -89,11 +96,12 @@ export function ReactionButton({ id, size = "md" }: { id: number; size?: "sm" | 
   );
 }
 
-/** Icon-only save button, for tight spots such as over a photo on the map view. */
+/** The same heart without the count, for tight spots such as over a photo on the map view. */
 export function FavButton({ id, light = false }: { id: number; light?: boolean }) {
-  const { on, burst, toggle } = useHeart(id);
+  const { on, burst, toggle, signedIn } = useHeart(id);
   return (
-    <button aria-label={on ? "Remove from saved" : "Save property"} aria-pressed={on} onClick={toggle}
+    <button aria-label={!signedIn ? "Log in to like this property" : on ? "Remove your like" : "Like this property"}
+      title={signedIn ? undefined : "Log in to like"} aria-pressed={on} onClick={toggle}
       className="group p-2 border transition-all duration-200 hover:border-[#8a2030] active:scale-95"
       style={{ borderColor: on ? MAROON : (light ? "rgba(255,255,255,0.6)" : BORDER_L), color: on ? MAROON : MUTED_L, background: light ? "rgba(255,255,255,0.92)" : "transparent" }}>
       <AnimatedHeart on={on} burst={burst} size={15} />

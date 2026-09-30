@@ -155,6 +155,15 @@ export function AuthProvider({ children }: { children:ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// Liking, reviewing and free listings are for signed-in users only. Components deep in the tree
+// (the heart, the review form) have no go(), so they call requestSignIn() and App opens the login page.
+const signInListeners=new Set<()=>void>();
+export function requestSignIn():void { signInListeners.forEach(f=>f()); }
+export function onSignInRequest(f:()=>void):()=>void {
+  signInListeners.add(f);
+  return ()=>{ signInListeners.delete(f); };
+}
+
 export function useAuth():AuthContextValue {
   const ctx=useContext(AuthContext);
   if(!ctx) throw new Error("useAuth must be used inside <AuthProvider>");

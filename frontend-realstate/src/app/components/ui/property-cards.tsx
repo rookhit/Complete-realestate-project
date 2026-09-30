@@ -41,7 +41,7 @@ export function ListingCard({ p, onOpen, light = false, showDetails = false }: {
       <div className={`flex flex-col ${light ? "px-7 pt-7 pb-8" : "pt-6"}`} style={{ background: light ? WHITE : "transparent" }}>
         <div className="flex items-center justify-between gap-3 mb-3">
           <span className="text-[10px] tracking-[0.24em] uppercase truncate" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.type}</span>
-          <RefTag propId={p.propId} dark={!light} />
+          <RefTag nbId={p.nbId} dark={!light} />
         </div>
         <h3 className="leading-[1.22] text-[1.3rem] mb-2.5" style={{ color: light ? FG_LIGHT : FG_DARK, ...serif }}>{p.title}</h3>
         <div className="flex items-center gap-1.5 min-w-0 mb-4">
@@ -89,7 +89,7 @@ export function HotCard({ p, onOpen }: { p: Prop; onOpen?: () => void }) {
       <div className="flex flex-col gap-1.5 px-0.5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] tracking-[0.25em] uppercase truncate" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
-          <RefTag propId={p.propId} />
+          <RefTag nbId={p.nbId} />
         </div>
         <p className="text-[19px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
         <p className="flex items-center gap-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location}</p>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Check, Clock, Eye, Heart, History, Lightbulb, Lock, MapPin, Plus, Sparkles, X } from "lucide-react";
+import { Check, Clock, Eye, Heart, History, Lightbulb, Lock, MapPin, Plus, Shield, Sparkles, X } from "lucide-react";
 import {
   ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
   ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, saveProperty,
-  type Listing, type PlanBox, type Prop,
+  type Listing, type LocationMode, type PlanBox, type Prop,
 } from "@/app/data/properties";
 import { REACTIONS, setReactionCount } from "@/app/data/reviews";
-import { gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
+import { approxFor, gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
+import { AreaMap } from "@/app/components/ui/maps";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { DistrictCombobox } from "@/app/components/ui/district-combobox";
@@ -31,7 +32,7 @@ type PriceUnit = "Rupees" | "Lakh" | "Crore";
 const PRICE_MULT: Record<PriceUnit, number> = { Rupees: 1, Lakh: 100_000, Crore: 10_000_000 };
 
 type Draft = {
-  id: number; propId: string; refNo: string; isNew: boolean;
+  id: number; nbId: string; refNo: string; isNew: boolean;
   title: string; tagline: string; description: string;
   listing: Listing; type: string; badge: string; verified: boolean; featured: boolean;
   district: string; location: string; facing: string; roadSurface: string; roadWidth: number;
@@ -39,7 +40,7 @@ type Draft = {
   builtValue: string; builtUnit: string; landValue: string; landUnit: string;
   beds: number; baths: number; floors: number; buildYear: number;
   photos: string[]; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
-  reactions: number; mapX: number; mapY: number; mapUrl: string;
+  reactions: number; mapX: number; mapY: number; mapUrl: string; locationMode: LocationMode;
 };
 
 const CANONICAL = new Set(AMENITIES.map(a => a.name));
@@ -65,13 +66,13 @@ function pickPriceUnit(n: number, listing: Listing): [string, PriceUnit] {
 }
 
 /** The number part of a reference, as the admin types it: "004". */
-const refDigits = (propId: string) => String(refNumber(propId)).padStart(3, "0");
+const refDigits = (nbId: string) => String(refNumber(nbId)).padStart(3, "0");
 
 function toDraft(p?: Prop): Draft {
   if (!p) {
-    const id = nextPropertyId(), propId = nextPropRef();
+    const id = nextPropertyId(), nbId = nextPropRef();
     return {
-      id, propId, refNo: refDigits(propId), isNew: true,
+      id, nbId, refNo: refDigits(nbId), isNew: true,
       title: "", tagline: "", description: "",
       listing: "For Sale", type: PROPERTY_TYPES[0], badge: "New", verified: false, featured: false,
       district: "", location: "", facing: "North", roadSurface: ROAD_SURFACES[0], roadWidth: 20,
@@ -80,7 +81,7 @@ function toDraft(p?: Prop): Draft {
       beds: 3, baths: 2, floors: 2, buildYear: new Date().getFullYear(),
       photos: [], amenities: [], highlights: [], floorPlan: [],
       // Spread new pins over the Buy / Rent map until a Google Maps link gives the real spot.
-      reactions: 0, mapX: 30 + (id * 37) % 40, mapY: 25 + (id * 23) % 45, mapUrl: "",
+      reactions: 0, mapX: 30 + (id * 37) % 40, mapY: 25 + (id * 23) % 45, mapUrl: "", locationMode: "approximate",
     };
   }
   const road = p.roadAccess.match(/^(.*?)\s*(\d+)\s*ft$/i);
@@ -88,7 +89,7 @@ function toDraft(p?: Prop): Draft {
   const [landValue, landUnit] = splitArea(p.landArea, "Ropani");
   const [priceAmount, priceUnit] = pickPriceUnit(p.priceNum, p.listing);
   return {
-    id: p.id, propId: p.propId, refNo: refDigits(p.propId), isNew: false,
+    id: p.id, nbId: p.nbId, refNo: refDigits(p.nbId), isNew: false,
     title: p.title, tagline: p.tagline, description: p.description,
     listing: p.listing, type: p.type, badge: p.badge, verified: p.verified, featured: p.featured,
     district: p.district, location: p.location, facing: p.facing,
@@ -100,7 +101,7 @@ function toDraft(p?: Prop): Draft {
     amenities: p.features.filter(f => CANONICAL.has(f)),
     highlights: p.features.filter(f => !CANONICAL.has(f)),
     floorPlan: (p.floorPlan ?? []).map(b => ({ ...b })),
-    reactions: REACTIONS[p.id] ?? 0, mapX: p.mapX, mapY: p.mapY, mapUrl: p.mapUrl ?? "",
+    reactions: REACTIONS[p.id] ?? 0, mapX: p.mapX, mapY: p.mapY, mapUrl: p.mapUrl ?? "", locationMode: p.locationMode ?? "approximate",
   };
 }
 
@@ -112,7 +113,7 @@ function toProp(d: Draft): Prop {
   const coords = resolveMap(d.mapUrl, "").coords;
   return {
     // NBS for sale, NBL for rent: the prefix is the listing, the number is the admin's.
-    id: d.id, propId: makeRef(d.listing, Number(d.refNo) || 0), badge: d.badge, title: d.title.trim(), tagline: d.tagline.trim(),
+    id: d.id, nbId: makeRef(d.listing, Number(d.refNo) || 0), badge: d.badge, title: d.title.trim(), tagline: d.tagline.trim(),
     location: d.location.trim() || d.district, district: d.district,
     price: formatPrice(priceNum, d.listing), priceNum, listing: d.listing, type: d.type,
     beds: isLand ? 0 : d.beds, baths: isLand ? 0 : d.baths,
@@ -124,7 +125,7 @@ function toProp(d: Draft): Prop {
     // Highlights first (they are the marketing lines), then the canonical amenities.
     features: [...d.highlights, ...d.amenities],
     ...(coords ? gridFromCoords(coords) : { mapX: d.mapX, mapY: d.mapY }),
-    mapUrl: d.mapUrl.trim() || undefined,
+    mapUrl: d.mapUrl.trim() || undefined, locationMode: d.locationMode,
     floorPlan: d.floorPlan.length ? d.floorPlan.map(b => ({ ...b, name: b.name.trim() })) : undefined,
   };
 }
@@ -134,7 +135,7 @@ function problems(d: Draft): string[] {
   if (d.title.trim().length < 3) out.push("Give the property a title.");
   const taken = refTakenBy(d);
   if (!(Number(d.refNo) > 0)) out.push("Give the property an ID number.");
-  else if (taken) out.push(`ID number ${Number(d.refNo)} is already used by “${taken.title}” (${displayRef(taken.propId)}).`);
+  else if (taken) out.push(`ID number ${Number(d.refNo)} is already used by “${taken.title}” (${displayRef(taken.nbId)}).`);
   if (!d.district) out.push("Choose the district.");
   if (priceNumOf(d) <= 0) out.push("Enter the price.");
   if (d.photos.length === 0) out.push("Add at least one photo.");
@@ -149,7 +150,7 @@ function problems(d: Draft): string[] {
 /** The property already using this ID number, if any. Sale and rent share one sequence. */
 const refTakenBy = (d: Draft) => {
   const n = Number(d.refNo);
-  return n > 0 ? ALL_PROPS.find(p => p.id !== d.id && refNumber(p.propId) === n) ?? null : null;
+  return n > 0 ? ALL_PROPS.find(p => p.id !== d.id && refNumber(p.nbId) === n) ?? null : null;
 };
 
 /** A land area was entered: a number, or Ropani-Aana-Paisa-Dam like "4-4-0-1". */
@@ -268,7 +269,7 @@ function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; ameniti
           <div className="p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-wrap gap-1.5"><Chip tone="maroon">{p.badge}</Chip><Chip tone="muted">{p.listing}</Chip></div>
-              <RefTag propId={p.propId} />
+              <RefTag nbId={p.nbId} />
             </div>
             <div>
               <p className="text-[22px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title || "Property name"}</p>
@@ -312,7 +313,7 @@ function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; ameniti
 }
 
 /**
- * Property ID: NBS (for sale) or NBL (letting), then a number, with the result shown as it
+ * NB ID: the reference the admin chooses: NBS (for sale) or NBL (letting), then a number, with the result shown as it
  * will appear on the site. Choosing the prefix also sets the listing, so the two never disagree.
  */
 function PropertyIdField({ listing, refNo, taken, onListing, onRefNo, className = "" }: {
@@ -322,7 +323,7 @@ function PropertyIdField({ listing, refNo, taken, onListing, onRefNo, className 
   const n = Number(refNo);
   const nextFree = () => onRefNo(String(refNumber(nextPropRef())).padStart(3, "0"));
   return (
-    <Field label="Property ID" className={className}
+    <Field label="NB ID" className={className}
       hint={taken
         ? <span style={{ color: MAROON }}>Number {n} is already used by “{taken.title}”. <button type="button" onClick={nextFree} className="underline underline-offset-4">Use the next free number</button></span>
         : "NBS = for sale, NBL = letting (rent). Sale and rent share one number sequence."}>
@@ -341,26 +342,43 @@ function PropertyIdField({ listing, refNo, taken, onListing, onRefNo, className 
 }
 
 /**
- * A pasted Google Maps link and, right under it, the map the property page will show.
- * With no link the map shows the area by name, so every property still gets a map.
+ * A pasted Google Maps link, the admin's choice of what visitors see (the exact point, or an
+ * approximate area about 500 m across), and the map exactly as the property page will show it.
+ * In approximate mode the exact pin is drawn too, for the admin only.
  */
-function MapLinkField({ url, area, onChange, className = "" }: {
-  url: string; area: string; onChange: (v: string) => void; className?: string;
+function MapLinkField({ propertyId, url, area, mode, onChange, onMode, className = "" }: {
+  propertyId: number; url: string; area: string; mode: LocationMode;
+  onChange: (v: string) => void; onMode: (m: LocationMode) => void; className?: string;
 }) {
-  const map = resolveMap(url, area || "Kathmandu");
   const trimmed = url.trim();
+  const map = resolveMap(trimmed, "");
+  const exact = map.coords;
+  const publicArea = exact ? approxFor({ id: propertyId, mapUrl: trimmed, locationMode: mode }) : null;
+  const shown = mode === "exact"
+    ? "Visitors see the exact point: a pin on the property itself."
+    : "Visitors see the shaded area (about 500 m) and the maroon pin. The dark dot is the real point: only you see it.";
   const note =
-    !trimmed ? (area ? `No link yet, so the map shows “${area}” by name.` : "Choose the district, or paste a link, to see the map.")
-    : map.source === "pin" || map.source === "embed" ? (map.coords && !inNepal(map.coords) ? "This pin is outside Nepal. Check the link." : "Exact pin found. This is the map visitors will see.")
-    : isShortMapLink(trimmed) ? "Short share links can’t be read in the browser, so the map shows the area by name. For the exact pin, open the link and copy the long address from the browser bar."
-    : map.source === "place" ? "Place found by name. For an exact pin, copy the link after dropping a pin in Google Maps."
+    !trimmed ? (area ? `No link yet, so visitors see “${area}” by name, without a map.` : "Paste a Google Maps link to put this property on the map.")
+    : exact ? (!inNepal(exact) ? "This pin is outside Nepal. Check the link." : `Pin found. ${shown}`)
+    : isShortMapLink(trimmed) ? "Short share links can’t be read in the browser. Open the link, then copy the long address from the browser bar (it contains the pin)."
+    : map.source === "place" ? "This link names a place but has no pin. Drop a pin in Google Maps and copy that link instead."
     : "No location found in this link. Paste a Google Maps link or coordinates like 27.6710, 85.3150.";
-  const warn = !!trimmed && (map.source === "area" || (map.coords !== null && !inNepal(map.coords)));
+  const warn = !!trimmed && (!exact || !inNepal(exact));
   return (
-    <Field label="Google Maps Link" className={className} hint="In Google Maps: Share → Copy link. The property page shows this as a map with an “Open in Google Maps” button.">
-      <TextInput value={url} onChange={onChange} placeholder="https://maps.app.goo.gl/…  or  https://www.google.com/maps/place/…" />
+    <Field label="Google Maps Link" className={className} hint="In Google Maps: drop a pin, then Share → Copy link (or copy the address bar).">
+      <TextInput value={url} onChange={onChange} placeholder="https://www.google.com/maps/place/…  or  27.6710, 85.3150" />
+      <div className="mt-1">
+        <p className="text-[10px] tracking-[0.28em] uppercase mb-1.5" style={{ color: MUTED_L, ...sans }}>What visitors see</p>
+        <Segmented<LocationMode> value={mode} onChange={onMode} options={[
+          { value: "approximate", label: "Approximate area", icon: <Shield size={13} /> },
+          { value: "exact", label: "Exact location", icon: <MapPin size={13} /> },
+        ]} />
+      </div>
       <div className="relative mt-1 border overflow-hidden" style={{ borderColor: BORDER_L, background: "#e9e3d8", aspectRatio: "16/7" }}>
-        {(trimmed || area) && <iframe key={map.src} src={map.src} title="Map preview" loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="absolute inset-0 w-full h-full border-0" />}
+        {publicArea && exact
+          ? <AreaMap area={publicArea} exact={exact} exactMode="admin"
+              fallback={<p className="absolute inset-0 flex items-center justify-center text-[13px]" style={{ color: MUTED_L, ...sans }}>The map could not be loaded.</p>} />
+          : <p className="absolute inset-0 flex items-center justify-center text-center px-6 text-[13px]" style={{ color: MUTED_L, ...sans }}>No map until the link has a pin.</p>}
       </div>
       <p className="flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: warn ? MAROON : MUTED_L, ...sans }}>
         <MapPin size={13} className="mt-0.5 shrink-0" style={{ color: warn ? MAROON : GOLD }} />{note}
@@ -399,7 +417,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
   const start = (): Draft => source
     ? { ...toDraft(listingToProp(source.submission)), isNew: true }
     : template
-    ? (() => { const propId = nextPropRef(template.listing); return { ...toDraft(template), id: nextPropertyId(), propId, refNo: refDigits(propId), isNew: true, title: `${template.title} (copy)`, reactions: 0 }; })()
+    ? (() => { const nbId = nextPropRef(template.listing); return { ...toDraft(template), id: nextPropertyId(), nbId, refNo: refDigits(nbId), isNew: true, title: `${template.title} (copy)`, reactions: 0 }; })()
     : toDraft(property ?? undefined);
   // Each free listing gets its own autosave slot, so two reviews never overwrite each other.
   const keyFor = (x: Draft) => (source ? `nb-admin-draft:listing:${source.submission.id}` : draftKey(x));
@@ -416,7 +434,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
     const s = start();
     setD(s); setBase(JSON.stringify(s)); setTried(false); setStyleNo(0);
     const saved = readDraft(keyFor(s));
-    setRestore(saved && JSON.stringify({ ...saved, id: s.id, propId: s.propId }) !== JSON.stringify(withoutTempPhotos(s)) ? saved : null);
+    setRestore(saved && JSON.stringify({ ...saved, id: s.id, nbId: s.nbId }) !== JSON.stringify(withoutTempPhotos(s)) ? saved : null);
   }, [open, property, template, source]);
 
   const dirty = JSON.stringify(d) !== base;
@@ -485,8 +503,8 @@ export function PropertyEditor({ property, template = null, source = null, open,
     <Drawer open={open} onClose={close} backLabel={source ? "Back to Free Listings" : "Back to Properties"} dirty={dirty} onSave={save}
       title={source ? "Review Free Listing" : template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
       subtitle={source
-        ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.propId)} · Fill the gaps, then publish now or later`
-        : `Property ID ${displayRef(assembled.propId)} · Saved as a draft while you work · Ctrl + S to save`}
+        ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.nbId)} · Fill the gaps, then publish now or later`
+        : `NB ID ${displayRef(assembled.nbId)} · Saved as a draft while you work · Ctrl + S to save`}
       headerExtra={<Progress d={d} />}
       preview={<PropertyPreview p={previewProp} amenities={d.amenities} highlights={d.highlights} plans={d.floorPlan.length} />}
       previewTitle="Live preview" footer={footer}>
@@ -500,7 +518,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
             </p>
             <div className="flex gap-2 shrink-0">
               <Button variant="quiet" onClick={() => { clearDraft(draftKey(d)); setRestore(null); }}>Discard</Button>
-              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, propId: o.propId, isNew: o.isNew, refNo: restore.refNo ?? o.refNo, mapUrl: restore.mapUrl ?? o.mapUrl })); setRestore(null); }}>Restore</Button>
+              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, nbId: o.nbId, isNew: o.isNew, refNo: restore.refNo ?? o.refNo, mapUrl: restore.mapUrl ?? o.mapUrl })); setRestore(null); }}>Restore</Button>
             </div>
           </div>
         )}
@@ -539,7 +557,8 @@ export function PropertyEditor({ property, template = null, source = null, open,
               <Field label="Road Surface"><Select value={d.roadSurface} onChange={v => set("roadSurface", v)} options={ROAD_SURFACES.includes(d.roadSurface) ? ROAD_SURFACES : [d.roadSurface, ...ROAD_SURFACES]} /></Field>
               <Field label="Road Width"><Stepper value={d.roadWidth} onChange={v => set("roadWidth", v)} max={200} suffix="ft" /></Field>
             </div>
-            <MapLinkField className="md:col-span-2" url={d.mapUrl} onChange={v => set("mapUrl", v)}
+            <MapLinkField className="md:col-span-2" propertyId={d.id} url={d.mapUrl} onChange={v => set("mapUrl", v)}
+              mode={d.locationMode} onMode={m => set("locationMode", m)}
               area={placeLabel(d.location, d.district)} />
           </div>
         </FormSection>

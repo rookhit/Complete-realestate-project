@@ -81,7 +81,7 @@ export function AdminListings({ nav }: { nav: AdminNav }) {
     const p = listingToProp(l);
     saveProperty(p);
     updateListing(l.id, { status: "published", propertyId: p.id, draft: p });
-    notify(`“${p.title}” is now live as ${displayRef(p.propId)}`, { label: "View", run: () => nav.openProperty(p.id) });
+    notify(`“${p.title}” is now live as ${displayRef(p.nbId)}`, { label: "View", run: () => nav.openProperty(p.id) });
   };
   /** Keep it aside to deal with later, without editing. */
   const later = (l: ListingSubmission) => {
