@@ -1,14 +1,11 @@
-// The admin's inbox: every form a visitor sends from the website, plus emails to the
-// business address. Shown in Admin → Messages, newest first, with an unread count.
+// The admin's inbox: what signed-in visitors send from the website forms (property enquiries,
+// callback requests, the contact form), plus emails to the business address later. Shown in
+// Admin → Messages, newest first, with an unread count.
 //
-// For the backend (FRONTEND_CLAUDE.md §7.9):
-//   POST   /api/v1/enquiries | /callbacks | /contact               public, each creates a message
-//   GET    /api/v1/admin/messages?kind&unread&q&page              ADMIN
-//   PATCH  /api/v1/admin/messages/:id  { read }                   ADMIN
-//   DELETE /api/v1/admin/messages/:id                             ADMIN (soft delete, for Undo)
-//   GET    /api/v1/admin/messages/unread-count                    ADMIN, polled for the badge
-// Emails arrive through the mailbox (Gmail API or IMAP polling) and are stored as kind "email".
-// Until then the site's forms add to this array, so the inbox works within one visit.
+// Stored in the database (backend-realstate/lib/content/messages.ts, src/api/messages.ts). The
+// forms post straight to the API; this file is the admin's copy of the inbox: loadMessages()
+// fills it (and is polled while an admin is signed in), and the changes below go to the API first.
+import { deleteMessageOnServer, fetchAllMessages, patchMessage, restoreMessageOnServer } from "@/api/messages";
 import { emitChange } from "./store";
 
 // Free listings have their own page (data/listings.ts, Admin → Free Listings).
@@ -31,54 +28,62 @@ export interface Message {
   receivedAt: string;    // ISO 8601
   read: boolean;
   replied?: boolean;     // set when the admin opens a reply
+  /** The signed-in account that sent it (the forms require sign-in); null for emails. */
+  account?: { name: string | null; email: string } | null;
 }
 
-const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+/** The inbox, newest first. Empty until an admin signs in. */
+export const MESSAGES: Message[] = [];
+let loadRun = 0;
+/** Messages with a change on its way: a refresh that started before it finished must not undo it. */
+const saving = new Map<number, number>();
 
-export const MESSAGES: Message[] = [
-  { id: 8, kind: "enquiry", name: "Anita Gurung", email: "anita.gurung@example.com", phone: "9841234567", propertyId: 4, nbId: "NBS004",
-    subject: "Godavari Forest Estate", body: "Hello, is the land still available? We would like to visit this Saturday if possible. Is the road access usable in the monsoon?", receivedAt: ago(18), read: false },
-  { id: 7, kind: "callback", name: "Bikash Shrestha", phone: "9803456789",
-    subject: "Please call: Evening (4pm-6pm)", body: "Requested a call back: Evening (4pm-6pm).", receivedAt: ago(95), read: false },
-  { id: 6, kind: "email", name: "Ramesh Adhikari", email: "ramesh.adhikari@example.com",
-    subject: "Selling my house in Bhaktapur", body: "Namaste,\n\nI have a 4-bedroom house in Bhaktapur (6 aana, built 2016) and I am thinking of selling. Could someone from your team come for a valuation next week?\n\nThank you,\nRamesh", receivedAt: ago(240), read: false },
-  { id: 5, kind: "contact", name: "Sarah Mitchell", email: "sarah.m@example.com", phone: "+44 7700 900123",
-    subject: "Buying as an NRN", body: "I'm a Non-Resident Nepali living in the UK. What documents do I need to buy an apartment in Kathmandu, and can the process be done remotely?", receivedAt: ago(60 * 26), read: true, replied: true },
-  { id: 3, kind: "enquiry", name: "Deepak Rai", email: "deepak.rai@example.com", propertyId: 7, nbId: "NBL007",
-    subject: "Jhamsikhel Luxury Flat", body: "Is the flat pet-friendly? I have a small dog. Also, is parking included in the rent?", receivedAt: ago(60 * 50), read: true },
-  { id: 2, kind: "email", name: "Kathmandu Post Property Desk", email: "property@example.com",
-    subject: "Interview request: valley land prices", body: "Dear Nepal Bhoomi team,\n\nWe are preparing a feature on land prices in the Kathmandu Valley and would welcome a short comment from your founder.\n\nBest regards", receivedAt: ago(60 * 75), read: true },
-  { id: 1, kind: "callback", name: "Sunita Karki", phone: "9812345670",
-    subject: "Please call: Morning (9am-12pm)", body: "Requested a call back: Morning (9am-12pm).", receivedAt: ago(60 * 100), read: true, replied: true },
-];
+/** Fill MESSAGES from the API (admin only). A failure keeps what is there. */
+export async function loadMessages(): Promise<void> {
+  const run = ++loadRun;
+  try {
+    const list = await fetchAllMessages();
+    if (run !== loadRun) return;
+    // Keep this screen's version of any message that is still being saved.
+    MESSAGES.splice(0, MESSAGES.length, ...list.map(m => (saving.has(m.id) ? MESSAGES.find(x => x.id === m.id) ?? m : m)));
+    emitChange();
+  } catch { /* offline or signed out: try again on the next poll */ }
+}
+
+/** Signed out: forget the admin's inbox. */
+export function clearMessages(): void {
+  loadRun++;
+  if (MESSAGES.length) { MESSAGES.splice(0); emitChange(); }
+}
 
 export const unreadCount = () => MESSAGES.filter(m => !m.read).length;
 
-/** A new message from one of the site's forms. API: the form's own POST endpoint. */
-export function addMessage(m: Omit<Message, "id" | "receivedAt" | "read">): void {
-  const id = MESSAGES.reduce((n, x) => Math.max(n, x.id), 0) + 1;
-  MESSAGES.unshift({ ...m, id, receivedAt: new Date().toISOString(), read: false });
-  emitChange();
-}
-
-/** API: PATCH /admin/messages/:id. */
+/** Mark read / unread / replied. Shown at once; put back if the server refuses. */
 export function updateMessage(id: number, patch: Partial<Pick<Message, "read" | "replied">>): void {
   const m = MESSAGES.find(x => x.id === id);
   if (!m || Object.entries(patch).every(([k, v]) => m[k as keyof Message] === v)) return;
+  const before = { read: m.read, replied: m.replied };
   Object.assign(m, patch);
   emitChange();
+  saving.set(id, (saving.get(id) ?? 0) + 1);
+  patchMessage(id, patch)
+    .catch(() => { const c = MESSAGES.find(x => x.id === id); if (c) Object.assign(c, before); emitChange(); })
+    .finally(() => { const n = (saving.get(id) ?? 1) - 1; if (n > 0) saving.set(id, n); else saving.delete(id); });
 }
 
-/** API: DELETE /admin/messages/:id. Returns where it was, for Undo. */
-export function deleteMessage(id: number): number {
+/** Delete on the server, then here. Resolves to where it was, for Undo. */
+export async function deleteMessage(id: number): Promise<number> {
+  await deleteMessageOnServer(id);
   const i = MESSAGES.findIndex(m => m.id === id);
   if (i >= 0) { MESSAGES.splice(i, 1); emitChange(); }
   return i;
 }
 
-export function restoreMessage(m: Message, index: number): void {
+/** Undo a delete (the server keeps it for a minute). */
+export async function restoreMessage(m: Message, index: number): Promise<void> {
+  const { data } = await restoreMessageOnServer(m.id);
   if (MESSAGES.some(x => x.id === m.id)) return;
-  MESSAGES.splice(Math.min(Math.max(index, 0), MESSAGES.length), 0, m);
+  MESSAGES.splice(Math.min(Math.max(index, 0), MESSAGES.length), 0, data);
   emitChange();
 }
 

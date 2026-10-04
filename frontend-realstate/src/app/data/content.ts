@@ -7,14 +7,20 @@
  * Admin edits change these arrays in memory until the page is reloaded.
  */
 import { img } from "@/app/components/ui/brand";
+import { fetchArticles, toBlog } from "@/api/articles";
+import { fetchTeam, toMember } from "@/api/team";
+import { fetchTestimonials, toTestimonial } from "@/api/testimonials";
+import { fetchSite, saveSiteContact, saveSiteDistricts, saveSiteServices, saveSiteStats } from "@/api/site";
 import { emitChange } from "./store";
 
 // ─── Shapes ───────────────────────────────────────────────────────────────────
 
 export interface BlogPost {
   id: number;
+  slug?: string;     // from the API; for /articles/:slug and future page URLs
   cat: string;       // free text typed by the admin, e.g. "Market Report"
-  date: string;      // display string, "May 2025". The API should send ISO 8601
+  date: string;      // display string, "May 2025" ("Draft" when unpublished); the API sends ISO 8601
+  publishedAt?: string | null;  // that ISO date as the API sent it
   read: string;      // "6 min"; the admin computes it from the body
   title: string;
   excerpt: string;   // the summary shown on cards and as the article's standfirst
@@ -23,14 +29,16 @@ export interface BlogPost {
   body?: string;     // the full article; paragraphs separated by blank lines
 }
 
-export interface Testimonial { id: number; name: string; role: string; rating: number; text: string; img: string }
+/** A client testimonial. The photo is optional: the site shows the client's initials without one. */
+export interface Testimonial { id: number; name: string; role: string; rating: number; text: string; img?: string }
 
 /**
  * A person on the team. The first four fields are what cards show; the rest fill the
  * profile pop-up and are optional, so a member can be added with just a name and photo.
  */
 export interface TeamMember {
-  id: number; name: string; role: string; img: string;
+  id: number; name: string; role: string;
+  img?: string;               // optional: cards show the initials without one
   department?: string;        // one of DEPARTMENTS; drives the filter chips on the Team page
   bio?: string;               // two or three sentences
   experienceYears?: number;
@@ -58,45 +66,72 @@ export const MAX_FEATURED_DISTRICTS = 5;
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-export const BLOGS: BlogPost[] = [
-  { id:1, cat:"Market Update", date:"May 2025", read:"6 min", title:"Nepal Real Estate Rebounds: Q1 2025 Market Report",
-    excerpt:"After a cautious 2024, Nepal's property market has shown strong signs of recovery in Q1 2025, with Kathmandu Valley recording a 14% uptick in premium transactions.",
-    image:img("photo-1544735716-392fe2489ffa",800,500), author:ARTICLE_AUTHOR },
-  { id:2, cat:"Buyer's Guide", date:"Apr 2025", read:"8 min", title:"How to Buy Property in Nepal: The Complete 2025 Guide",
-    excerpt:"From land registration to bank financing, we break down every step of the property purchase process in Nepal in plain language.",
-    image:img("photo-1512917774080-9991f1c4c750",800,500), author:ARTICLE_AUTHOR },
-  { id:3, cat:"Investment", date:"Mar 2025", read:"5 min", title:"Pokhara International Airport: What It Means for Property Prices",
-    excerpt:"Pokhara's new international airport has catalyzed a significant shift in property values across the western region. Here's what investors need to know.",
-    image:img("photo-1600585154526-990dced4db0d",800,500), author:ARTICLE_AUTHOR },
-  { id:4, cat:"Vastu", date:"Feb 2025", read:"4 min", title:"Vastu Shastra for Modern Homes: Principles That Still Work",
-    excerpt:"Ancient Vastu principles continue to influence homebuying decisions in Nepal. Our consultants explain which guidelines genuinely improve living quality.",
-    image:img("photo-1600596542815-ffad4c1539a9",800,500), author:ARTICLE_AUTHOR },
-];
+/**
+ * The Property Journal, in display order (the first is the featured story on the home page).
+ * Loaded from the API by loadArticles() below; the admin's list includes drafts.
+ */
+export const BLOGS: BlogPost[] = [];
+export let articlesStatus: "loading" | "ready" | "error" = "loading";
+let articlesRun = 0;
 
-export const TESTIMONIALS: Testimonial[] = [
-  { id:1, name:"Bijay Shrestha", role:"Property Buyer, Kathmandu", rating:5, text:"Nepal Bhoomi helped us find our dream home in Lalitpur within 3 weeks. Their knowledge of the market and genuine care for our needs was exceptional.", img:img("photo-1560250097-0b93528c311a",200,200) },
-  { id:2, name:"Anita Gurung", role:"Property Investor, Pokhara", rating:5, text:"As an NRN investing from abroad, Nepal Bhoomi's advisory team guided us through every legal and financial step. Complete transparency throughout.", img:img("photo-1573497019940-1c28c88b4f3e",200,200) },
-  { id:3, name:"Dr. Ramesh Poudel", role:"Commercial Buyer, Lalitpur", rating:5, text:"Purchased a commercial property through Nepal Bhoomi. Their valuation was spot-on and the transaction was completed without a single hitch. Highly recommended.", img:img("photo-1507003211169-0a1dd7228f2d",200,200) },
-];
+/** Fill BLOGS from the API. A failure leaves the journal empty (the pages hide it) rather than blocking the site. */
+export async function loadArticles(admin: boolean): Promise<void> {
+  const run = ++articlesRun;
+  try {
+    const list = await fetchArticles(admin);
+    if (run !== articlesRun) return;
+    BLOGS.splice(0, BLOGS.length, ...list.map(toBlog));
+    articlesStatus = "ready";
+  } catch {
+    if (run !== articlesRun) return;
+    articlesStatus = "error";
+  }
+  emitChange();
+}
+
+/** "What Our Clients Say", in display order. Loaded from the API by loadTestimonials() below. */
+export const TESTIMONIALS: Testimonial[] = [];
+export let testimonialsStatus: "loading" | "ready" | "error" = "loading";
+let testimonialsRun = 0;
+
+/** Fill TESTIMONIALS from the API. A failure leaves it empty (the home page hides the section). */
+export async function loadTestimonials(): Promise<void> {
+  const run = ++testimonialsRun;
+  try {
+    const list = await fetchTestimonials();
+    if (run !== testimonialsRun) return;
+    TESTIMONIALS.splice(0, TESTIMONIALS.length, ...list.map(toTestimonial));
+    testimonialsStatus = "ready";
+  } catch {
+    if (run !== testimonialsRun) return;
+    testimonialsStatus = "error";
+  }
+  emitChange();
+}
 
 /** In display order. The About page shows the first ABOUT_TEAM_LIMIT; the Team page shows all. */
-export const TEAM: TeamMember[] = [
-  { id:1, name:"Arjun Thapa", role:"Founder & Principal Advisor", img:img("photo-1560250097-0b93528c311a",500,600),
-    department:"Leadership", experienceYears:18, languages:["Nepali","English","Hindi"],
-    specialities:["Luxury Residences","Investment Advisory","Heritage Homes"],
-    bio:"Arjun founded Nepal Bhoomi to bring honesty and discretion to the valley's premium property market. He personally advises on the firm's most significant transactions.",
-    phone:"+977 1 400 0000", whatsapp:"9779800000000", email:"arjun@nepalbhoomi.com" },
-  { id:2, name:"Priya Shrestha", role:"Senior Property Consultant", img:img("photo-1573496359142-b8d87734a5a2",500,600), // was photo-1580489944761, which returns 404
-    department:"Sales & Advisory", experienceYears:11, languages:["Nepali","English","Newari"],
-    specialities:["Family Homes","Lalitpur & Patan","First-time Buyers"],
-    bio:"Priya guides families through every step of buying in Lalitpur and Patan, from the first viewing to the final handover, with a calm eye for detail.",
-    phone:"+977 1 400 0001", whatsapp:"9779800000001", email:"priya@nepalbhoomi.com" },
-  { id:3, name:"Rajan Maharjan", role:"Investment Specialist", img:img("photo-1507003211169-0a1dd7228f2d",500,600),
-    department:"Sales & Advisory", experienceYears:9, languages:["Nepali","English"],
-    specialities:["Commercial Property","Land & Development","NRN Investors"],
-    bio:"Rajan advises investors and NRN clients on commercial buildings and development land, with a clear view of yields, zoning and long-term value.",
-    phone:"+977 1 400 0002", whatsapp:"9779800000002", email:"rajan@nepalbhoomi.com" },
-];
+/**
+ * The team, in display order (the About page shows the first ABOUT_TEAM_LIMIT). Loaded from the
+ * API by loadTeam() below.
+ */
+export const TEAM: TeamMember[] = [];
+export let teamStatus: "loading" | "ready" | "error" = "loading";
+let teamRun = 0;
+
+/** Fill TEAM from the API. A failure leaves it empty (the pages hide the team) rather than blocking the site. */
+export async function loadTeam(): Promise<void> {
+  const run = ++teamRun;
+  try {
+    const list = await fetchTeam();
+    if (run !== teamRun) return;
+    TEAM.splice(0, TEAM.length, ...list.map(toMember));
+    teamStatus = "ready";
+  } catch {
+    if (run !== teamRun) return;
+    teamStatus = "error";
+  }
+  emitChange();
+}
 
 /** How many team members the About page shows before "Meet the full team". */
 export const ABOUT_TEAM_LIMIT = 6;
@@ -208,9 +243,9 @@ export const CONTACT: ContactInfo = {
 export const whatsappLink = (text?: string) =>
   `https://wa.me/${CONTACT.whatsapp.replace(/\D/g, "")}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 
-/** API: PUT /admin/site/contact. */
-export function saveContact(c: ContactInfo): void {
-  Object.assign(CONTACT, c);
+/** Save the contact details (PUT /admin/site/contact), then show what the server stored. */
+export async function saveContact(c: ContactInfo): Promise<void> {
+  Object.assign(CONTACT, await saveSiteContact(c));
   emitChange();
 }
 
@@ -228,9 +263,44 @@ export const SERVICES: Service[] = [
   { id: 6, icon: "landmark", title: "Engineering Consulting", desc: "Structural, civil and MEP engineering consulting for projects of all scales across Nepal." },
 ];
 
-/** API: PUT /admin/site/services with the whole list, in display order. */
-export function saveServices(list: Service[]): void {
-  SERVICES.splice(0, SERVICES.length, ...list);
+/** Save the whole services list in display order (PUT /admin/site/services). */
+export async function saveServices(list: Service[]): Promise<void> {
+  const saved = await saveSiteServices(list.map(({ icon, title, desc }) => ({ icon, title, desc })));
+  SERVICES.splice(0, SERVICES.length, ...saved);
+  emitChange();
+}
+
+/** Save the home page statistics (PUT /admin/site/stats). */
+export async function saveStats(list: Stat[]): Promise<void> {
+  const saved = await saveSiteStats(list.map(({ value, label }) => ({ value, label })));
+  STATS.splice(0, STATS.length, ...saved);
+  emitChange();
+}
+
+/** Save the featured district tiles in order (PUT /admin/site/featured-districts). */
+export async function saveFeaturedDistricts(list: FeaturedDistrict[]): Promise<void> {
+  const saved = await saveSiteDistricts(list.map(({ name, img }) => ({ name, img })));
+  FEATURED_DISTRICTS.splice(0, FEATURED_DISTRICTS.length, ...saved);
+  emitChange();
+}
+
+/**
+ * The statistics, featured districts, contact details and services the admin has saved
+ * (GET /site), applied over the defaults above. A setting never saved keeps its default; a
+ * failure keeps them all (the site still works).
+ */
+export let siteStatus: "loading" | "ready" | "error" = "loading";
+export async function loadSiteSettings(): Promise<void> {
+  try {
+    const s = await fetchSite();
+    if (s.stats) STATS.splice(0, STATS.length, ...s.stats);
+    if (s.featuredDistricts) FEATURED_DISTRICTS.splice(0, FEATURED_DISTRICTS.length, ...s.featuredDistricts);
+    if (s.contact) Object.assign(CONTACT, s.contact);
+    if (s.services) SERVICES.splice(0, SERVICES.length, ...s.services);
+    siteStatus = "ready";
+  } catch {
+    siteStatus = "error";
+  }
   emitChange();
 }
 

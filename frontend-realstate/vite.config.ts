@@ -27,11 +27,14 @@ function contentSecurityPolicy(apiUrl) {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    // Map tiles (components/ui/leaflet-maps.tsx) are images from OpenStreetMap.
-    "img-src 'self' data: blob: https://images.unsplash.com https://i.ytimg.com https://tile.openstreetmap.org",
-    "media-src 'self' blob:",
+    // Map tiles (components/ui/leaflet-maps.tsx) are images from OpenStreetMap. Property photos and
+    // videos are served from the Cloudflare R2 public domain; any https: image / video is allowed
+    // until that domain is fixed (PRODUCTION_CHECKLIST.md: narrow it).
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: https:",
     "frame-src https://www.youtube-nocookie.com",
-    `connect-src 'self' ${apiOrigin}`,
+    // The admin's uploads go straight to Cloudflare R2 (src/api/uploads.ts).
+    `connect-src 'self' ${apiOrigin} https://*.r2.cloudflarestorage.com`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

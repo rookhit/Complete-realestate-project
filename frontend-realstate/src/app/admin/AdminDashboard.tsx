@@ -3,10 +3,11 @@ import {
   BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
   ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Star, Trash2, Users,
 } from "lucide-react";
-import { useAuth } from "@/app/auth";
-import { ALL_PROPS, PROPERTY_TYPES, deleteProperty, displayRef, matchesRef, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
+import { ApiError, useAuth } from "@/app/auth";
+import { deletePropertyOnServer, restorePropertyOnServer, toProp, updateProperty } from "@/api/properties";
+import { ALL_PROPS, PROPERTY_TYPES, applySaved, deleteProperty, displayRef, matchesRef, restoreProperty, type Prop } from "@/app/data/properties";
 import { BLOGS, TEAM, TESTIMONIALS, VIDEO_LIST } from "@/app/data/content";
-import { REACTIONS, reviewedPropertyIds, reviewsFor, setReactionCount } from "@/app/data/reviews";
+import { ADMIN_REVIEWS, REACTIONS, pendingReviewCount } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
 import { AMENITIES } from "@/app/icons/amenities";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
@@ -18,6 +19,7 @@ import { PropertyEditor } from "./PropertyEditor";
 import { HomePageSection, JournalSection, TeamSection, TestimonialsSection, VideosSection } from "./ContentEditors";
 import { CompanySection } from "./CompanyEditor";
 import { OptionsSection } from "./OptionsEditor";
+import { onOptionSaveFailed } from "@/app/data/options";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { Chip, EmptyState, SearchBox, SectionHeading, useToast, type Notify } from "./parts";
 
@@ -42,6 +44,8 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
   const { user } = useAuth();
   const [section, setSection] = useState<Section>("overview");
   const [toast, notify] = useToast();
+  // A dropdown list that could not be saved (from any section) is reported here.
+  useEffect(() => onOptionSaveFailed(message => notify(message)), [notify]);
   const [editing, setEditing] = useState<Prop | "new" | null>(null);
   const [copyOf, setCopyOf] = useState<Prop | null>(null);
   // An article or team member to open as soon as its section shows (from the checklist or Ctrl K).
@@ -164,7 +168,9 @@ function findIssues(on: { property: (p: Prop) => void; article: (id: number) => 
     if (!m.bio?.trim()) out.push({ key: `t${m.id}-bio`, kind: "team", what: m.name, problem: "No profile bio.", fix: () => on.member(m.id), fixLabel: "Add bio" });
     if (!m.phone && !m.whatsapp && !m.email) out.push({ key: `t${m.id}-contact`, kind: "team", what: m.name, problem: "No contact details in the profile.", fix: () => on.member(m.id), fixLabel: "Add contact" });
   }
-  const low = reviewedPropertyIds().flatMap(id => reviewsFor(id)).filter(r => r.rating <= 3).length;
+  const pending = pendingReviewCount();
+  if (pending) out.push({ key: "reviews-pending", kind: "review", what: `${pending} review${pending === 1 ? "" : "s"} waiting for approval`, problem: "Not on the site until you approve them.", fix: on.reviews, fixLabel: "Review them" });
+  const low = ADMIN_REVIEWS.filter(r => r.status === "published" && r.rating <= 3).length;
   if (low) out.push({ key: "reviews-low", kind: "review", what: `${low} review${low === 1 ? "" : "s"} of 3 stars or fewer`, problem: "Worth reading in case something needs a reply or removal.", fix: on.reviews, fixLabel: "Open reviews" });
 
   // Take one of each kind in turn, so a long run of property reminders
@@ -185,13 +191,13 @@ function Overview({ go, nav, onAddProperty, onEditProperty, onOpenArticle, onOpe
 }) {
   const [showAll, setShowAll] = useState(false);
   const issues = findIssues({ property: onEditProperty, article: onOpenArticle, member: onOpenMember, reviews: () => nav.go("admin-reviews") });
-  const reviewCount = reviewedPropertyIds().reduce((n, id) => n + reviewsFor(id).length, 0);
+  const reviewCount = ADMIN_REVIEWS.filter(r => r.status === "published").length;
   const reactions = ALL_PROPS.reduce((n, p) => n + (REACTIONS[p.id] ?? 0), 0);
   const tiles = [
     { label: "Properties", value: ALL_PROPS.length, note: `${ALL_PROPS.filter(p => p.listing === "For Sale").length} for sale · ${ALL_PROPS.filter(p => p.listing === "For Rent").length} for rent`, to: "properties" as Section },
     { label: "Featured", value: ALL_PROPS.filter(p => p.featured).length, note: "In the hero and Hot Properties", to: "properties" as Section },
     { label: "Reactions", value: reactions.toLocaleString("en-US"), note: "Hearts across all listings", to: "properties" as Section },
-    { label: "Reviews", value: reviewCount, note: "Open the Reviews tab to manage", to: null },
+    { label: "Reviews", value: reviewCount, note: pendingReviewCount() ? `${pendingReviewCount()} waiting for approval` : "Approved, on the property pages", to: null },
     { label: "Articles", value: BLOGS.length, note: "In the Property Journal", to: "journal" as Section },
     { label: "Team", value: TEAM.length, note: "About and Our Team pages", to: "team" as Section },
     { label: "Testimonials", value: TESTIMONIALS.length, note: "On the home page", to: "testimonials" as Section },
@@ -301,15 +307,33 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
   }, [q, listing, type, sort, version]);
 
   const current = Math.min(page, Math.max(1, Math.ceil(rows.length / PER_PAGE)));
-  const nudge = (p: Prop, d: number) => setReactionCount(p.id, (REACTIONS[p.id] ?? 0) + d);
+  // Every change goes to the API first; the local list is then updated from what it stored.
+  const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
+  const nudge = (p: Prop, d: number) => {
+    const next = Math.max(0, (REACTIONS[p.id] ?? 0) + d);
+    updateProperty(p.id, { reactionCount: next }).then(res => { applySaved(res.data); }, failed);
+  };
   const flip = (p: Prop, field: "featured" | "verified") => {
-    saveProperty({ ...p, [field]: !p[field] });
-    notify(`${p.title} ${!p[field] ? "is now" : "is no longer"} ${field}`);
+    updateProperty(p.id, { [field]: !p[field] }).then(res => {
+      applySaved(res.data);
+      notify(`${p.title} ${!p[field] ? "is now" : "is no longer"} ${field}`);
+    }, failed);
   };
   const remove = (p: Prop) => {
+    // The site needs at least one listing.
+    if (ALL_PROPS.length <= 1) { notify("The site needs at least one property"); return; }
     const at = ALL_PROPS.findIndex(x => x.id === p.id);
-    if (deleteProperty(p.id)) notify(`“${p.title}” deleted`, { label: "Undo", run: () => restoreProperty(p, at) });
-    else notify("The site needs at least one property");
+    deletePropertyOnServer(p.id).then(() => {
+      deleteProperty(p.id);
+      notify(`“${p.title}” deleted. ${displayRef(p.nbId)} is free again`, { label: "Undo", run: () => {
+        restorePropertyOnServer(p.id).then(res => {
+          const back = restoreProperty(toProp(res.data), at);
+          if (back) REACTIONS[back.id] = res.data.reactionCount;
+          // Deleting freed the NB ID; if another property took it meanwhile, this one came back with a new one.
+          if (back && res.meta?.nbIdChanged) notify(`“${p.title}” is back as ${displayRef(back.nbId)} (${displayRef(p.nbId)} was taken meanwhile)`);
+        }, failed);
+      } });
+    }, failed);
   };
 
   const iconBtn = "w-[46px] flex items-center justify-center border transition-colors hover:border-[#8a2030] hover:text-[#8a2030]";
@@ -373,10 +397,13 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
               <div className="flex flex-wrap gap-2 [&>button]:px-4 sm:[&>button]:px-6">
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)} title="Open on the website"><Eye size={13} />View</Button>
                 <Button variant="quiet" onClick={() => onEdit(p)}><Pencil size={13} />Edit</Button>
-                <button type="button" aria-label={`Duplicate ${p.title}`} title="Start a new listing from this one" onClick={() => onDuplicate(p)}
-                  className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Copy size={15} /></button>
-                <button type="button" aria-label={`Delete ${p.title}`} onClick={() => setToDelete(p)}
-                  className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Trash2 size={15} /></button>
+                {/* Wrapped so the padding rule above (for the text buttons) doesn't squeeze the icons out. */}
+                <div className="flex gap-2">
+                  <button type="button" aria-label={`Duplicate ${p.title}`} title="Start a new listing from this one" onClick={() => onDuplicate(p)}
+                    className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Copy size={15} /></button>
+                  <button type="button" aria-label={`Delete ${p.title}`} title="Delete" onClick={() => setToDelete(p)}
+                    className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Trash2 size={15} /></button>
+                </div>
               </div>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Bell, ClipboardList, ExternalLink, Info, LayoutDashboard, Mail, MessageSquare, Users, X } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { MESSAGES, MESSAGE_KINDS, unreadCount } from "@/app/data/messages";
+import { pendingReviewCount } from "@/app/data/reviews";
 import { LISTINGS, newListingsCount } from "@/app/data/listings";
 import { useDataVersion } from "@/app/data/store";
 import { BG_LIGHT, BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
@@ -157,7 +158,7 @@ export function AdminLayout({ nav, current, tag, title, intro, back, previewNote
           {TABS.map(({ page, label, lead, Icon }) => {
             const on = page === current;
             const full = lead ? `${lead} ${label}` : label;
-            const n = page === "admin-messages" ? unreadCount() : page === "admin-listings" ? newListingsCount() : 0;
+            const n = page === "admin-messages" ? unreadCount() : page === "admin-listings" ? newListingsCount() : page === "admin-reviews" ? pendingReviewCount() : 0;
             return (
               <button key={page} onClick={() => nav.go(page)} aria-current={on ? "page" : undefined} aria-label={n ? `${full}, ${n} new` : full}
                 className="relative flex-1 lg:flex-none flex flex-col lg:flex-row items-center justify-center gap-1 lg:gap-2 px-1 lg:px-4 pt-2.5 pb-2 lg:py-4 text-[9.5px] sm:text-[10.5px] lg:text-[11px] tracking-[0.06em] sm:tracking-[0.12em] lg:tracking-[0.22em] uppercase whitespace-nowrap transition-colors hover:text-[#8a2030]"
@@ -177,7 +178,7 @@ export function AdminLayout({ nav, current, tag, title, intro, back, previewNote
         <div className="px-4 sm:px-6 md:px-12 lg:px-20 pt-5 sm:pt-8">
           <p className="flex items-start gap-3 border px-4 sm:px-5 py-3 sm:py-3.5 text-[13px] leading-relaxed" style={{ borderColor: "rgba(176,136,72,0.35)", background: "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>
             <Info size={16} className="shrink-0 mt-0.5" style={{ color: GOLD }} />
-            <span className="flex-1">Changes you save here appear on the website straight away and last until the page is reloaded. Permanent saving arrives with the backend.</span>
+            <span className="flex-1">Properties are saved to the database. Everything else here (journal, team, testimonials, videos, home page, messages, free listings, options) still lasts only until the page is reloaded, until its backend exists.</span>
             <button type="button" onClick={hideNote} className="shrink-0 text-[10px] tracking-[0.2em] uppercase underline underline-offset-4 hover:text-[#8a2030]" style={{ color: MUTED_L }}>Got it</button>
           </p>
         </div>

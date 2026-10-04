@@ -42,3 +42,6 @@ next-env.d.ts
 
 # prisma
 /generated/prisma
+
+# Local test uploads (lib/storage/local.ts), development only
+/.uploads/

@@ -83,7 +83,8 @@ export function TestimonialPreview({ t }: { t: Testimonial }) {
         <div className="flex gap-0.5 mb-5">{Array.from({ length: t.rating }).map((_, j) => <Star key={j} size={15} fill={GOLD} style={{ color: GOLD }} />)}</div>
         <p className="text-[15px] leading-[1.75] mb-6" style={{ color: MUTED_L, ...sans }}>“{t.text || "What the client said appears here."}”</p>
         <div className="flex items-center gap-3 pt-5 border-t" style={{ borderColor: BORDER_L }}>
-          {t.img ? <img src={t.img} alt="" className="w-10 h-10 object-cover rounded-full" /> : <span className="w-10 h-10 rounded-full" style={{ background: "#e2dbcf" }} />}
+          {t.img ? <img src={t.img} alt="" className="w-10 h-10 object-cover rounded-full" />
+            : <span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
           <div>
             <p className="text-[15px] font-medium" style={{ color: FG_LIGHT, ...sans }}>{t.name || "Client name"}</p>
             <p className="text-[12px]" style={{ color: MUTED_L, ...sans }}>{t.role || "Who they are"}</p>

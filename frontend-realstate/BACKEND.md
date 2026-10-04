@@ -25,8 +25,8 @@ finish something, tick it here and update the matching section of `CLAUDE.md` in
 |---|---|
 | **Auth API** | Built and hardened: register with 6-digit email verification, login, TOTP 2FA (required for the admin), Google sign-in, refresh, logout, me, forgot / reset password (Gmail SMTP), `GET /admin/users` |
 | **Database** | Postgres on Supabase, 12 migrations, RLS on every table. **The content schema for every admin screen is built and applied** (tables only): properties with NB ID, locations with exact / approximate mode, amenities, hearts, reviews, messages, free listings, articles, team, testimonials, videos, site settings. Summary: `backend-realstate/CLAUDE.md` → "Data model (content)" |
-| **Content API** | **Next.** Nothing yet; starting with properties (§4.1) |
-| **Frontend** | Auth screens call the real API. Everything else (site and admin) still reads the mock arrays in `src/app/data/`; each function there names the endpoint that replaces it |
+| **Content API** | **Properties built** (2026-09-30, §4.1). The rest (§4.2–4.5) not yet |
+| **Frontend** | Auth and **properties** call the real API (properties since 2026-09-30). Everything else still reads the mock arrays in `src/app/data/`; each function there names the endpoint that replaces it |
 
 ---
 
@@ -90,10 +90,12 @@ carries a dated banner explaining this and the changed error shape.
 
 Full list with shapes: `FRONTEND_CLAUDE.md` §0.4. Forgot / reset password (old §4.2) is done.
 
-### 4.1 Properties — first
+### 4.1 Properties — ✅ built and wired into the frontend 2026-09-30 (shapes in `FRONTEND_CLAUDE.md` §0.3)
 Public `GET /properties` (filters, search incl. NB ID, sort, pages) and `GET /properties/:id`; admin
 create / edit / delete / restore (Undo), `GET /admin/properties/next-ref`, 409 `REF_TAKEN`. Rules that bite:
-- **NB ID**: `nbId` = "NBS" (sale) / "NBL" (rent) + `nbNumber` padded to 3 digits; one number sequence; never reused.
+- **NB ID**: `nbId` = "NBS" (sale) / "NBL" (rent) + `nbNumber` padded to 3 digits. **Separate sequences** (NBS005 and
+  NBL005 may coexist), unique among live properties; lowest free number pre-filled; switching sale ↔ rent moves it to
+  the other sequence; deleting frees it; search matches full NB IDs only (`FRONTEND_CLAUDE.md` §0.5).
 - **Location privacy**: never send `googleMapsUrl`; send one point `approx` + `locationMode` (the real point
   only when the admin chose EXACT). Resolve `maps.app.goo.gl` short links on save; generate the shifted centre once.
 - **Exact strings**: `district` is one of the 77 spellings; type / badge / facing / road surface / units come from
@@ -122,7 +124,7 @@ services, dropdown options) and their admin `PUT`s.
   token in an httpOnly, SameSite=Strict cookie. (This replaced the older "cookie-only" plan.)
 - **Register is members-only**; exactly one ADMIN, created by the seed, with 2FA required.
 - **Hearts, reviews and free listings need a signed-in user**; the three other forms stay public, rate-limited.
-- **NB ID** is chosen by the admin; the database `id` is separate and never shown.
+- **NB ID** is given by the admin (NBS for sale, NBL for rent, separate sequences); the database `id` is separate, automatic and never shown.
 - **Maps**: Leaflet + OpenStreetMap tiles. Per property the admin picks an approximate ~500 m area (default) or
   the exact point; the exact point stays admin-only otherwise.
 - **Deploy same-site** (`domain.com` + `/api`, or `api.domain.com`), so the SameSite cookie works.
@@ -140,6 +142,8 @@ splitting the 2,700-line `App.tsx`.
 ## 7. Backend change log
 
 Newest first, one line each. Append only.
+
+- **2026-09-30 · saksham · Property endpoints.** Public list / detail / related, admin CRUD + restore + next-ref. Media stored as strings for now.
 
 - **2026-09-30 · saksham · Content schema complete + map privacy.** Migrations `20260930120000`,
   `20260930140000`, `20260930160000`: NB ID, text dropdown values, R-A-P-D, floor plan JSON, Message,

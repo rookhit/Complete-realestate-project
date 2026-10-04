@@ -36,6 +36,22 @@ Last updated: 2026-09-28
       `Property.gallery`, `Property.videoUrl`) and give it a public/custom domain for serving.
 - [ ] Add that media host to the frontend's Content-Security-Policy in `frontend-realstate/vite.config.ts`
       (`img-src` and `media-src`), or images and videos will be blocked in production.
+- [ ] Set the backend env vars `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+      `R2_PUBLIC_URL` (an R2 API token with Object Read & Write on that bucket only). Without them
+      the admin's photo / video uploads answer 503.
+- [ ] R2 bucket → Settings → CORS policy: allow `PUT` from the frontend origin(s) with header
+      `Content-Type` (e.g. `[{"AllowedOrigins":["https://<site>","http://localhost:5173"],"AllowedMethods":["PUT"],"AllowedHeaders":["Content-Type"],"MaxAgeSeconds":3600}]`),
+      or the browser's upload is blocked.
+- [ ] The CSP allows any `https:` image / video (`img-src`, `media-src`). Narrow it to
+      `'self' data: blob:` + the R2 public domain + the hosts still in use (images.unsplash.com,
+      i.ytimg.com, tile.openstreetmap.org).
+- [ ] Until R2 is set, development uploads go to `backend-realstate/.uploads/` and are stored as
+      `http://localhost:3000/api/v1/media/…` URLs. Before launch, delete or re-upload any property /
+      article whose photos point there (they don't exist anywhere else). Production never uses it.
+- [ ] Add an R2 lifecycle rule or a cleanup job for orphaned uploads: a photo or video uploaded in the
+      editor and then removed (or the editor closed) before saving stays in the bucket. Files of
+      saved properties are deleted by the backend when removed from a property or when the property
+      is deleted for good.
 
 ## Maps
 

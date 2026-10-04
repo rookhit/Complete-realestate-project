@@ -1,17 +1,17 @@
-import { useEffect, useState } from "react";
-import { Check, Clock, Eye, Heart, History, Lightbulb, Lock, MapPin, Plus, Shield, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Clock, Eye, Film, Heart, History, Lightbulb, Loader2, Lock, MapPin, Plus, Shield, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
-  ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
-  ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, saveProperty,
+  BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
+  ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, refTaken, applySaved,
   type Listing, type LocationMode, type PlanBox, type Prop,
 } from "@/app/data/properties";
-import { REACTIONS, setReactionCount } from "@/app/data/reviews";
+import { REACTIONS } from "@/app/data/reviews";
 import { approxFor, gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
 import { AreaMap } from "@/app/components/ui/maps";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { DistrictCombobox } from "@/app/components/ui/district-combobox";
-import { PhotoManager } from "@/app/components/ui/photo-picker";
+import { PhotoManager, isMediaLink } from "@/app/components/ui/photo-picker";
 import {
   Button, Field, FormSection, Segmented, Select, Stepper, TextArea, TextInput, Toggle,
 } from "@/app/components/ui/form-controls";
@@ -23,6 +23,9 @@ import { HIGHLIGHT_IDEAS, TAGLINE_IDEAS } from "@/app/data/options";
 import { FloorPlanBuilder } from "./FloorPlanBuilder";
 import { listingToProp, type ListingSubmission } from "@/app/data/listings";
 import { timeAgo } from "@/app/data/messages";
+import { createProperty, updateProperty, type PropertyInput } from "@/api/properties";
+import { uploadMedia } from "@/api/uploads";
+import { ApiError } from "@/app/auth";
 
 // ─── Draft: the form's working copy of a property ─────────────────────────────
 // The form edits friendly pieces (a number and a unit, a road surface and a width);
@@ -39,7 +42,7 @@ type Draft = {
   priceAmount: string; priceUnit: PriceUnit;
   builtValue: string; builtUnit: string; landValue: string; landUnit: string;
   beds: number; baths: number; floors: number; buildYear: number;
-  photos: string[]; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
+  photos: string[]; videoUrl: string; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
   reactions: number; mapX: number; mapY: number; mapUrl: string; locationMode: LocationMode;
 };
 
@@ -79,7 +82,7 @@ function toDraft(p?: Prop): Draft {
       priceAmount: "", priceUnit: "Crore",
       builtValue: "", builtUnit: "sq.ft", landValue: "", landUnit: "Ropani",
       beds: 3, baths: 2, floors: 2, buildYear: new Date().getFullYear(),
-      photos: [], amenities: [], highlights: [], floorPlan: [],
+      photos: [], videoUrl: "", amenities: [], highlights: [], floorPlan: [],
       // Spread new pins over the Buy / Rent map until a Google Maps link gives the real spot.
       reactions: 0, mapX: 30 + (id * 37) % 40, mapY: 25 + (id * 23) % 45, mapUrl: "", locationMode: "approximate",
     };
@@ -97,7 +100,8 @@ function toDraft(p?: Prop): Draft {
     priceAmount, priceUnit, builtValue, builtUnit, landValue, landUnit,
     beds: p.beds, baths: p.baths, floors: p.floors, buildYear: p.buildYear,
     // The gallery is the photo list; the hero is simply its first photo.
-    photos: p.gallery.length ? [...p.gallery] : [p.hero],
+    photos: p.gallery.length ? [...p.gallery] : p.hero ? [p.hero] : [],
+    videoUrl: p.videoUrl ?? "",
     amenities: p.features.filter(f => CANONICAL.has(f)),
     highlights: p.features.filter(f => !CANONICAL.has(f)),
     floorPlan: (p.floorPlan ?? []).map(b => ({ ...b })),
@@ -106,6 +110,35 @@ function toDraft(p?: Prop): Draft {
 }
 
 const priceNumOf = (d: Draft) => Math.round((Number(d.priceAmount) || 0) * PRICE_MULT[d.priceUnit]);
+
+/**
+ * What POST / PATCH /api/v1/admin/properties take, from the draft. 0 / empty means "not
+ * applicable" in the editor and null for the API. The listing comes from the NB ID prefix.
+ */
+function toInput(d: Draft): PropertyInput {
+  const isLand = d.type === "Land";
+  const priceNum = priceNumOf(d);
+  const orNull = (n: number) => (n > 0 ? n : null);
+  const built = Number(d.builtValue);
+  const land = Number(d.landValue);
+  return {
+    nbId: makeRef(d.listing, Number(d.refNo) || 0),
+    title: d.title.trim(), tagline: d.tagline.trim(), description: d.description.trim(),
+    type: d.type, badge: d.badge || null, featured: d.featured, verified: d.verified,
+    price: priceNum > 0 ? priceNum : null,
+    bedrooms: isLand ? null : orNull(d.beds), bathrooms: isLand ? null : orNull(d.baths),
+    floors: isLand ? null : orNull(d.floors), buildYear: isLand ? null : orNull(d.buildYear),
+    builtArea: !isLand && built > 0 ? { value: built, unit: d.builtUnit } : null,
+    landArea: isRapd(d.landValue) ? { rapd: normalizeRapd(d.landValue) } : land > 0 ? { value: land, unit: d.landUnit } : null,
+    facing: d.facing || null, roadSurface: d.roadSurface || null, roadWidthFt: d.roadWidth > 0 ? d.roadWidth : null,
+    // Pasted links until Cloudflare uploads exist; problems() refuses anything else.
+    gallery: [...d.photos], videoUrl: d.videoUrl.trim() || null,
+    amenities: d.amenities, highlights: d.highlights.map(h => h.trim()).filter(Boolean),
+    floorPlan: d.floorPlan.length ? d.floorPlan.map(b => ({ ...b, name: b.name.trim() })) : null,
+    reactionCount: d.reactions,
+    location: { district: d.district, address: d.location.trim(), mapUrl: d.mapUrl.trim() || null, locationMode: d.locationMode },
+  };
+}
 
 function toProp(d: Draft): Prop {
   const priceNum = priceNumOf(d);
@@ -121,7 +154,7 @@ function toProp(d: Draft): Prop {
     roadAccess: d.roadWidth > 0 ? `${d.roadSurface} ${d.roadWidth}ft` : d.roadSurface,
     facing: d.facing, buildYear: isLand ? 0 : d.buildYear, floors: isLand ? 0 : d.floors,
     verified: d.verified, featured: d.featured,
-    hero: d.photos[0] ?? "", gallery: [...d.photos], description: d.description.trim(),
+    hero: d.photos[0] ?? "", gallery: [...d.photos], videoUrl: d.videoUrl.trim() || undefined, description: d.description.trim(),
     // Highlights first (they are the marketing lines), then the canonical amenities.
     features: [...d.highlights, ...d.amenities],
     ...(coords ? gridFromCoords(coords) : { mapX: d.mapX, mapY: d.mapY }),
@@ -134,11 +167,13 @@ function problems(d: Draft): string[] {
   const out: string[] = [];
   if (d.title.trim().length < 3) out.push("Give the property a title.");
   const taken = refTakenBy(d);
-  if (!(Number(d.refNo) > 0)) out.push("Give the property an ID number.");
-  else if (taken) out.push(`ID number ${Number(d.refNo)} is already used by “${taken.title}” (${displayRef(taken.nbId)}).`);
+  if (!(Number(d.refNo) > 0)) out.push("Give the property an NB ID number.");
+  else if (taken) out.push(`${displayRef(taken.nbId)} is already used by “${taken.title}”.`);
   if (!d.district) out.push("Choose the district.");
   if (priceNumOf(d) <= 0) out.push("Enter the price.");
   if (d.photos.length === 0) out.push("Add at least one photo.");
+  else if (d.photos.some(u => !isMediaLink(u))) out.push("Some photos weren't uploaded (marked in red). Remove them and add them again.");
+  if (d.videoUrl.trim() && !isMediaLink(d.videoUrl)) out.push("The video wasn't uploaded. Remove it and add it again.");
   if (d.description.trim().length < 20) out.push("Write a short description (a sentence or two).");
   if (isRapd(d.landValue)) { const p = rapdProblem(d.landValue); if (p) out.push(`Land area: ${p}`); }
   else if (d.landValue.includes("-")) out.push("Write the land area as Ropani-Aana-Paisa-Dam, e.g. 4-4-0-1.");
@@ -147,11 +182,20 @@ function problems(d: Draft): string[] {
   return out;
 }
 
-/** The property already using this ID number, if any. Sale and rent share one sequence. */
-const refTakenBy = (d: Draft) => {
-  const n = Number(d.refNo);
-  return n > 0 ? ALL_PROPS.find(p => p.id !== d.id && refNumber(p.nbId) === n) ?? null : null;
-};
+/** The live property already using this NB ID (NBS and NBL are separate sequences), if any. */
+const refTakenBy = (d: Draft) => refTaken(d.listing, Number(d.refNo), d.id);
+
+/**
+ * Switching sale ↔ rent: the NB ID moves to the other sequence, pre-filled with its lowest free
+ * number (the admin can change it), and the old number is freed on save. Switching back to the
+ * saved listing gives the saved number back.
+ */
+function switchListing(d: Draft, listing: Listing): Draft {
+  if (listing === d.listing) return d;
+  const saved = !d.isNew && d.nbId.startsWith(REF_PREFIX[listing]) ? d.nbId : null;
+  const nbId = saved ?? nextPropRef(listing, d.id);
+  return { ...d, listing, refNo: refDigits(nbId) };
+}
 
 /** A land area was entered: a number, or Ropani-Aana-Paisa-Dam like "4-4-0-1". */
 const landFilled = (d: Draft) => (isRapd(d.landValue) ? rapdToSqft(d.landValue) > 0 : Number(d.landValue) > 0);
@@ -196,7 +240,7 @@ function stepDone(d: Draft, id: StepId): boolean {
     case "location": return !!d.district;
     case "price": return priceNumOf(d) > 0;
     case "size": return d.type === "Land" ? landFilled(d) : Number(d.builtValue) > 0 || landFilled(d);
-    case "photos": return d.photos.length > 0;
+    case "photos": return d.photos.length > 0 && d.photos.every(isMediaLink);
     case "amenities": return d.amenities.length + d.highlights.length > 0;
     case "plans": return d.floorPlan.length > 0;
     case "story": return d.description.trim().length >= 20;
@@ -313,20 +357,21 @@ function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; ameniti
 }
 
 /**
- * NB ID: the reference the admin chooses: NBS (for sale) or NBL (letting), then a number, with the result shown as it
- * will appear on the site. Choosing the prefix also sets the listing, so the two never disagree.
+ * NB ID: the reference the admin gives the property: NBS (for sale) or NBL (letting), then a
+ * number, shown as it will appear on the site. Choosing the prefix also sets the listing, so the
+ * two never disagree. (The internal `id` is separate and generated; the admin never sees it.)
  */
-function PropertyIdField({ listing, refNo, taken, onListing, onRefNo, className = "" }: {
-  listing: Listing; refNo: string; taken: Prop | null;
+function PropertyIdField({ propertyId, listing, refNo, taken, onListing, onRefNo, className = "" }: {
+  propertyId: number; listing: Listing; refNo: string; taken: Prop | null;
   onListing: (v: Listing) => void; onRefNo: (v: string) => void; className?: string;
 }) {
   const n = Number(refNo);
-  const nextFree = () => onRefNo(String(refNumber(nextPropRef())).padStart(3, "0"));
+  const nextFree = () => onRefNo(refDigits(nextPropRef(listing, propertyId)));
   return (
     <Field label="NB ID" className={className}
       hint={taken
-        ? <span style={{ color: MAROON }}>Number {n} is already used by “{taken.title}”. <button type="button" onClick={nextFree} className="underline underline-offset-4">Use the next free number</button></span>
-        : "NBS = for sale, NBL = letting (rent). Sale and rent share one number sequence."}>
+        ? <span style={{ color: MAROON }}>{displayRef(taken.nbId)} is already used by “{taken.title}”. <button type="button" onClick={nextFree} className="underline underline-offset-4">Use the lowest free number</button></span>
+        : "NBS = for sale, NBL = letting (rent). Each has its own numbers, so NBS005 and NBL005 can both exist. Switching sale / rent picks a free number in the other one."}>
       <div className="grid grid-cols-1 sm:grid-cols-[13rem_1fr_11rem] gap-3">
         <Select value={listing} onChange={v => onListing(v as Listing)}
           options={[{ value: "For Sale", label: `${REF_PREFIX["For Sale"]} · For Sale` }, { value: "For Rent", label: `${REF_PREFIX["For Rent"]} · Letting (Rent)` }]} />
@@ -446,7 +491,10 @@ export function PropertyEditor({ property, template = null, source = null, open,
   }, [d, open, dirty]);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD(o => ({ ...o, [k]: v }));
-  const issues = problems(d);
+  // Photos and the video upload to Cloudflare as soon as they are picked; saving waits for them.
+  const [uploading, setUploading] = useState(0);
+  const track = <T,>(p: Promise<T>): Promise<T> => { setUploading(n => n + 1); return p.finally(() => setUploading(n => n - 1)); };
+  const issues = [...problems(d), ...(uploading > 0 ? ["Wait for the uploads to finish."] : [])];
   const isLand = d.type === "Land";
   const priceNum = priceNumOf(d);
   const pricePreview = priceNum > 0 ? formatPrice(priceNum, d.listing) : "—";
@@ -467,16 +515,31 @@ export function PropertyEditor({ property, template = null, source = null, open,
   };
 
   const close = () => { clearDraft(keyFor(d)); onClose(); };
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState("");
+  /** Saves to the API; the local list is updated from what the server stored. */
+  const save = async () => {
     setTried(true);
-    if (issues.length) return;
-    const p = toProp(d);
-    saveProperty(p);
-    setReactionCount(d.id, d.reactions);
-    clearDraft(keyFor(d));
-    source?.onPublished(p);
-    onSaved(source ? `“${d.title.trim()}” is now live on the website` : d.isNew ? `“${d.title.trim()}” added to the site` : `“${d.title.trim()}” updated`);
-    onClose();
+    if (issues.length || saving) return;
+    setSaving(true);
+    setServerError("");
+    try {
+      const input = toInput(d);
+      const res = d.isNew ? await createProperty(input) : await updateProperty(d.id, input);
+      const p = applySaved(res.data);
+      clearDraft(keyFor(d));
+      source?.onPublished(p);
+      const done = source ? `“${p.title}” is now live on the website as ${displayRef(p.nbId)}` : d.isNew ? `“${p.title}” added to the site as ${displayRef(p.nbId)}` : `“${p.title}” updated`;
+      // Map-link problems don't stop the save; the admin should still hear about them.
+      const warning = res.meta?.warnings?.[0];
+      onSaved(warning ? `${done}. ${warning}` : done);
+      onClose();
+    } catch (err) {
+      // e.g. 409 REF_TAKEN: "#NBS005 is already used by “…”"; 400 with the field that is wrong.
+      setServerError(err instanceof ApiError ? err.message : "Could not save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
   /** Free listings only: keep the edits without publishing. Gaps are allowed. */
   const saveForLater = () => {
@@ -492,15 +555,18 @@ export function PropertyEditor({ property, template = null, source = null, open,
       {tried && issues.length > 0 && (
         <p className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{issues[0]}{issues.length > 1 ? ` (+${issues.length - 1} more)` : ""}</p>
       )}
+      {issues.length === 0 && serverError && (
+        <p role="alert" className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{serverError}</p>
+      )}
       {!d.isNew && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
       {source && <Button variant="quiet" onClick={() => { clearDraft(keyFor(d)); source.onReject(); }}><X size={14} />Reject</Button>}
       {source && <Button variant="quiet" onClick={saveForLater}><Clock size={14} />Save for Later</Button>}
-      <Button onClick={save} title="Ctrl + S"><Check size={14} />{source ? "Publish Now" : d.isNew ? "Publish Property" : "Save Changes"}</Button>
+      <Button onClick={() => void save()} title="Ctrl + S" disabled={saving}><Check size={14} />{saving ? "Saving…" : source ? "Publish Now" : d.isNew ? "Publish Property" : "Save Changes"}</Button>
     </>
   );
 
   return (
-    <Drawer open={open} onClose={close} backLabel={source ? "Back to Free Listings" : "Back to Properties"} dirty={dirty} onSave={save}
+    <Drawer open={open} onClose={close} backLabel={source ? "Back to Free Listings" : "Back to Properties"} dirty={dirty} onSave={() => void save()}
       title={source ? "Review Free Listing" : template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
       subtitle={source
         ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.nbId)} · Fill the gaps, then publish now or later`
@@ -518,7 +584,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
             </p>
             <div className="flex gap-2 shrink-0">
               <Button variant="quiet" onClick={() => { clearDraft(draftKey(d)); setRestore(null); }}>Discard</Button>
-              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, nbId: o.nbId, isNew: o.isNew, refNo: restore.refNo ?? o.refNo, mapUrl: restore.mapUrl ?? o.mapUrl })); setRestore(null); }}>Restore</Button>
+              <Button onClick={() => { setD(o => ({ ...restore, id: o.id, nbId: o.nbId, isNew: o.isNew, refNo: restore.refNo ?? o.refNo, mapUrl: restore.mapUrl ?? o.mapUrl, videoUrl: restore.videoUrl ?? o.videoUrl })); setRestore(null); }}>Restore</Button>
             </div>
           </div>
         )}
@@ -533,8 +599,8 @@ export function PropertyEditor({ property, template = null, source = null, open,
         <FormSection id="pe-basics" n={1} title="The Basics" subtitle="What it is and how it is marked on the site.">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="Property Title" className="md:col-span-2"><TextInput value={d.title} onChange={v => set("title", v)} placeholder="e.g. The Patan Residence" maxLength={90} /></Field>
-            <PropertyIdField className="md:col-span-2" listing={d.listing} refNo={d.refNo} taken={refTakenBy(d)}
-              onListing={v => set("listing", v)} onRefNo={v => set("refNo", v)} />
+            <PropertyIdField className="md:col-span-2" propertyId={d.id} listing={d.listing} refNo={d.refNo} taken={refTakenBy(d)}
+              onListing={v => setD(o => switchListing(o, v))} onRefNo={v => set("refNo", v)} />
             <Field label="Property Type"><Select value={d.type} onChange={v => set("type", v)} options={PROPERTY_TYPES} /></Field>
             <Field label="Badge" hint="The coloured label on the photo."><Select value={d.badge} onChange={v => set("badge", v)} options={BADGES.includes(d.badge) ? BADGES : [d.badge, ...BADGES]} /></Field>
             <Field label="Short Tagline" hint="Optional. Shown in italics under the property name: on the property page and, for Featured properties, in the home page slideshow.">
@@ -592,7 +658,12 @@ export function PropertyEditor({ property, template = null, source = null, open,
         </FormSection>
 
         <FormSection id="pe-photos" n={5} title="Photos" subtitle="The first photo is the cover shown on cards and at the top of the page.">
-          <PhotoManager photos={d.photos} onChange={v => set("photos", v)} />
+          <PhotoManager photos={d.photos} onChange={v => set("photos", v)}
+            upload={(file, progress) => track(uploadMedia("image", file, progress))}
+            onAdd={url => setD(o => ({ ...o, photos: [...o.photos, url] }))} />
+          <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
+            <VideoField value={d.videoUrl} onChange={v => set("videoUrl", v)} upload={(file, progress) => track(uploadMedia("video", file, progress))} />
+          </div>
         </FormSection>
 
         <FormSection id="pe-amenities" n={6} title="Amenities" subtitle="Tap every amenity the property has. Icons appear on the property page.">
@@ -624,6 +695,66 @@ export function PropertyEditor({ property, template = null, source = null, open,
         </FormSection>
       </div>
     </Drawer>
+  );
+}
+
+// ─── Property video ──────────────────────────────────────────────────────────
+
+const VIDEO_MAX_MB = 500;
+
+/** One optional video: picked from the computer and uploaded to Cloudflare straight away. */
+function VideoField({ value, onChange, upload }: {
+  value: string; onChange: (url: string) => void;
+  upload: (file: File, progress: (f: number) => void) => Promise<string>;
+}) {
+  const picker = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [over, setOver] = useState(false);
+  const take = (file: File | undefined) => {
+    setError("");
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { setError("That file isn't a video. Choose an MP4, MOV or WebM file."); return; }
+    if (file.size > VIDEO_MAX_MB * 1024 * 1024) { setError(`That file is over ${VIDEO_MAX_MB} MB. Please compress it first.`); return; }
+    setProgress(0);
+    upload(file, setProgress).then(
+      url => { onChange(url); setProgress(null); },
+      err => { setError(err instanceof Error ? err.message : "Upload failed"); setProgress(null); },
+    );
+  };
+  return (
+    <Field label="Property Video" hint={`Optional. MP4, MOV or WebM up to ${VIDEO_MAX_MB} MB. Shown on the property page.`}>
+      <input ref={picker} type="file" accept="video/mp4,video/quicktime,video/webm" hidden onChange={e => { take(e.target.files?.[0]); e.target.value = ""; }} />
+      {progress !== null ? (
+        <div className="flex flex-col gap-2 border px-5 py-4" style={{ borderColor: BORDER_L, background: WHITE }}>
+          <p className="flex items-center gap-2 text-[13px]" style={{ color: FG_LIGHT, ...sans }}>
+            <Loader2 size={15} className="animate-spin" style={{ color: MAROON }} />Uploading the video… {Math.round(progress * 100)}%
+          </p>
+          <div className="h-[3px] rounded-full overflow-hidden" style={{ background: "rgba(26,22,17,0.08)" }}>
+            <div className="h-full transition-all" style={{ width: `${progress * 100}%`, background: GOLD }} />
+          </div>
+        </div>
+      ) : value ? (
+        <div className="flex flex-col gap-3">
+          <video src={value} controls playsInline preload="metadata" className="w-full max-w-xl" style={{ aspectRatio: "16/9", background: "#0a0908" }} />
+          {!isMediaLink(value) && <p className="text-[13px]" style={{ color: MAROON, ...sans }}>This video wasn't uploaded. Remove it and add it again.</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="quiet" onClick={() => picker.current?.click()}><Film size={14} />Replace</Button>
+            <Button variant="quiet" onClick={() => onChange("")}><Trash2 size={14} />Remove</Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => picker.current?.click()}
+          onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+          onDrop={e => { e.preventDefault(); setOver(false); take(e.dataTransfer.files?.[0]); }}
+          className="flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-8 text-center transition-colors"
+          style={{ borderColor: over ? MAROON : "rgba(176,136,72,0.5)", background: over ? "rgba(138,32,48,0.04)" : "#fbf9f5" }}>
+          <Upload size={22} style={{ color: GOLD }} />
+          <span className="text-[14px]" style={{ color: FG_LIGHT, ...sans }}>Drag a video here, or <span style={{ color: MAROON }}>browse</span></span>
+        </button>
+      )}
+      {error && <p className="text-[13px]" style={{ color: MAROON, ...sans }}>{error}</p>}
+    </Field>
   );
 }
 

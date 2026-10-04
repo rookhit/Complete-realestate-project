@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, ChevronDown, MessageSquare, Send, Star, X } from "lucide-react";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StarRow } from "./star-row";
-import { ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
-import { requestSignIn, useAuth } from "@/app/auth";
+import { loadReviews, ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
+import { useDataVersion } from "@/app/data/store";
+import { postReview } from "@/api/reviews";
+import { ApiError, requestSignIn, useAuth } from "@/app/auth";
 
 /** How many reviews show before "Show all". */
 const VISIBLE = 2;
 
 // "Resident Reviews" on the property page: rating summary, two reviews (rest behind a
 // button) and a write-a-review form. id="reviews" is the target of the rating link.
-// Data: data/reviews.ts until GET /properties/:id/reviews exists.
+// Approved reviews only (GET /properties/:id/reviews); new ones wait for the admin.
 export function ReviewsSection({ propertyId }: { propertyId: number }) {
   const { user } = useAuth();
+  useDataVersion();
+  useEffect(() => { void loadReviews(propertyId); }, [propertyId]);
   const all = reviewsFor(propertyId);
   const [expanded, setExpanded] = useState(false);
   const [writing, setWriting] = useState(false);
@@ -77,11 +81,14 @@ export function ReviewsSection({ propertyId }: { propertyId: number }) {
           <motion.div
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden mb-6">
-            <ReviewForm onClose={() => setWriting(false)} />
+            <ReviewForm propertyId={propertyId} onClose={() => setWriting(false)} />
           </motion.div>
         )}
       </AnimatePresence>
 
+      {all.length === 0 && !writing && (
+        <p className="text-[14px]" style={{ color: MUTED_L, ...sans }}>No reviews yet. Visited this property with us? Be the first to share what you thought.</p>
+      )}
       <div className="flex flex-col gap-5">
         {shown.map((r, i) => (
           <motion.div key={`${r.id}-${i}`}
@@ -109,6 +116,8 @@ export function ReviewsSection({ propertyId }: { propertyId: number }) {
 
 // "★ 4.8 · 5 reviews" in the property info bar; scrolls down to the reviews.
 export function RatingLink({ propertyId }: { propertyId: number }) {
+  useDataVersion();
+  useEffect(() => { void loadReviews(propertyId); }, [propertyId]);
   const count = reviewsFor(propertyId).length;
   if (!count) return null;
   return (
@@ -130,7 +139,11 @@ export function ReviewCard({ r }: { r: Review }) {
   return (
     <div className="p-7 md:p-8 border" style={{ background: WHITE, borderColor: BORDER_L }}>
       <div className="flex items-start gap-4">
-        <img src={r.avatar} alt="" className="w-11 h-11 rounded-full object-cover shrink-0" />
+        {r.avatar
+          ? <img src={r.avatar} alt="" className="w-11 h-11 rounded-full object-cover shrink-0" />
+          : <span aria-hidden className="w-11 h-11 rounded-full shrink-0 flex items-center justify-center text-[15px]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>
+              {r.author.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}
+            </span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <p className="text-[16px]" style={{ color: FG_LIGHT, ...serif }}>{r.author}</p>
@@ -152,22 +165,30 @@ export function ReviewCard({ r }: { r: Review }) {
   );
 }
 
-// Write-a-review form, signed-in users only. Only validates for now; POST /properties/:id/reviews
-// with { rating, text } goes where setSent(true) is. The name (and photo, if any) come from the
-// account on the server, so nobody can post under someone else's name.
-export function ReviewForm({ onClose }: { onClose: () => void }) {
+// Write-a-review form, signed-in users only: POST /properties/:id/reviews { rating, text }. The
+// name (and photo, if any) come from the account on the server, so nobody can post under someone
+// else's name. The review waits for the admin's approval before it shows.
+export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClose: () => void }) {
   const { user } = useAuth();
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!user)                   { requestSignIn(); return; }
     if (!rating)                 { setErr("Please choose a star rating."); return; }
     if (text.trim().length < 20) { setErr("Please write at least a couple of sentences."); return; }
-    setErr(""); setSent(true);
+    if (busy) return;
+    setErr(""); setBusy(true);
+    try { await postReview(propertyId, { rating, text: text.trim() }); setSent(true); }
+    catch (e) {
+      if (e instanceof ApiError && e.status === 401) requestSignIn();
+      setErr(e instanceof ApiError ? e.message : "Could not send. Please check your connection and try again.");
+    }
+    finally { setBusy(false); }
   };
 
   if (sent) return (
@@ -214,10 +235,10 @@ export function ReviewForm({ onClose }: { onClose: () => void }) {
 
       {err && <p className="text-[14px]" style={{ color: MAROON, ...sans }}>{err}</p>}
 
-      <button onClick={submit}
-        className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110"
+      <button onClick={() => void submit()} disabled={busy}
+        className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60"
         style={{ background: MAROON, color: WHITE, ...sans }}>
-        <Send size={14} />Submit Review
+        <Send size={14} />{busy ? "Sending…" : "Submit Review"}
       </button>
     </div>
   );

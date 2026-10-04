@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 0. Backend handoff: quick reference (updated 2026-09-30)
+## 0. Backend handoff: quick reference (updated 2026-10-02)
 
 Start here. Everything the backend needs from the frontend is on this page; the numbered
 sections below go into detail. **Older sections say `apps/web` and `apps/api`: in this repo those
@@ -32,9 +32,11 @@ npm run build          # frontend production build
 requests are refused. Use the port that matches your `.env` (the backend developer's is `http://localhost:5173`,
 so run `npm run dev -- --port 5173 --strictPort` there).
 
-**State on 2026-09-30:** auth API built; **database schema for every admin screen built and applied**
-(backend-realstate/prisma/schema.prisma, see the 2026-09-30 change-log entries); content endpoints (§0.4) are
-next, starting with properties. Until then the site and admin still run on the mock arrays in `src/app/data/`.
+**State on 2026-10-02:** the site and admin run on the database: properties, journal, team, testimonials, site
+settings (statistics, featured districts, contact, services), dropdown options, the contact / callback / property
+enquiry forms and Admin → Messages, reviews (admin approves first) and hearts, free listings. Only **company videos**
+are still mock (`VIDEO_LIST`). Photos and videos upload to Cloudflare R2, or to a local test store on the backend until
+the R2 settings exist. What each feature was tested for: §0.4b.
 
 ### 0.2 Environment variables
 
@@ -47,6 +49,7 @@ next, starting with properties. Until then the site and admin still run on the m
 | Backend | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google sign-in |
 | Backend | `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_FROM_NAME` | Verification codes and reset links |
 | Backend | `CRON_SECRET`, `NODE_ENV`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Cleanup cron auth, mode, seeded admin |
+| Backend | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare R2 for uploads. Not set yet: in development uploads go to `backend-realstate/.uploads/` instead |
 
 ### 0.3 Endpoints already built (frontend call sites)
 
@@ -62,8 +65,26 @@ All under `/api/v1`, error envelope as in §7.1.
 | GET | `/auth/me` | `auth.tsx` on load |
 | POST | `/auth/forgot-password`, `/auth/verify-reset-token`, `/auth/reset-password` | `auth.tsx`, used by LoginPage and ResetPasswordPage |
 | GET | `/auth/google` → `/auth/google/callback` | LoginPage redirects to it; callback returns to `?auth=google` / `?auth=google_mfa` / `?auth_error=google` |
-| GET | `/admin/users` | `admin/AdminUsers.tsx`. Please add `lastLoginAt` to its select |
+| GET | `/admin/users` | `admin/AdminUsers.tsx`. Returns `lastLoginAt` since 2026-10-02 (the "Last Sign-in" column) |
 | POST | `/auth/2fa/setup`, `/enable`, `/disable` | **No frontend screen yet** (built on the backend only) |
+| GET | `/properties` (and `/admin/properties` for the admin) | **Wired 2026-09-30.** `loadProperties()` in `data/properties.ts` fills `ALL_PROPS` from the API once the sign-in check is done (`PropertySync` in `App.tsx`); pages still filter that list client-side. `/properties/:id` and `/:id/related` exist but aren't called yet |
+| POST / PATCH / DELETE | `/admin/properties[/:id]`, `POST /admin/properties/:id/restore` | **Wired 2026-09-30.** Editor save (`toInput()` → create / update), list delete + Undo, featured / verified toggles, heart counts, free-listing publish (`propToInput()`). Client: `src/api/properties.ts`. `next-ref` exists; the editor still computes the lowest free NB ID locally from `ALL_PROPS` (the server re-checks: 409) |
+
+**Property endpoints, how to call them** (all `{ data, meta }`; errors as §7.1):
+- **Public item** = today's `Prop` (same field names and display strings: `price`, `builtArea`, `landArea` "4-4-0-1 R-A-P-D",
+  `roadAccess`, `features`, `hero`, 0 / "—" for not applicable) plus `priceNum` (null = "Negotiable"), `landAreaSqft`,
+  `amenities`, `highlights`, `videoUrl`, `floorPlan`, `reactionCount`, `createdAt`, and the location as `approx` + `locationMode`
+  (never `mapUrl`). List query: `listing=for-sale|for-rent&type&district&minPrice&maxPrice&preset=hot|new&q&sort=newest|price_asc|price_desc|reactions&page&limit`
+  (`q` = a full NB ID, or text). `meta` = `{ page, limit, total, totalPages }`.
+- **Admin item** adds `deletedAt`, `mapUrl`, `exact` and `edit`: the values exactly as `POST` / `PATCH` take them, so the
+  editor can load `edit`, change it and send it back. Body (`backend-realstate/lib/validation/property.ts`):
+  `{ nbId: "NBS005", title, tagline, description, type, badge|null, featured, verified, price|null, bedrooms|null, bathrooms|null,
+  floors|null, buildYear|null, builtArea: { value, unit }|null, landArea: { value, unit } | { rapd: "4-4-0-1" } | null, facing|null,
+  roadSurface|null, roadWidthFt|null, gallery: string[], videoUrl|null, amenities: string[], highlights: string[],
+  floorPlan: PlanBox[]|null, reactionCount, location: { district, address, mapUrl|null, locationMode: "approximate"|"exact" } }`.
+  The listing comes from the NB ID prefix. Photos / video: **http(s) URLs only** since 2026-10-01 (the editor uploads each
+  picked file first: `src/api/uploads.ts`).
+  `meta.warnings` lists map-link problems (no pin, pin outside Nepal). 409 `REF_TAKEN` = NB ID in use; restore returns `meta.nbIdChanged`.
 
 ### 0.4 Endpoints the frontend is waiting for
 
@@ -72,31 +93,28 @@ row names the exact function to replace.
 
 | Method | Path | Auth | Replaces (file → function / variable) |
 |---|---|---|---|
-| GET | `/properties?listing&type&district&minPrice&maxPrice&preset&q&sort&page&limit` | public | `data/properties.ts` → `ALL_PROPS` (filtering is in `BuyRentPage`) |
-| GET | `/properties/:id` | public | `ALL_PROPS.find(...)` in `PropertyDetailPage` |
-| POST / PATCH / DELETE | `/admin/properties[/:id]` | ADMIN | `saveProperty()`, `deleteProperty()`, `restoreProperty()` (Undo) |
-| PATCH | `/admin/properties/:id` `{ reactionCount }` | ADMIN | `data/reviews.ts` → `setReactionCount()` |
-| POST | `/admin/uploads` (multipart, image ≤ 8 MB) → `{ url }` | ADMIN | every `blob:` URL from `components/ui/photo-picker.tsx`; uploaded-video covers (JPEG data URLs) |
-| POST | `/admin/uploads/video` (multipart, video ≤ 500 MB) → `{ url }` | ADMIN | `admin/VideoUpload.tsx` → `sources[0].src` (a `blob:` URL today) |
-| GET / POST | `/properties/:id/reviews` | GET public, POST **signed in** | `reviewsFor()`; `ReviewForm` submit in `components/ui/property-reviews.tsx` |
-| GET / DELETE | `/admin/reviews[/:id]` | ADMIN | `admin/AdminReviews.tsx` → `deleteReview()`, `restoreReview()` |
-| POST / DELETE | `/properties/:id/reaction` | **signed in** | `components/ui/reaction-button.tsx` → `FAVS` |
-| GET | `/articles`, `/articles/:slug` | public | `data/content.ts` → `BLOGS` |
-| POST / PATCH / DELETE | `/admin/articles[/:id]`, `PUT /admin/articles/order` | ADMIN | `upsert(BLOGS…)`, `removeById`, `moveById` |
-| GET | `/team` | public | `TEAM` |
-| POST / PATCH / DELETE | `/admin/team[/:id]`, `PUT /admin/team/order` | ADMIN | `upsert(TEAM…)` etc. |
-| GET | `/testimonials` | public | `TESTIMONIALS` |
-| POST / PATCH / DELETE | `/admin/testimonials[/:id]`, `PUT …/order` | ADMIN | `upsert(TESTIMONIALS…)` etc. |
+| GET / POST / PATCH / DELETE | `/properties…`, `/admin/properties…` | | **Built and wired 2026-09-30** (§0.3). Delete purges the row 60 s after Undo is no longer possible (2026-10-01) |
+| POST | `/admin/uploads` `{ kind, contentType, size, folder }` → signed upload link | ADMIN | **Built 2026-10-01**: property photos / video, journal covers, team, testimonials, district tiles (`uploadMedia()` in `src/api/uploads.ts`) |
+| POST | upload for **company videos** (`admin/VideoUpload.tsx` → `sources[0].src`, still a `blob:` URL) | ADMIN | **Not wired yet**: part of the videos work (use `/admin/uploads` with `kind: "video"`) |
+| GET / POST | `/properties/:id/reviews` | GET public, POST **signed in** | **Built and wired 2026-10-02**: `loadReviews()` / `reviewsFor()` (approved only; the sample reviews are gone); `ReviewForm` posts, the review waits for the admin's approval |
+| GET / PATCH / DELETE | `/admin/reviews[/:id]`, `POST …/:id/restore` | ADMIN | **Built and wired 2026-10-02**: `ADMIN_REVIEWS` (loaded and polled with the inbox); Approve / Reject (Hide) / Verified Visit / Delete + Undo in `admin/AdminReviews.tsx`; pending count on the Reviews tab and the Admin badge |
+| POST / DELETE | `/properties/:id/reaction`, `GET /me/reactions` | **signed in** | **Built and wired 2026-10-02**: `reaction-button.tsx` saves each heart; `MY_HEARTS` (loaded on sign-in) and `REACTIONS` (shown counts) in `data/reviews.ts` |
+| GET | `/articles`, `/articles/:slug` | public | `data/content.ts` → `BLOGS`. **Built and wired 2026-10-01**: `loadArticles()` fills `BLOGS` (admin gets drafts); client `src/api/articles.ts` |
+| POST / PATCH / DELETE | `/admin/articles[/:id]`, `PUT /admin/articles/order` | ADMIN | **Built and wired 2026-10-01** in `admin/ContentEditors.tsx` (JournalSection / ArticleEditor); covers upload to R2 (`ImageField` `upload` prop, folder `articles`) |
+| GET | `/team` | public | `TEAM`. **Built and wired 2026-10-01**: `loadTeam()` fills it; client `src/api/team.ts`. Photo optional (`img?`): cards and the profile show initials without one |
+| POST / PATCH / DELETE | `/admin/team[/:id]`, `PUT /admin/team/order` | ADMIN | **Built and wired 2026-10-01** in `admin/ContentEditors.tsx` (TeamSection / TeamEditor); portraits upload to `team/` (`ImageField` `upload`), "Remove photo" clears it |
+| GET | `/testimonials` | public | `TESTIMONIALS`. **Built and wired 2026-10-01**: `loadTestimonials()` fills it; client `src/api/testimonials.ts`. Photo optional (`img?`): initials without one |
+| POST / PATCH / DELETE | `/admin/testimonials[/:id]`, `PUT …/order` | ADMIN | **Built and wired 2026-10-01** in `admin/ContentEditors.tsx` (TestimonialsSection / TestimonialEditor); photos upload to `testimonials/`, "Remove photo" clears it |
 | GET | `/videos` | public | `VIDEO_LIST` / `companyVideos()` |
 | POST / PATCH / DELETE | `/admin/videos[/:id]`, `PUT /admin/videos/order` | ADMIN | `upsert(VIDEO_LIST…)` etc. |
-| GET | `/site` → `{ stats, featuredDistricts, contact, services }` (each district with its live `count`) | public | `STATS`, `FEATURED_DISTRICTS`, `CONTACT`, `SERVICES` (all in `data/content.ts`) |
-| PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | `HomePageSection` save buttons in `admin/ContentEditors.tsx` |
-| PUT | `/admin/site/contact` (`ContactInfo`), `/admin/site/services` (whole `Service[]`, in order) | ADMIN | `saveContact()`, `saveServices()` ← `admin/CompanyEditor.tsx` |
-| POST | `/listings` | **signed in** | Free Listing form → `addListing()` (`data/listings.ts`), shown in Admin → Free Listings (§7.10) |
-| GET / PATCH / POST | `/admin/listings[/:id]`, `/admin/listings/:id/publish`, `/admin/listings/new-count` | ADMIN | `admin/AdminListings.tsx`: `updateListing()`, publish via `saveProperty()` (§7.10) |
-| GET / PUT | `/site` options, `/admin/site/options/:key` | ADMIN | every dropdown / suggestion list: `data/options.ts` → `setOptions()` |
-| POST | `/enquiries`, `/callbacks`, `/contact` | public | the three lead forms (§7.5). Today each calls `addMessage()` (`data/messages.ts`) so it shows in Admin → Messages |
-| GET / PATCH / DELETE | `/admin/messages[/:id]`, `GET /admin/messages/unread-count` | ADMIN | `admin/AdminMessages.tsx`, the red badges; `updateMessage()`, `deleteMessage()`, `restoreMessage()` (§7.9) |
+| GET | `/site` → `{ stats?, featuredDistricts?, contact?, services? }` (saved ones only; district counts are computed by the site) | public | **Built and wired 2026-10-02**: `loadSiteSettings()` applies them to `STATS`, `FEATURED_DISTRICTS`, `CONTACT`, `SERVICES` at startup |
+| PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | **Built and wired 2026-10-02**: `saveStats()`, `saveFeaturedDistricts()` from `HomePageSection`; district photos upload to `site/` |
+| PUT | `/admin/site/contact` (`ContactInfo`), `/admin/site/services` (whole `Service[]`, in order) | ADMIN | **Built and wired 2026-10-02**: `saveContact()`, `saveServices()` (async, API first) ← `admin/CompanyEditor.tsx` |
+| POST | `/listings` (+ `/listings/uploads` for each photo) | **signed in** | **Built and wired 2026-10-02**: the Free Listing form uploads the photos (`uploadListingPhoto`) then `submitListing()` (`src/api/listings.ts`) |
+| GET / PATCH | `/admin/listings[/:id]`, `/admin/listings/new-count` | ADMIN | **Built and wired 2026-10-02**: `LISTINGS` loaded and polled with the inbox; `updateListing()` saves status / draft / propertyId (rollback + message on failure). Publishing = `createProperty()` then `updateListing({ status: published, propertyId })` (no separate publish endpoint) |
+| GET / PUT | `/site/options` (public), `/admin/site/options/:key` (ADMIN) | | **Built and wired 2026-10-02**: `loadSiteOptions()` applies saved lists at startup; `setOptions()` / `addOption()` show the change and save it (in order per list; rollback + `onOptionSaveFailed` message in the admin) |
+| POST | `/enquiries`, `/callbacks`, `/contact` | **signed in** (decided 2026-10-02) | **Built and wired 2026-10-02**: the three forms post via `src/api/messages.ts`; signed out, the send button is "Sign In to …" (`requestSignIn()`); signed in, name / email / phone start from the account |
+| GET / PATCH / DELETE | `/admin/messages[/:id]`, `GET /admin/messages/unread-count` | ADMIN | **Built and wired 2026-10-02**: `loadMessages()` fills `MESSAGES` on admin sign-in and every 30 s (badge + new-message pop-up); `updateMessage()`, `deleteMessage()`, `restoreMessage()` call the API (`POST /admin/messages/:id/restore` for Undo) |
 
 Every `upsert` / `removeById` / `moveById` call is in `data/content.ts`; order matters for
 articles (first = featured on home), team (first 6 on About), testimonials and videos (first = centre).
@@ -105,6 +123,36 @@ articles (first = featured on home), team (first 6 on About), testimonials and v
 Undo puts back the same record (same `id`, same ref, same position). Either soft-delete
 (`deletedAt`, cleared on undo, e.g. `POST /admin/properties/:id/restore`) or delay the real
 DELETE until the Undo notice closes. Don't hand out a new id on restore.
+
+### 0.4b Test status (updated 2026-10-02; keep current after every change)
+
+| Feature | Tested in Chrome against Supabase (what was checked) | Not tested yet |
+|---|---|---|
+| Properties (admin CRUD, Undo, purge) | Create / get / patch / delete through the API and editor; delete hides at once, Undo within 60 s, row purged after 60 s; 409 on a taken NB ID; Buy / Rent counts match the database | Editor overwriting hearts given while it is open (known limitation) |
+| Property photos / video | Upload on pick with progress (local test store), `blob:` refused, file deleted when removed from a property or the property is purged, shared photos kept | Upload to Cloudflare R2 (no R2 settings yet) |
+| Dropdown options | Add / remove a property type in the admin, kept after reload, used by a property save; unknown type 400; failed save rolls back with a message | — |
+| Journal | Public list / slug / draft 404; create / edit / reorder / delete; cover upload to `articles/`; validation | Cover upload to R2 |
+| Team | Create without photo (initials on cards and profile); portrait upload to `team/`, removed photo deleted; reorder; delete; validation | Portrait upload to R2 |
+| Testimonials | Create without photo (initials on the home page); photo upload, edit + rating and delete through the admin UI; reorder; validation | Photo upload to R2 |
+| Site settings | Statistic changed in the admin UI shown after reload; district (with photo), contact hours, service title saved and shown on home / Contact; removed tile photo deleted; validation; Contact & Services save buttons | — |
+| Contact / callback / property enquiry forms | 401 signed out; signed-out view shows "Sign In to …" and opens the login page; sent through the real forms (prefilled from the account); stored with kind, property and account; validation | Real email notification to the business (none built) |
+| Admin → Messages | Lists real messages with counts; opening marks read on the server; NB ID search; delete + Undo; purge after 60 s; new message appears within 30 s with the pop-up | Emails to the business address (mailbox import not built) |
+| Reviews | 401 signed out; written through the form → pending (not public); approve + Verified Visit in the admin → shown on the property page with the rating link; hide / re-approve; delete + Undo; purge; validation; sample reviews removed | — |
+| Hearts | 401 signed out; heart saved (count +1 in the database), remembered after reload, removed (−1) | Admin property list updating live (it updates on reload; see known limitations) |
+| Free listings | 401 signed out; sent through the real form with photos (uploaded to `listings/`) and an amenity; Save for later, Reject (remembers status) and Restore; Review → Publish Now created a live property with the seller's photos | Photo upload to R2 |
+| Users page | "Last Sign-in" shows real dates; IP never sent | — |
+| Auth (register, email code, login, 2FA, reset, Google) | Earlier sessions (see the dated entries); admin sign-in with 2FA used throughout | Real Gmail delivery not re-checked; Google sign-in not re-checked this session |
+| Whole site | Every public page loads with no console errors and no broken images (after the NBS007 photo was re-uploaded) | Production build (`npm run build`), phone-size screens |
+
+**Known limitations (not bugs in what was asked, but worth knowing):** saving a property in the editor writes back the
+heart count from when the editor was opened (hearts given meanwhile are lost); the admin's property list loads once
+(new hearts show after a reload, unlike Messages / Reviews / Free Listings which refresh every 30 s); in `next dev` the
+admin area takes 20-30 s to open after a reload (dev compile only); Chrome slows animations in a background tab, so page
+transitions can look stuck during automated testing.
+
+**Still open:** company videos (`/videos`, `/admin/videos`, video upload); Cloudflare R2 settings (then re-upload the two
+local test images: NBS007's photo, article #8's cover); test article #8 ("fgsgsdgsdgsdfsfghf", needs the owner's OK to
+delete); emails to the business address in Messages; real page URLs; the PRODUCTION_CHECKLIST.md items.
 
 ### 0.5 Shapes and exact vocabularies
 
@@ -138,20 +186,24 @@ visitors see. (Renamed from `propId` / `propRef` on 2026-09-30.) Format: `NBS` (
 the site shows `#NBS345` on every card, list row, the property page (with a Copy button), in the
 WhatsApp message and in the admin. Rules, all implemented in `data/properties.ts`:
 
-- **One number sequence for sale and rent**, so `NBS345` and `NBL345` never both exist. The backend stores
-  the number (`Property.nbNumber Int @unique`, already in the schema) and builds the code from it.
-- **The admin chooses it.** The editor's NB ID box has NBS / NBL and a number, pre-filled with
-  the next free one. `POST` / `PATCH /admin/properties` send `nbId` (e.g. `"NBL345"`): parse the
-  digits, and answer **409 `REF_TAKEN`** if another property already has that number. `GET
-  /admin/properties/next-ref` → `{ refNumber }` would replace `nextPropRef()`.
-- **The prefix follows `listing`.** Picking NBL in the admin sets the listing to rent and vice versa; when a
-  property changes from sale to rent, `NBS345` becomes `NBL345` and the number stays. Easiest: compute `nbId` in the response, don't store the string.
-- **Never reuse a number**, even after a delete (Undo brings the same number back).
-- **Search `q` must match references** typed as `#NBS345`, `nbs345`, `NBS 345` or just `345`: strip
-  `#`, spaces and `-`, then match case-insensitively (`matchesRef()`).
+- **NBS and NBL are separate sequences** (decided 2026-09-30, replacing the shared sequence): `NBS005`
+  and `NBL005` may both exist, as two different properties. Every property has exactly one NB ID; the
+  prefix follows `listing`. The backend stores the number (`Property.nbNumber`) and builds `nbId` from it;
+  the full NB ID is unique among **live** properties (partial unique index on `(listing, nbNumber)`
+  `WHERE "deletedAt" IS NULL`).
+- **The admin gives it.** The editor's NB ID box has NBS / NBL and a number, pre-filled with the **lowest free**
+  number of that sequence (gaps first) and editable. `POST` / `PATCH /admin/properties` send `nbId` (e.g.
+  `"NBL005"`): parse prefix and digits, and answer **409 `REF_TAKEN`** if a live property already has that
+  full NB ID. `GET /admin/properties/next-ref?listing=` → `{ nbId }` replaces `nextPropRef(listing, exceptId)`.
+- **Switching sale ↔ rent** gives a number from the other sequence (lowest free, editable) and frees the old
+  one; switching back before saving restores the saved number (`switchListing()` in the editor).
+- **Deleting frees the number at once.** Undo (`POST /admin/properties/:id/restore`) keeps the number if it is
+  still free, otherwise takes the lowest free one and says so (`restoreProperty()` returns the property).
+- **Search matches full NB IDs only**, however they are typed: `NBS005`, `nbs005`, `#NBS 005`, `NBS-005`,
+  `nbs5` all find NBS005; a bare `005` finds nothing (`parseRef()` / `matchesRef()`).
 - Old demo references (`NB-001`) are gone; nothing needs migrating.
 
-Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(nbId)`, `displayRef(nbId)`,
+Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(nbId)`, `displayRef(nbId)`, `parseRef(q)`, `refTaken(listing, n, exceptId)`,
 `matchesRef(nbId, q)`, `nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
 
 **Approximate location (replaced the Google embed on 2026-09-30).** Visitors never see the exact
@@ -243,12 +295,12 @@ authentication only. The remaining work is to replace those frontend constants w
 
 | Thing | Status |
 |---|---|
-| Backend | **Exists** — `backend-realstate`, Next.js App Router, `/api/v1`. Auth, email verification, 2FA and `GET /admin/users` so far |
-| Database | **Exists** — Postgres on Supabase via Prisma. Auth models only (User, tokens, audit, rate limits). **No property/content tables yet** |
-| Network calls | Auth only: `src/app/auth.tsx` (login, register, verify email, 2FA, Google, forgot/reset password) and the admin Users page |
-| Admin panel | **Built, frontend only (2026-09-28).** Dashboard, Users, Reviews under `src/app/admin/`. Edits change in-memory data until reload; §7.8 lists every endpoint it needs |
-| Data | Mock arrays in `src/app/data/` (properties, content, reviews). Each save/delete function there is the exact spot for its API call |
-| Images | Hotlinked from Unsplash + one local PNG logo. Admin uploads are temporary `blob:` URLs until `POST /admin/uploads` exists |
+| Backend | **Exists** — `backend-realstate`, Next.js App Router, `/api/v1`. Auth plus every content endpoint except company videos (2026-10-02) |
+| Database | **Exists** — Postgres on Supabase via Prisma: auth tables and every content table |
+| Network calls | `src/app/auth.tsx` plus one client per area in `src/api/` (properties, articles, team, testimonials, site, options, messages, reviews, listings, uploads) |
+| Admin panel | **On the database (2026-10-02)** except Admin → Videos. Messages, Reviews and Free Listings refresh every 30 s |
+| Data | `src/app/data/` arrays are filled from the API at startup (`load…()`); the save functions call the API first. Only `VIDEO_LIST` is still mock |
+| Images | Uploaded through `POST /admin/uploads` (sellers: `/listings/uploads`) to Cloudflare R2, or the backend's local test store until R2 is set up. Sample content still hotlinks Unsplash |
 | TypeScript in `backend-realstate` | **Checked.** `next build` runs tsc |
 | Routing | Hand-rolled. A `page` string in React state. **The URL never changes.** An in-app Back button exists on property and article pages |
 | Tests | None committed |
@@ -903,7 +955,7 @@ and use the §7.1 envelope.
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/admin/uploads` | Multipart, images only, ≤ 8 MB each (the UI checks the same). Returns `{ url }` |
+| `POST` | `/admin/uploads` | **Built 2026-10-01** (property photos and video). JSON `{ kind: "image" \| "video", contentType, size }` → `{ data: { uploadUrl, url, headers } }`; the browser PUTs the file to `uploadUrl` (Cloudflare R2) and keeps `url`. Client: `src/api/uploads.ts`; used by `PhotoManager` (`upload` prop) and the editor's `VideoField`. Other editors still use `blob:` URLs |
 
 On save the frontend must upload every `blob:` URL (property gallery, floor-plan drawings, article
 covers, team portraits, testimonial photos, district tiles) and replace it with the returned URL.
@@ -932,7 +984,7 @@ to `USER_SELECT`; the "Last Sign-in" column is ready and shows "—" until then.
 ```prisma
 model Property {
   id            Int      @id @default(autoincrement())
-  nbNumber      Int      @unique   // BUILT under this name; chosen by the admin. API returns nbId = (FOR_SALE ? "NBS" : "NBL") + 3-digit number, §0.5
+  nbNumber      Int                // BUILT under this name; given by the admin; unique per listing among live rows (§0.5). API returns nbId = (FOR_SALE ? "NBS" : "NBL") + 3-digit number
   title         String
   tagline       String   @default("")
   description   String
@@ -1514,6 +1566,37 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-10-02 · backend (frontend code) · Free listings, site settings, reviews and hearts, forms and Messages on the
+  database.** Signed-in only (owner's decisions): the contact / callback / property enquiry forms, reviews, hearts and free
+  listings. Reviews wait for the admin's approval. Saved: dropdown options, statistics, featured districts, contact,
+  services. `lastLoginAt` on Users. Sample reviews, messages and listings removed. The 30-second refresh no longer undoes
+  a change still saving. Test status: §0.4b.
+
+- **2026-10-01 · backend (frontend code) · Uploads, journal, team, testimonials.** Photos and videos upload when picked
+  (`src/api/uploads.ts`; R2, or the backend's local test store until R2 is set up); `blob:` links are refused. Journal,
+  team and testimonials load from and save to the API; team and testimonial photos are optional (initials). Property
+  delete purges after 60 s. Fixed: the Duplicate / Delete icons on Admin → Properties.
+
+- **2026-09-30 · backend (frontend code) · Properties come from the database.** `ALL_PROPS` starts empty and is filled by
+  `loadProperties()` (admin list for the admin, public list for visitors; the loading screen waits for it; a retry bar if
+  the server is down). The 12 sample listings moved to the database (`npm run db:seed-samples` in backend-realstate, ids
+  1-12 so mock reviews / messages still match). Admin saves, deletes, Undo, toggles, heart counts and free-listing
+  publishing go to the API first (`src/api/properties.ts`). Still mock: reviews, hearts per visitor, messages, free
+  listings, articles, team, testimonials, videos, site content. Photos: any string for now, so photos picked in the
+  editor are `blob:` URLs that stop working after a reload until uploads exist.
+
+- **2026-09-30 · backend · Property endpoints built.** Public `GET /properties`, `/properties/:id`, `/:id/related`; admin
+  list / create / get / patch / delete / restore / next-ref (§0.3 has the request and response shapes). Tested end to end
+  over HTTP. Photos and videos are stored as given (any string) until Cloudflare uploads exist. The frontend still reads
+  `ALL_PROPS`: wiring it up is the next frontend task.
+
+- **2026-09-30 · backend (frontend code) · NB ID: separate NBS / NBL sequences.** Decided by the project owner:
+  NBS005 and NBL005 may coexist; lowest free number pre-filled (editable); switching sale ↔ rent takes a free
+  number from the other sequence and frees the old one; deleting frees the number (Undo keeps it if still free);
+  search matches full NB IDs only (`005` alone finds nothing). Migration `20260930180000_nb_id_per_listing`
+  (partial unique index on `(listing, nbNumber)` for live rows). Code: `data/properties.ts` (`parseRef`,
+  `refTaken`, `nextPropRef`, `restoreProperty`), editor `switchListing()`, free-listing publish.
 
 - **2026-09-30 · backend (frontend code) · Exact or approximate location, per property.** Editor → Location has
   two buttons, Approximate area (default) / Exact location (`Prop.locationMode`). Exact shows a pin on the real

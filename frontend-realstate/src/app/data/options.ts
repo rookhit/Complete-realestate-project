@@ -2,8 +2,11 @@
 // Admin → Dashboard → Dropdown Options. Each entry points at the array the site already uses
 // and changes it in place, so every dropdown sees the new options straight away.
 //
-// For the backend: store each list as a SiteSetting row, key = OptionList.key, value = string[]
-// (GET /site returns them; PUT /admin/site/options/:key saves one). FRONTEND_CLAUDE.md §0.5.
+// Saved in the database (SiteSetting "options:<key>"): loadSiteOptions() applies the saved lists
+// at startup (GET /site/options); setOptions() shows a change at once and saves it
+// (PUT /admin/site/options/:key). A list the admin never saved keeps the defaults below.
+import { fetchSavedOptions, saveOptionList } from "@/api/options";
+import { ApiError } from "@/app/auth";
 import { emitChange } from "./store";
 import {
   ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, FLOOR_NAMES, LAND_UNITS, PROPERTY_TYPES, PROP_TYPES, ROAD_SURFACES,
@@ -90,12 +93,56 @@ export const OPTION_LISTS: OptionList[] = [
 
 export const optionList = (key: string) => OPTION_LISTS.find(l => l.key === key)!;
 
-/** Replace a list's options. API: PUT /admin/site/options/:key. */
-export function setOptions(key: string, items: string[]): void {
-  const l = optionList(key);
+/** Puts a list's options in place (no saving). */
+function apply(l: OptionList, items: string[]): void {
   l.items.splice(0, l.items.length, ...items);
   l.afterChange?.();
+}
+
+/** What the server last confirmed for each list: a failed save goes back to it. */
+const confirmed = new Map<string, string[]>(OPTION_LISTS.map(l => [l.key, [...l.items]]));
+/** One save at a time per list, in order, so quick edits can't arrive out of order. */
+const queue = new Map<string, Promise<void>>();
+const saveFailedListeners = new Set<(message: string) => void>();
+
+/** Called with a message when a save fails (the list has then gone back to what was saved). */
+export function onOptionSaveFailed(f: (message: string) => void): () => void {
+  saveFailedListeners.add(f);
+  return () => { saveFailedListeners.delete(f); };
+}
+
+/** Apply the lists the admin has saved (at startup). A failure keeps the defaults. */
+export async function loadSiteOptions(): Promise<void> {
+  try {
+    const saved = await fetchSavedOptions();
+    for (const l of OPTION_LISTS) {
+      const items = saved[l.key];
+      if (!items) continue;
+      apply(l, items);
+      confirmed.set(l.key, [...items]);
+    }
+    emitChange();
+  } catch { /* offline: the defaults stay */ }
+}
+
+/** Replace a list's options: shown at once, then saved (admin only). */
+export function setOptions(key: string, items: string[]): void {
+  const l = optionList(key);
+  apply(l, items);
   emitChange();
+  const next = [...items];
+  const run = (queue.get(key) ?? Promise.resolve()).then(async () => {
+    try {
+      confirmed.set(key, await saveOptionList(key, next));
+    } catch (err) {
+      const back = confirmed.get(key) ?? [...l.defaults];
+      apply(l, back);
+      emitChange();
+      const why = err instanceof ApiError ? err.message : "Check the connection and try again.";
+      saveFailedListeners.forEach(f => f(`${l.label} could not be saved: ${why}`));
+    }
+  });
+  queue.set(key, run);
 }
 
 /** Add one option (ignored when it is empty or already there, in any letter case). */

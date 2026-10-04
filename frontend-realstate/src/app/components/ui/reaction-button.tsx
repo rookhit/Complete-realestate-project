@@ -2,13 +2,14 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Heart } from "lucide-react";
 import { BORDER_L, GOLD, MAROON, MUTED_L, sans } from "./brand";
-import { reactionCount } from "@/app/data/reviews";
-import { requestSignIn, useAuth } from "@/app/auth";
+import { MY_HEARTS, applyHeart, reactionCount } from "@/app/data/reviews";
+import { useDataVersion } from "@/app/data/store";
+import { heartProperty, unheartProperty } from "@/api/reviews";
+import { ApiError, requestSignIn, useAuth } from "@/app/auth";
 
-// Properties the signed-in user has hearted. The heart is the only "like": there is no separate
-// favourites list, and only signed-in users can use it (a signed-out tap opens the login page).
-// Lost on reload for now; becomes POST / DELETE /api/v1/properties/:id/reaction.
-export const FAVS = new Set<number>();
+// The heart is the only "like": there is no separate favourites list, and only signed-in users
+// can use it (a signed-out tap opens the login page). Saved on the server
+// (POST / DELETE /api/v1/properties/:id/reaction); MY_HEARTS is what the server has.
 
 const PARTICLES = Array.from({ length: 8 }, (_, i) => {
   const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
@@ -63,16 +64,23 @@ function RollingCount({ value, className }: { value: number; className: string }
 
 function useHeart(id: number) {
   const { user } = useAuth();
-  const [liked, setLiked] = useState(FAVS.has(id));
+  useDataVersion();   // re-render when the user's hearts arrive or a count changes
+  // While a tap is on its way to the server, show what was tapped; otherwise what the server has.
+  const [pending, setPending] = useState<boolean | null>(null);
   const [burst, setBurst] = useState(0);
   // Signed out, nothing shows as liked (not even the previous user's hearts).
-  const on = !!user && liked;
+  const on = !!user && (pending ?? MY_HEARTS.has(id));
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) { requestSignIn(); return; }
+    if (pending !== null) return;   // one tap at a time
     const next = !on;
-    if (next) { FAVS.add(id); setBurst(b => b + 1); } else FAVS.delete(id);
-    setLiked(next);
+    if (next) setBurst(b => b + 1);
+    setPending(next);
+    (next ? heartProperty(id) : unheartProperty(id))
+      .then(res => applyHeart(id, res.data.liked, res.data.reactionCount))
+      .catch(err => { if (err instanceof ApiError && err.status === 401) requestSignIn(); })
+      .finally(() => setPending(null));
   };
   return { on, burst, toggle, signedIn: !!user };
 }

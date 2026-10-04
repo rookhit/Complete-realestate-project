@@ -19,6 +19,13 @@ const LIMITS = {
   // Wrong email verification codes (each code also dies after 5 tries, email-verification.ts).
   "verify-email-failure": { max: 20, windowMs: 15 * 60 * 1000 },
   "resend-verification": { max: 10, windowMs: 60 * 60 * 1000 },
+  // Website forms (contact, callback, property enquiry), on top of requiring sign-in.
+  "send-message": { max: 30, windowMs: 60 * 60 * 1000 },
+  // Property reviews (signed in; they wait for the admin's approval anyway).
+  "post-review": { max: 20, windowMs: 60 * 60 * 1000 },
+  // Free listings (signed in) and their photo uploads.
+  "send-listing": { max: 10, windowMs: 60 * 60 * 1000 },
+  "listing-upload": { max: 120, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type RateLimitedAction = keyof typeof LIMITS;

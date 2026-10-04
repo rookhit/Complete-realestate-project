@@ -10,6 +10,8 @@ const USER_SELECT = {
   phone: true,
   role: true,
   emailVerifiedAt: true,
+  // Shown in the admin's "Last Sign-in" column. Never lastLoginIp: the admin page doesn't need it.
+  lastLoginAt: true,
   createdAt: true,
 } as const;
 

@@ -4,7 +4,7 @@ export function corsHeaders(request: Request): Record<string, string> {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Expose-Headers": "Retry-After",
   };
 

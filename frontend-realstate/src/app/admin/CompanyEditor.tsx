@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { CONTACT, SERVICES, SERVICE_ICONS, saveContact, saveServices, whatsappLink, type ContactInfo, type Service } from "@/app/data/content";
 import { useDataVersion } from "@/app/data/store";
+import { ApiError } from "@/app/auth";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { Button, Field, TextArea, TextInput } from "@/app/components/ui/form-controls";
 import { SERVICE_ICON } from "@/app/components/ui/service-icon";
@@ -19,6 +20,8 @@ export function CompanySection({ notify }: { notify: Notify }) {
   const [c, setC] = useState<ContactInfo>(() => ({ ...CONTACT }));
   const [services, setServices] = useState<Service[]>(() => SERVICES.map(s => ({ ...s })));
   const setField = (k: keyof ContactInfo, v: string) => setC(o => ({ ...o, [k]: v }));
+  const [saving, setSaving] = useState<"contact" | "services" | null>(null);
+  const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
 
   const saveContactDetails = () => {
     if (!c.phone.trim() || !c.email.trim()) { notify("Phone and email are needed"); return; }
@@ -26,8 +29,10 @@ export function CompanySection({ notify }: { notify: Notify }) {
     if (c.whatsapp.replace(/\D/g, "").length < 10) { notify("Enter the WhatsApp number with its country code, e.g. +977 98…"); return; }
     const bad = (["instagram", "facebook", "youtube", "linkedin"] as const).find(k => !isUrl(c[k]));
     if (bad) { notify(`The ${bad} link should start with https://`); return; }
-    saveContact(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.trim()])) as unknown as ContactInfo);
-    notify("Contact details updated");
+    setSaving("contact");
+    saveContact(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.trim()])) as unknown as ContactInfo)
+      .then(() => { setC({ ...CONTACT }); notify("Contact details updated"); }, failed)
+      .finally(() => setSaving(null));
   };
 
   const setService = (id: number, patch: Partial<Service>) => setServices(l => l.map(s => (s.id === id ? { ...s, ...patch } : s)));
@@ -38,15 +43,17 @@ export function CompanySection({ notify }: { notify: Notify }) {
   const saveServiceList = () => {
     if (!services.length) { notify("Keep at least one service"); return; }
     if (services.some(s => !s.title.trim() || !s.desc.trim())) { notify("Every service needs a title and a description"); return; }
-    saveServices(services.map(s => ({ ...s, title: s.title.trim(), desc: s.desc.trim() })));
-    notify("Services updated");
+    setSaving("services");
+    saveServices(services.map(s => ({ ...s, title: s.title.trim(), desc: s.desc.trim() })))
+      .then(() => { setServices(SERVICES.map(s => ({ ...s }))); notify("Services updated"); }, failed)
+      .finally(() => setSaving(null));
   };
 
   return (
     <div className="flex flex-col gap-14">
       <div>
         <SectionHeading title="Contact Details" subtitle="Shown on the Contact page and in the footer. The WhatsApp number is used by every WhatsApp button on the site."
-          actions={<Button onClick={saveContactDetails}><Check size={14} />Save Contact Details</Button>} />
+          actions={<Button onClick={saveContactDetails} disabled={saving === "contact"}><Check size={14} />{saving === "contact" ? "Saving…" : "Save Contact Details"}</Button>} />
         <div className="border p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-5" style={{ borderColor: BORDER_L, background: WHITE }}>
           <Field label="Telephone"><TextInput value={c.phone} onChange={v => setField("phone", v)} placeholder="+977 1 400 0000" /></Field>
           <Field label="WhatsApp Number" hint={<>Buttons open <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">wa.me/{c.whatsapp.replace(/\D/g, "") || "…"}</a></>}>
@@ -76,7 +83,7 @@ export function CompanySection({ notify }: { notify: Notify }) {
             <Button variant="quiet" onClick={() => setServices(l => [...l, { id: Math.max(0, ...l.map(s => s.id), ...SERVICES.map(s => s.id)) + 1, icon: "home", title: "", desc: "" }])}>
               <Plus size={14} />Add Service
             </Button>
-            <Button onClick={saveServiceList}><Check size={14} />Save Services</Button>
+            <Button onClick={saveServiceList} disabled={saving === "services"}><Check size={14} />{saving === "services" ? "Saving…" : "Save Services"}</Button>
           </>} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {services.map((s, i) => {

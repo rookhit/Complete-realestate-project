@@ -10,6 +10,7 @@ import { useDataVersion } from "@/app/data/store";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { ApiError } from "@/app/auth";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { Chip, EmptyState, SearchBox, useToast } from "./parts";
 
@@ -57,10 +58,13 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
     setOpenId(m.id); updateMessage(m.id, { read: true });
     if (window.innerWidth < 1024) requestAnimationFrame(() => reader.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
+  const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
   const remove = (m: Message) => {
-    const index = deleteMessage(m.id);
-    setToDelete(null); setOpenId(null);
-    notify(`Message from ${m.name} deleted`, { label: "Undo", run: () => restoreMessage(m, index) });
+    setToDelete(null);
+    deleteMessage(m.id).then(index => {
+      setOpenId(null);
+      notify(`Message from ${m.name} deleted`, { label: "Undo", run: () => { restoreMessage(m, index).catch(failed); } });
+    }, failed);
   };
 
   const counts = (f: Filter) => MESSAGES.filter(m => f === "all" || (f === "unread" ? !m.read : m.kind === f)).length;
@@ -140,6 +144,11 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
                   </div>
                   <h2 className="text-[26px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{open.subject}</h2>
                   <p className="mt-3 text-[15px]" style={{ color: FG_LIGHT, ...sans }}>{open.name}</p>
+                  {open.account && (
+                    <p className="mt-0.5 text-[12px]" style={{ color: MUTED_L, ...sans }}>
+                      Signed-in account: {open.account.name ? `${open.account.name} · ` : ""}<a href={`mailto:${open.account.email}`} className="hover:text-[#8a2030]">{open.account.email}</a>
+                    </p>
+                  )}
                   <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
                     {open.email && <a href={`mailto:${open.email}`} className="hover:text-[#8a2030]">{open.email}</a>}
                     {open.phone && <a href={telLink(open.phone)} className="hover:text-[#8a2030]">{open.phone}</a>}

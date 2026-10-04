@@ -1,12 +1,9 @@
-// Properties: the shape, the mock listings, and the dropdown values the admin uses.
-// Each save/delete function at the bottom is where its API call goes (FRONTEND_CLAUDE.md §7.8):
-//   GET    /api/v1/properties               public list (filters in §7.2)
-//   GET    /api/v1/properties/:id
-//   POST   /api/v1/admin/properties         ADMIN
-//   PATCH  /api/v1/admin/properties/:id     ADMIN
-//   DELETE /api/v1/admin/properties/:id     ADMIN
-// Until then, admin edits live in memory and are lost on reload.
-import { img } from "@/app/components/ui/brand";
+// Properties: the shape, the live list loaded from the API, and the dropdown values the admin uses.
+// The list comes from GET /api/v1/properties (visitors) or /api/v1/admin/properties (the admin), via
+// src/api/properties.ts. The admin's saves go to the API first; the functions at the bottom then
+// update this local copy so every page re-renders without reloading.
+import { fetchAllProperties, toProp, type ApiProperty } from "@/api/properties";
+import { REACTIONS } from "./reviews";
 import { emitChange } from "./store";
 
 export type Listing = "For Sale" | "For Rent";
@@ -40,136 +37,50 @@ export interface Prop {
   approx?: { lat: number; lng: number };
   /** Added by the admin editor. Properties without it show the illustrative plan. */
   floorPlan?: PlanBox[];
+  /** A video link the admin pasted (Cloudflare uploads will fill it later). */
+  videoUrl?: string;
 }
 
-export const ALL_PROPS: Prop[] = [
-  { id:1, nbId:"NBS001", mapUrl:"https://www.google.com/maps/@27.6727,85.3137,17z", badge:"Hot", title:"The Patan Residence", tagline:"Heritage Reimagined",
-    location:"Jawlakhel, Lalitpur", district:"Lalitpur", price:"NPR 8.5 Cr", priceNum:85000000,
-    listing:"For Sale", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,850 sq.ft", landArea:"12 Ropani",
-    roadAccess:"Black-topped 20ft", facing:"North-East", buildYear:2019, floors:3, verified:true, featured:true,
-    hero:img("photo-1600596542815-ffad4c1539a9",1920,1080),
-    gallery:[img("photo-1600596542815-ffad4c1539a9"),img("photo-1586023492125-27b2c045efd7"),img("photo-1631049307264-da0ec9d70304"),img("photo-1556909114-f6e7ad7d3136")],
-    description:"A masterfully crafted contemporary residence in the heart of Lalitpur, blending the architectural legacy of the Kathmandu Valley with the refined sensibility of modern luxury living.",
-    features:["Infinity Pool","Home Theater","Smart Home","Rooftop Garden","3-Car Garage","Staff Quarters","Wine Cellar","Solar Power","Earthquake Resistant","Marble","Balcony","Parking","Terrace","Master Bedroom","Modular Kitchen","Internet","Reserve Tank","Drinking Water"],
-    mapX:55, mapY:48,
-    floorPlan: [
-      { id:"g", name:"Ground Floor", area:1850, x:6, y:10, w:46, h:44 },
-      { id:"f1", name:"1st Floor", area:1650, x:54, y:10, w:40, h:44 },
-      { id:"f2", name:"2nd Floor", area:1350, x:6, y:58, w:40, h:34 },
-      { id:"r", name:"Rooftop Terrace", area:600, x:50, y:58, w:30, h:34 },
-    ], },
-  { id:2, nbId:"NBS002", mapUrl:"https://www.google.com/maps/@27.7215,85.3620,17z", badge:"Featured", title:"Boudha Heights Penthouse", tagline:"Sanctuary Above the City",
-    location:"Boudhanath, Kathmandu", district:"Kathmandu", price:"NPR 4.2 Cr", priceNum:42000000,
-    listing:"For Sale", type:"Apartment", beds:3, baths:3, builtArea:"2,800 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 30ft", facing:"South", buildYear:2021, floors:1, verified:true, featured:true,
-    hero:img("photo-1613977257363-707ba9348227",1920,1080),
-    gallery:[img("photo-1613977257363-707ba9348227"),img("photo-1560185007-cde436f6a4d0"),img("photo-1586023492125-27b2c045efd7")],
-    description:"Perched above the sacred Boudhanath stupa, this rare penthouse commands 270-degree views of the valley and distant Himalayan peaks.",
-    features:["Panoramic Views","Private Terrace","Concierge","Smart Home","Wine Cellar","Balcony","Parking","Terrace","Master Bedroom","Modular Kitchen","Internet","Marble","Closet","Sofa"],
-    mapX:61, mapY:34,
-    floorPlan: [
-      { id:"l", name:"Living Level", area:2100, x:8, y:12, w:48, h:50 },
-      { id:"b", name:"Bedroom Level", area:1700, x:60, y:12, w:34, h:50 },
-      { id:"t", name:"Terrace", area:900, x:8, y:66, w:56, h:24 },
-    ], },
-  { id:3, nbId:"NBS003", mapUrl:"https://www.google.com/maps/@28.2096,83.9580,17z", badge:"New", title:"Pokhara Lakeside Villa", tagline:"Himalayan Vistas & Serenity",
-    location:"Lakeside, Pokhara", district:"Kaski", price:"NPR 12 Cr", priceNum:120000000,
-    listing:"For Sale", type:"House/Bungalow", beds:6, baths:5, builtArea:"6,800 sq.ft", landArea:"18 Ropani",
-    roadAccess:"Black-topped 16ft", facing:"East", buildYear:2020, floors:2, verified:true, featured:false,
-    hero:img("photo-1600585154526-990dced4db0d",1920,1080),
-    gallery:[img("photo-1600585154526-990dced4db0d"),img("photo-1568605114967-8130f3a36994"),img("photo-1631049307264-da0ec9d70304")],
-    description:"A rare lakeside estate with direct Phewa Lake frontage and unobstructed Annapurna views. The pinnacle of refined living in Pokhara.",
-    features:["Lakefront Access","Heated Pool","Boat Dock","Mountain Deck","Guest Cottage","Yoga Terrace","Earthquake Resistant","Parquet","Balcony","Parking","Terrace","Master Bedroom","Living Room","Dining Room","Internet","Drinking Water"],
-    mapX:28, mapY:38 },
-  { id:4, nbId:"NBS004", mapUrl:"https://www.google.com/maps/@27.5937,85.3822,17z", badge:"Prime", title:"Godavari Forest Estate", tagline:"Nature Reserve Living",
-    location:"Godavari, Lalitpur", district:"Lalitpur", price:"NPR 6.8 Cr", priceNum:68000000,
-    listing:"For Sale", type:"Land", beds:0, baths:0, builtArea:"—", landArea:"25 Ropani",
-    roadAccess:"Graveled 12ft", facing:"North", buildYear:0, floors:0, verified:true, featured:false,
-    hero:img("photo-1512917774080-9991f1c4c750",1920,1080),
-    gallery:[img("photo-1512917774080-9991f1c4c750"),img("photo-1500382017468-9049fed747ef")],
-    description:"25 ropani of pristine forested land at the foot of the Godavari botanical reserve. Complete privacy and a profound connection to nature.",
-    features:["Private Forest","Botanical Access","Spring Water","Trekking Trails","Development Ready","Drinking Water","Drainage","Parking","Reserve Tank"],
-    mapX:68, mapY:56 },
-  { id:5, nbId:"NBS005", mapUrl:"https://www.google.com/maps/@27.7154,85.3123,17z", locationMode:"exact", badge:"Verified", title:"Thamel Commercial Tower", tagline:"Urban Investment",
-    location:"Thamel, Kathmandu", district:"Kathmandu", price:"NPR 15 Cr", priceNum:150000000,
-    listing:"For Sale", type:"Commercial", beds:0, baths:6, builtArea:"8,200 sq.ft", landArea:"4 Ropani",
-    roadAccess:"Black-topped 40ft", facing:"South-East", buildYear:2018, floors:5, verified:true, featured:false,
-    hero:img("photo-1497366216548-37526070297c",1920,1080),
-    gallery:[img("photo-1497366216548-37526070297c"),img("photo-1497366811353-6870744d04b2")],
-    description:"A prime commercial building in Kathmandu's most cosmopolitan district. Fully tenanted with excellent rental yield.",
-    features:["5 Floors","Elevator","Generator Backup","24/7 Security","Ground Floor Retail","4 Commercial Units","Earthquake Resistant","Parking","Drainage","Reserve Tank","Internet","Bathroom","Pantry"],
-    mapX:48, mapY:30 },
-  { id:6, nbId:"NBS006", mapUrl:"https://www.google.com/maps/@27.6620,85.4290,17z", badge:"Rare", title:"Bhaktapur Heritage Villa", tagline:"Living Within History",
-    location:"Suryabinayak, Bhaktapur", district:"Bhaktapur", price:"NPR 5.5 Cr", priceNum:55000000,
-    listing:"For Sale", type:"House/Bungalow", beds:4, baths:4, builtArea:"3,800 sq.ft", landArea:"4-4-0-1 R-A-P-D",
-    roadAccess:"Black-topped 14ft", facing:"East", buildYear:2015, floors:3, verified:true, featured:false,
-    hero:img("photo-1568605114967-8130f3a36994",1920,1080),
-    gallery:[img("photo-1568605114967-8130f3a36994"),img("photo-1600596542815-ffad4c1539a9")],
-    description:"A sensitively restored heritage villa near Bhaktapur's UNESCO-listed Durbar Square, blending Newari architecture with modern amenities.",
-    features:["Heritage Architecture","Traditional Courtyard","Durbar Views","Restored Woodwork","Earthquake Resistant","Marble","Parquet","Balcony","Terrace","Master Bedroom","Living Room","Dining Room","Kitchen","Bathroom"],
-    mapX:73, mapY:39 },
-  { id:7, nbId:"NBL007", mapUrl:"https://www.google.com/maps/@27.6795,85.3070,17z", badge:"Featured", title:"Jhamsikhel Luxury Flat", tagline:"Urban Elegance",
-    location:"Jhamsikhel, Lalitpur", district:"Lalitpur", price:"NPR 85,000/mo", priceNum:85000,
-    listing:"For Rent", type:"Flat", beds:3, baths:2, builtArea:"1,850 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 20ft", facing:"South", buildYear:2022, floors:1, verified:true, featured:true,
-    hero:img("photo-1522708323590-d24dbb6b0267",1920,1080),
-    gallery:[img("photo-1522708323590-d24dbb6b0267"),img("photo-1560448204-e02f11c3d0e2")],
-    description:"A beautifully finished luxury flat in one of Lalitpur's most sought-after addresses. Fully furnished and ready to move in.",
-    features:["Fully Furnished","Parking","Security","Gym Access","Balcony Views","Balcony","Modular Kitchen","Internet","Bed","Closet","Sofa","Dining Table","Bathroom"],
-    mapX:59, mapY:44 },
-  { id:8, nbId:"NBL008", mapUrl:"https://www.google.com/maps/@27.7230,85.3200,17z", badge:"Verified", title:"Lazimpat Premium Apartment", tagline:"Diplomatic Quarter",
-    location:"Lazimpat, Kathmandu", district:"Kathmandu", price:"NPR 1.2 L/mo", priceNum:120000,
-    listing:"For Rent", type:"Apartment", beds:4, baths:3, builtArea:"2,400 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 30ft", facing:"North-East", buildYear:2020, floors:1, verified:true, featured:false,
-    hero:img("photo-1560448204-e02f11c3d0e2",1920,1080),
-    gallery:[img("photo-1560448204-e02f11c3d0e2"),img("photo-1555041469-a586c61ea9bc")],
-    description:"Premium 4-bedroom apartment in Kathmandu's prestigious diplomatic quarter. Minutes from embassies and international schools.",
-    features:["4 Bedrooms","Gym","Swimming Pool","24/7 Concierge","International Kitchen","Balcony","Parking","Terrace","Master Bedroom","Living Room","Modular Kitchen","Internet","Closet","Sofa"],
-    mapX:44, mapY:40 },
-  { id:9, nbId:"NBL009", mapUrl:"https://www.google.com/maps/@27.7765,85.3620,17z", badge:"New", title:"Budhanilkantha Villa", tagline:"Quiet Hilltop Retreat",
-    location:"Budhanilkantha, Kathmandu", district:"Kathmandu", price:"NPR 95,000/mo", priceNum:95000,
-    listing:"For Rent", type:"House/Bungalow", beds:5, baths:4, builtArea:"4,200 sq.ft", landArea:"6-2-1-0 R-A-P-D",
-    roadAccess:"Black-topped 16ft", facing:"South", buildYear:2017, floors:3, verified:false, featured:false,
-    hero:img("photo-1580587771525-78b9dba3b914",1920,1080),
-    gallery:[img("photo-1580587771525-78b9dba3b914"),img("photo-1568605114967-8130f3a36994")],
-    description:"A tranquil hilltop villa above the city, offering complete privacy and sweeping valley views. Ideal for families seeking space and calm.",
-    features:["Garden","Parking for 4","Generator","Water Tank","Mountain Views","Earthquake Resistant","Parking","Terrace","Balcony","Reserve Tank","Drinking Water","Kitchen","Bathroom","Living Room"],
-    mapX:57, mapY:22,
-    floorPlan: [
-      { id:"g", name:"Ground Floor", area:1400, x:8, y:14, w:42, h:40 },
-      { id:"f1", name:"1st Floor", area:1250, x:54, y:14, w:38, h:40 },
-      { id:"s", name:"Garden", area:800, x:8, y:60, w:84, h:28 },
-    ], },
-  { id:10, nbId:"NBL010", mapUrl:"https://www.google.com/maps/@27.7110,85.3175,17z", badge:"Hot", title:"Durbar Marg Office Suite", tagline:"Premier Business Address",
-    location:"Durbar Marg, Kathmandu", district:"Kathmandu", price:"NPR 2.5 L/mo", priceNum:250000,
-    listing:"For Rent", type:"Commercial", beds:0, baths:2, builtArea:"3,500 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 40ft", facing:"East", buildYear:2016, floors:1, verified:true, featured:true,
-    hero:img("photo-1497366811353-6870744d04b2",1920,1080),
-    gallery:[img("photo-1497366811353-6870744d04b2"),img("photo-1497366216548-37526070297c")],
-    description:"Full-floor office suite on Kathmandu's most prestigious commercial address. Perfect for corporate headquarters and premium businesses.",
-    features:["3,500 sq.ft Open Plan","Board Room","Reception Area","Pantry","High-speed Internet","Parking","Drainage","Reserve Tank","Internet","Bathroom"],
-    mapX:69, mapY:27 },
-  { id:11, nbId:"NBL011", mapUrl:"https://www.google.com/maps/@27.6780,85.3170,17z", badge:"Verified", title:"Pulchowk Modern Flat", tagline:"City Centre Living",
-    location:"Pulchowk, Lalitpur", district:"Lalitpur", price:"NPR 45,000/mo", priceNum:45000,
-    listing:"For Rent", type:"Flat", beds:2, baths:1, builtArea:"950 sq.ft", landArea:"—",
-    roadAccess:"Black-topped 20ft", facing:"West", buildYear:2023, floors:1, verified:true, featured:false,
-    hero:img("photo-1555041469-a586c61ea9bc",1920,1080),
-    gallery:[img("photo-1555041469-a586c61ea9bc"),img("photo-1522708323590-d24dbb6b0267")],
-    description:"A modern 2-bedroom flat in vibrant Pulchowk. Walking distance to restaurants, cafes and the Lalitpur commercial district.",
-    features:["Modern Interiors","Covered Parking","Security","Balcony","WiFi Ready","Parking","Modular Kitchen","Internet","Bed","Closet","Bathroom"],
-    mapX:36, mapY:52 },
-  { id:12, nbId:"NBS012", mapUrl:"https://maps.app.goo.gl/SampleShortLink", badge:"New", title:"Sauraha Riverside Retreat", tagline:"Nature at Your Doorstep",
-    location:"Sauraha, Chitwan", district:"Chitwan", price:"NPR 3.2 Cr", priceNum:32000000,
-    listing:"For Sale", type:"House/Bungalow", beds:4, baths:3, builtArea:"3,200 sq.ft", landArea:"15 Ropani",
-    roadAccess:"Graveled 14ft", facing:"South", buildYear:2021, floors:2, verified:false, featured:false,
-    // Was photo-1507003211169, a studio portrait of a man (also used as a
-    // testimonial avatar), so this listing led with a stranger's face.
-    hero:img("photo-1520250497591-112f2f40a3f4",1920,1080),
-    gallery:[img("photo-1520250497591-112f2f40a3f4"),img("photo-1582719478250-c89cae4dc85b"),img("photo-1500382017468-9049fed747ef")],
-    description:"An extraordinary riverside retreat at the edge of the Chitwan National Park. Wake up to jungle sounds and sunset river views every day.",
-    features:["River Frontage","Private Garden","Nature Trails","Open Verandah","Jungle Views","Earthquake Resistant","Drinking Water","Parking","Terrace","Living Room","Dining Room","Kitchen","Bathroom"],
-    mapX:45, mapY:65 },
-];
+/**
+ * Every live property, loaded from the API (loadProperties below) and kept here so every page can
+ * read it synchronously. Empty until the first load finishes; the loading screen waits for it.
+ * The 12 old sample listings now live in the database (backend-realstate/prisma/sample-properties.ts).
+ */
+export const ALL_PROPS: Prop[] = [];
+
+/** Where the first load is: the loading screen waits for "ready" or "error". */
+export let propertiesStatus: "loading" | "ready" | "error" = "loading";
+export let propertiesError = "";
+let loadRun = 0;
+
+/**
+ * Fill ALL_PROPS from the API. `admin`: the admin list (adds the private location for the editor).
+ * A newer call wins, so switching accounts can't leave an older list on screen.
+ */
+export async function loadProperties(admin: boolean): Promise<void> {
+  const run = ++loadRun;
+  try {
+    const list = await fetchAllProperties(admin);
+    if (run !== loadRun) return;
+    ALL_PROPS.splice(0, ALL_PROPS.length, ...list.map(toProp));
+    for (const p of list) REACTIONS[p.id] = p.reactionCount;
+    propertiesStatus = "ready";
+    propertiesError = "";
+  } catch (err) {
+    if (run !== loadRun) return;
+    propertiesStatus = "error";
+    propertiesError = err instanceof Error ? err.message : "Could not load the properties.";
+  }
+  emitChange();
+}
+
+/** Put what the API returned after a save into the local list (and its heart count). */
+export function applySaved(saved: ApiProperty): Prop {
+  const p = toProp(saved);
+  REACTIONS[p.id] = saved.reactionCount;
+  saveProperty(p);
+  return p;
+}
 
 export const PROP_TYPES = ["All Types","House/Bungalow","Land","Apartment","Commercial","Flat"];
 export const PRICE_RANGES: Record<"For Sale"|"For Rent", {label:string;min:number;max:number}[]> = {
@@ -255,26 +166,52 @@ export function formatPrice(priceNum: number, listing: Listing): string {
 }
 
 /**
- * Property references: NBS for sale, NBL for letting (rent), then a number, e.g. "NBS345".
- * Sale and rent share one number sequence, so the number alone is unique, and the prefix
- * always follows the listing: switch a property to rent and NBS345 becomes NBL345.
- * Stored without the "#"; visitors see "#NBS345" (displayRef).
+ * A property has two ids:
+ * - `id`: the internal number the database generates. Used for links between records; never
+ *   shown, never typed, never changes.
+ * - `nbId`, the NB ID: the reference the ADMIN gives it. "NBS" + number for a sale, "NBL" +
+ *   number for a rental (letting), e.g. "NBS005". Every property has exactly one.
+ * Rules (decided 2026-09-30):
+ * - NBS and NBL are separate sequences: NBS005 and NBL005 can both exist (two different
+ *   properties). The full NB ID is unique among live properties.
+ * - The editor pre-fills the lowest free number in the chosen sequence; the admin may type
+ *   another free one. Switching sale ↔ rent takes the lowest free number of the other
+ *   sequence (editable) and frees the old one.
+ * - Deleting frees the number at once; Undo gets it back if it is still free.
+ * - Search matches full NB IDs only ("nbs5", "#NBS 005" → NBS005); a bare "005" matches nothing.
+ * Stored without the "#"; visitors see "#NBS005" (displayRef).
  */
 export const REF_PREFIX: Record<Listing, string> = { "For Sale": "NBS", "For Rent": "NBL" };
 export const refNumber = (nbId: string) => Number(nbId.replace(/\D/g, "")) || 0;
 export const makeRef = (listing: Listing, n: number) => `${REF_PREFIX[listing]}${String(n).padStart(3, "0")}`;
 export const displayRef = (nbId: string) => `#${nbId}`;
 
-/** True when a search like "#NBS345", "nbs 345" or "345" points at this reference. */
-export function matchesRef(nbId: string, query: string): boolean {
-  const q = query.replace(/[#\s-]/g, "").toLowerCase();
-  return !!q && nbId.toLowerCase().includes(q);
+/** "#nbs 5", "NBS-005", "nbs005" → "NBS005". Null unless the input is a full NB ID (prefix + number). */
+export function parseRef(input: string): string | null {
+  const m = input.replace(/[#\s-]/g, "").toUpperCase().match(/^(NB[SL])0*(\d+)$/);
+  return m && Number(m[2]) > 0 ? `${m[1]}${m[2].padStart(3, "0")}` : null;
 }
 
-/** Next numeric id and the next reference. The API assigns both once it exists. */
+/** True when a search is this property's full NB ID, however it is typed. */
+export const matchesRef = (nbId: string, query: string): boolean => parseRef(query) === nbId.toUpperCase();
+
+/** The live property already using this NB ID (same sequence, same number), if any. */
+export function refTaken(listing: Listing, n: number, exceptId?: number): Prop | null {
+  return n > 0 ? ALL_PROPS.find(p => p.id !== exceptId && p.listing === listing && refNumber(p.nbId) === n) ?? null : null;
+}
+
+/** Next internal id. The database generates it once the API exists. */
 export const nextPropertyId = () => ALL_PROPS.reduce((m, p) => Math.max(m, p.id), 0) + 1;
-export function nextPropRef(listing: Listing = "For Sale"): string {
-  return makeRef(listing, ALL_PROPS.reduce((m, p) => Math.max(m, refNumber(p.nbId)), 0) + 1);
+
+/**
+ * The lowest free NB ID in a sequence (gaps first, e.g. a freed NBL004 before NBL011).
+ * `exceptId`: the property being edited, whose own number counts as free.
+ * API: GET /admin/properties/next-ref?listing=… → { nbId }.
+ */
+export function nextPropRef(listing: Listing = "For Sale", exceptId?: number): string {
+  let n = 1;
+  while (refTaken(listing, n, exceptId)) n++;
+  return makeRef(listing, n);
 }
 
 /** Create or update. API: POST /admin/properties (new) or PATCH /admin/properties/:id. */
@@ -284,11 +221,17 @@ export function saveProperty(p: Prop): void {
   emitChange();
 }
 
-/** Put a deleted property back where it was (the admin's Undo). API: re-create it, or soft-delete instead. */
-export function restoreProperty(p: Prop, index: number): void {
-  if (ALL_PROPS.some(x => x.id === p.id)) return;
-  ALL_PROPS.splice(Math.min(Math.max(index, 0), ALL_PROPS.length), 0, p);
+/**
+ * Put a deleted property back where it was (the admin's Undo). Deleting freed its NB ID, so if
+ * another property took that number meanwhile it comes back with the lowest free one instead.
+ * Returns the restored property (check its nbId) or null. API: POST /admin/properties/:id/restore.
+ */
+export function restoreProperty(p: Prop, index: number): Prop | null {
+  if (ALL_PROPS.some(x => x.id === p.id)) return null;
+  const back = refTaken(p.listing, refNumber(p.nbId), p.id) ? { ...p, nbId: nextPropRef(p.listing, p.id) } : p;
+  ALL_PROPS.splice(Math.min(Math.max(index, 0), ALL_PROPS.length), 0, back);
   emitChange();
+  return back;
 }
 
 /** API: DELETE /admin/properties/:id. The site needs at least one listing, so the last one stays. */

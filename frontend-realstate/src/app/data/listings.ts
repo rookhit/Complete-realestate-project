@@ -1,16 +1,14 @@
-// Free listings: properties sellers submit from the website's Free Listing page. The admin
-// reviews each one (Admin → Free Listings), fills the gaps, and publishes it as a normal
+// Free listings: properties signed-in sellers submit from the website's Free Listing page. The
+// admin reviews each one (Admin → Free Listings), fills the gaps, and publishes it as a normal
 // property, or saves it to publish later. The seller's contact details are never published.
 //
-// For the backend (FRONTEND_CLAUDE.md §7.10):
-//   POST  /api/v1/listings                           public: the Free Listing form (multipart photos)
-//   GET   /api/v1/admin/listings?status&q&page       ADMIN
-//   PATCH /api/v1/admin/listings/:id                 ADMIN { status, draft }  (draft = the edited property)
-//   POST  /api/v1/admin/listings/:id/publish         ADMIN: creates the property, returns { propertyId }
-//   GET   /api/v1/admin/listings/new-count           ADMIN, polled for the red badge
-import { img } from "@/app/components/ui/brand";
+// Stored in the database (backend-realstate/lib/content/listings.ts, src/api/listings.ts). The
+// form posts straight to the API; LISTINGS is the admin's copy: loadListings() fills it (polled
+// with the inbox), and updateListing() shows a change at once and saves it.
+import { fetchListings, patchListing } from "@/api/listings";
+import { ApiError } from "@/app/auth";
 import { emitChange } from "./store";
-import { makeRef, nextPropRef, nextPropertyId, refNumber, formatPrice, type Listing, type Prop } from "./properties";
+import { nextPropRef, nextPropertyId, formatPrice, type Listing, type Prop } from "./properties";
 
 export type ListingStatus = "new" | "draft" | "published" | "rejected";
 export const LISTING_STATUS: Record<ListingStatus, string> = { new: "New", draft: "Saved for later", published: "Published", rejected: "Rejected" };
@@ -35,40 +33,73 @@ export interface ListingSubmission {
   draft?: Prop;                  // the admin's edited version, kept by "Save for later"
   propertyId?: number;           // set once published
   statusBeforeReject?: ListingStatus;   // so Restore puts it back exactly where it was
+  account?: { name: string | null; email: string } | null;   // the signed-in account that sent it
 }
 
-const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+/** Every listing, newest first. Empty until an admin signs in. */
+export const LISTINGS: ListingSubmission[] = [];
+let loadRun = 0;
+/** Listings with a save on its way: a refresh that started before it finished must not undo it. */
+const saving = new Map<number, number>();
 
-export const LISTINGS: ListingSubmission[] = [
-  { id: 3, receivedAt: ago(3), status: "new", seller: { name: "Hari Prasad Joshi", phone: "9851122334", email: "hari.joshi@example.com" },
-    title: "Kirtipur 3-Bedroom House", listing: "For Sale", type: "House/Bungalow", district: "Kathmandu", price: "3,20,00,000",
-    builtArea: "2,400 sq.ft", landArea: "0-5-0-0", buildYear: "2018", description: "Three storey house near Tribhuvan University, sunny, with a small garden and parking for two cars.",
-    amenities: ["Parking", "Garden", "Boring Water"], photos: [img("photo-1564013799919-ab600027ffc6", 1200, 800), img("photo-1570129477492-45c003edd2be", 1200, 800)] },
-  { id: 2, receivedAt: ago(20), status: "new", seller: { name: "Maya Tamang", phone: "9818765432" },
-    title: "Flat near Lazimpat", listing: "For Rent", type: "Flat", district: "Kathmandu", price: "45000",
-    builtArea: "", landArea: "", buildYear: "", description: "",
-    amenities: [], photos: [img("photo-1502672260266-1c1ef2d93688", 1200, 800)] },
-  { id: 1, receivedAt: ago(52), status: "draft", seller: { name: "Suresh Bhandari", phone: "9841556677", email: "suresh.b@example.com" },
-    title: "Pokhara Land with Lake View", listing: "For Sale", type: "Land", district: "Kaski", price: "1,80,00,000",
-    builtArea: "", landArea: "8 Ropani", buildYear: "", description: "Terraced land above Phewa Lake with a clear view of Machhapuchhre. Road up to the plot.",
-    amenities: ["Mountain Views"], photos: [img("photo-1500382017468-9049fed747ef", 1200, 800)] },
-];
+/** Fill LISTINGS from the API (admin only). A failure keeps what is there. */
+export async function loadListings(): Promise<void> {
+  const run = ++loadRun;
+  try {
+    const list = await fetchListings();
+    if (run !== loadRun) return;
+    // Keep this screen's version of any listing that is still being saved.
+    const next = list.map(l => (saving.has(l.id) ? LISTINGS.find(x => x.id === l.id) ?? l : l));
+    LISTINGS.splice(0, LISTINGS.length, ...next);
+    emitChange();
+  } catch { /* try again on the next poll */ }
+}
+
+/** Signed out: forget the admin's list. */
+export function clearListings(): void {
+  loadRun++;
+  if (LISTINGS.length) { LISTINGS.splice(0); emitChange(); }
+}
 
 export const newListingsCount = () => LISTINGS.filter(l => l.status === "new").length;
 
-/** From the Free Listing page. API: POST /listings. */
-export function addListing(l: Omit<ListingSubmission, "id" | "receivedAt" | "status">): void {
-  const id = LISTINGS.reduce((n, x) => Math.max(n, x.id), 0) + 1;
-  LISTINGS.unshift({ ...l, id, receivedAt: new Date().toISOString(), status: "new" });
-  emitChange();
+const saveFailedListeners = new Set<(message: string) => void>();
+/** Called with a message when a change could not be saved (the listing has then gone back). */
+export function onListingSaveFailed(f: (message: string) => void): () => void {
+  saveFailedListeners.add(f);
+  return () => { saveFailedListeners.delete(f); };
 }
 
-/** API: PATCH /admin/listings/:id. */
+/**
+ * Change a listing: shown at once, then saved (PATCH /admin/listings/:id: status, draft,
+ * propertyId). If the server refuses, it goes back to what was there and the admin is told.
+ */
 export function updateListing(id: number, patch: Partial<ListingSubmission>): void {
   const l = LISTINGS.find(x => x.id === id);
   if (!l) return;
+  const before = { ...l };
   Object.assign(l, patch);
   emitChange();
+  const body: { status?: ListingStatus; draft?: Prop | null; propertyId?: number | null } = {};
+  if (patch.status !== undefined) body.status = patch.status;
+  if ("draft" in patch) body.draft = patch.draft ?? null;
+  if ("propertyId" in patch) body.propertyId = patch.propertyId ?? null;
+  if (!Object.keys(body).length) return;
+  // The list may have been refreshed meanwhile: apply the answer to whatever is shown now.
+  const current = () => LISTINGS.find(x => x.id === id);
+  saving.set(id, (saving.get(id) ?? 0) + 1);
+  patchListing(id, body).then(
+    res => { const c = current(); if (c) Object.assign(c, res.data); emitChange(); },
+    err => {
+      const c = current(); if (c) Object.assign(c, before);
+      emitChange();
+      const why = err instanceof ApiError ? err.message : "Check the connection and try again.";
+      saveFailedListeners.forEach(f => f(`“${l.title}” could not be saved: ${why}`));
+    },
+  ).finally(() => {
+    const n = (saving.get(id) ?? 1) - 1;
+    if (n > 0) saving.set(id, n); else saving.delete(id);
+  });
 }
 
 /** "5,00,00,000" → 50000000; "85 lakh" and "1.2 crore" are understood too. */
@@ -97,7 +128,8 @@ export function listingToProp(l: ListingSubmission): Prop {
   if (l.draft) return l.draft;
   const priceNum = priceFromText(l.price);
   const isLand = l.type === "Land";
-  const nbId = makeRef(l.listing, refNumber(nextPropRef()));
+  // The lowest free NB ID in the seller's sequence (NBS for sale, NBL for rent); editable in the review.
+  const nbId = nextPropRef(l.listing);
   return {
     id: nextPropertyId(), nbId, badge: "New", title: l.title, tagline: "",
     location: l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing) : "", priceNum,

@@ -7,14 +7,10 @@ import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { EmptyState, SearchBox } from "./parts";
 
-/**
- * A registered account, as GET /api/v1/admin/users returns it today.
- * `lastLoginAt` is stored on User but not selected by that endpoint yet; the
- * column shows "—" until the backend adds it to USER_SELECT (FRONTEND_CLAUDE.md §12).
- */
+/** A registered account, as GET /api/v1/admin/users returns it. `lastLoginAt` null = never signed in. */
 type AdminUserRow = {
   id: string; email: string; name: string | null; phone: string; role: "USER" | "ADMIN";
-  emailVerifiedAt: string | null; createdAt: string; lastLoginAt?: string | null;
+  emailVerifiedAt: string | null; createdAt: string; lastLoginAt: string | null;
 };
 
 type Filter = "all" | "members" | "admins" | "unverified";

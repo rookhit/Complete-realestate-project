@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Camera, Clock, Eye, LayoutGrid, Lock, Pencil, Rows3, Send, Undo2, X } from "lucide-react";
 import {
-  LISTINGS, LISTING_STATUS, listingGaps, listingToProp, newListingsCount, updateListing,
+  LISTINGS, LISTING_STATUS, listingGaps, listingToProp, newListingsCount, onListingSaveFailed, updateListing,
   type ListingStatus, type ListingSubmission,
 } from "@/app/data/listings";
 import { timeAgo } from "@/app/data/messages";
-import { saveProperty, displayRef, type Prop } from "@/app/data/properties";
+import { applySaved, displayRef, type Prop } from "@/app/data/properties";
+import { createProperty, propToInput } from "@/api/properties";
+import { ApiError } from "@/app/auth";
 import { useDataVersion } from "@/app/data/store";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { ListingCard } from "@/app/components/ui/property-cards";
@@ -44,6 +46,8 @@ function Gaps({ gaps }: { gaps: ReturnType<typeof listingGaps> }) {
 export function AdminListings({ nav }: { nav: AdminNav }) {
   useDataVersion();
   const [toast, notify] = useToast();
+  // A change that could not be saved (it has gone back) is reported here.
+  useEffect(() => onListingSaveFailed(message => notify(message)), [notify]);
   // Phones start on cards: a wide table on a small screen is hard to read.
   const [view, setView] = useState<"table" | "cards">(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "cards" : "table"));
   const [filter, setFilter] = useState<Filter>("open");
@@ -78,10 +82,12 @@ export function AdminListings({ nav }: { nav: AdminNav }) {
   /** Publish straight from the list when nothing is missing; otherwise open the editor. */
   const publish = (l: ListingSubmission) => {
     if (listingGaps(l).required.length) { setEditing(l); return; }
-    const p = listingToProp(l);
-    saveProperty(p);
-    updateListing(l.id, { status: "published", propertyId: p.id, draft: p });
-    notify(`“${p.title}” is now live as ${displayRef(p.nbId)}`, { label: "View", run: () => nav.openProperty(p.id) });
+    // Saved to the API first; the server assigns the property id (the NB ID is the lowest free one).
+    createProperty(propToInput(listingToProp(l))).then(res => {
+      const p = applySaved(res.data);
+      updateListing(l.id, { status: "published", propertyId: p.id, draft: p });
+      notify(`“${p.title}” is now live as ${displayRef(p.nbId)}`, { label: "View", run: () => nav.openProperty(p.id) });
+    }, err => notify(err instanceof ApiError ? err.message : "Could not publish. Please try again."));
   };
   /** Keep it aside to deal with later, without editing. */
   const later = (l: ListingSubmission) => {

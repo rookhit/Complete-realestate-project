@@ -12,6 +12,10 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "RATE_LIMITED"
   | "CONFLICT"
+  // 409: the NB ID (e.g. NBS005) already belongs to another live property.
+  | "REF_TAKEN"
+  // 503: a feature whose server settings are missing (e.g. uploads without the R2 env).
+  | "SERVICE_UNAVAILABLE"
   | "INTERNAL";
 
 export class HttpError extends Error {

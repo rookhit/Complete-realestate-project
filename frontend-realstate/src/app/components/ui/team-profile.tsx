@@ -5,15 +5,29 @@ import type { TeamMember } from "@/app/data/content";
 import { BORDER_L, CREAM, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { BackButton } from "./back-button";
 
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+
+/** Stands in for a missing portrait (the photo is optional): the member's initials. */
+function InitialsTile({ name, size, dark = false }: { name: string; size: string; dark?: boolean }) {
+  return (
+    <div aria-hidden className="w-full h-full flex items-center justify-center select-none"
+      style={{ background: dark ? "#1a1611" : "#e9e3d8", color: GOLD, ...serif, fontSize: size }}>
+      {initials(name)}
+    </div>
+  );
+}
+
 /**
- * A team member's card: portrait in black and white that turns to colour on hover,
- * name and role. The whole card opens the profile pop-up.
+ * A team member's card: portrait in black and white that turns to colour on hover (or their
+ * initials when there is no photo), name and role. The whole card opens the profile pop-up.
  */
 export function TeamCard({ m, onOpen }: { m: TeamMember; onOpen: () => void }) {
   return (
     <button type="button" onClick={onOpen} className="group text-left" aria-label={`View ${m.name}'s profile`}>
       <div className="relative overflow-hidden mb-4" style={{ aspectRatio: "4/5" }}>
-        <img src={m.img} alt={m.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
+        {m.img
+          ? <img src={m.img} alt={m.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
+          : <InitialsTile name={m.name} size="clamp(2.5rem,6vw,4rem)" />}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.55) 0%, transparent 45%)" }} />
         <span className="absolute left-4 bottom-4 flex items-center gap-2 text-[10px] tracking-[0.26em] uppercase opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500" style={{ color: WHITE, ...sans }}>
           View Profile <ArrowRight size={12} />
@@ -26,7 +40,6 @@ export function TeamCard({ m, onOpen }: { m: TeamMember; onOpen: () => void }) {
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 /**
@@ -92,12 +105,21 @@ export function TeamProfile({ members, index, onIndex, onClose }: {
             {/* Portrait */}
             <div className="relative overflow-hidden shrink-0 h-[56vh] md:h-full" style={{ background: "#0a0908" }}>
               <AnimatePresence initial={false}>
-                <motion.img key={m.id} src={m.img} alt={m.name} draggable={false}
-                  className="absolute inset-0 w-full h-full object-cover select-none touch-pan-y"
-                  initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  transition={{ opacity: { duration: 0.45 }, scale: { duration: 1.2, ease: EASE } }}
-                  drag={count > 1 ? "x" : false} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.15}
-                  onDragEnd={(_, info) => { if (info.offset.x < -60) step(1); else if (info.offset.x > 60) step(-1); }} />
+                {m.img ? (
+                  <motion.img key={m.id} src={m.img} alt={m.name} draggable={false}
+                    className="absolute inset-0 w-full h-full object-cover select-none touch-pan-y"
+                    initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                    transition={{ opacity: { duration: 0.45 }, scale: { duration: 1.2, ease: EASE } }}
+                    drag={count > 1 ? "x" : false} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.15}
+                    onDragEnd={(_, info) => { if (info.offset.x < -60) step(1); else if (info.offset.x > 60) step(-1); }} />
+                ) : (
+                  <motion.div key={m.id} className="absolute inset-0 touch-pan-y"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.45 }}
+                    drag={count > 1 ? "x" : false} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.15}
+                    onDragEnd={(_, info) => { if (info.offset.x < -60) step(1); else if (info.offset.x > 60) step(-1); }}>
+                    <InitialsTile name={m.name} size="clamp(5rem,12vw,9rem)" dark />
+                  </motion.div>
+                )}
               </AnimatePresence>
               <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.85) 0%, rgba(10,9,8,0.25) 38%, transparent 60%), linear-gradient(to bottom, rgba(10,9,8,0.35) 0%, transparent 22%)" }} />
               <div className="absolute inset-3 md:inset-5 border pointer-events-none" style={{ borderColor: "rgba(176,136,72,0.5)" }} />
@@ -122,7 +144,9 @@ export function TeamProfile({ members, index, onIndex, onClose }: {
                           title={p.name}
                           className="shrink-0 w-11 h-11 rounded-full overflow-hidden transition-all duration-300 hover:opacity-100"
                           style={{ outline: `1.5px solid ${on ? GOLD : "transparent"}`, outlineOffset: 2, opacity: on ? 1 : 0.55 }}>
-                          <img src={p.img} alt="" className={`w-full h-full object-cover ${on ? "" : "grayscale"}`} />
+                          {p.img
+                            ? <img src={p.img} alt="" className={`w-full h-full object-cover ${on ? "" : "grayscale"}`} />
+                            : <InitialsTile name={p.name} size="14px" dark />}
                         </button>
                       );
                     })}

@@ -14,21 +14,24 @@ import {
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
 import { DISTRICTS } from "@/app/data/districts";
-import { reviewsFor } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, matchesRef, type Prop } from "@/app/data/properties";
+import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
+import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, matchesRef, propertiesError, propertiesStatus, type Prop } from "@/app/data/properties";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap } from "@/app/components/ui/maps";
-import { addMessage, unreadCount } from "@/app/data/messages";
-import { addListing, newListingsCount } from "@/app/data/listings";
-import { CALLBACK_TIMES, CONTACT_TOPICS } from "@/app/data/options";
+import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
+import { sendCallback, sendContact, sendEnquiry } from "@/api/messages";
+import { clearListings, loadListings, newListingsCount } from "@/app/data/listings";
+import { submitListing } from "@/api/listings";
+import { uploadListingPhoto } from "@/api/uploads";
+import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
 import { useDataVersion } from "@/app/data/store";
 import {
-  BLOGS, TESTIMONIALS, TEAM, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
+  BLOGS, articlesStatus, loadArticles, siteStatus, loadSiteSettings, TESTIMONIALS, testimonialsStatus, loadTestimonials, TEAM, teamStatus, loadTeam, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
   companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
 } from "@/app/data/content";
 import { ServiceIcon } from "@/app/components/ui/service-icon";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
-import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, onSignInRequest, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
+import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, onSignInRequest, requestSignIn, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 import {
   BG_LIGHT, FG_DARK, FG_LIGHT, CREAM, WHITE, MAROON, GOLD, GOLD_DIM,
   MUTED_D, MUTED_L, BORDER_L, BORDER_D, serif, sans, img,
@@ -239,7 +242,7 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
   const [openSub, setOpenSub] = useState<string|null>(null);
   useDataVersion();
   // Unread messages plus free listings waiting for review.
-  const unread = user?.role==="ADMIN" ? unreadCount()+newListingsCount() : 0;
+  const unread = user?.role==="ADMIN" ? unreadCount()+newListingsCount()+pendingReviewCount() : 0;
   const badge = unread>0 ? <span className="min-w-[18px] h-[18px] px-1 rounded-full inline-flex items-center justify-center text-[10px] font-semibold tabular-nums leading-none" style={{background:"#d93636",color:WHITE,letterSpacing:0,...sans}} aria-label={`${unread} new messages and listings`}>{unread>99?"99+":unread}</span> : null;
   useEffect(()=>{
     document.body.style.overflow = menu ? "hidden" : "";
@@ -460,15 +463,49 @@ function Footer({ go }: { go:Go }) {
   );
 }
 
+// ─── Website forms: signed-in members only ────────────────────────────────────
+// The callback, contact and property enquiry forms post to the API (src/api/messages.ts) and land
+// in Admin → Messages with the member's account. Signed out, the send button becomes "Sign In".
+
+/** Takes the place of a form's send button for visitors who are not signed in. */
+function SignInToSend({ action, light=true }: { action:string; light?:boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <button type="button" onClick={requestSignIn} className="flex items-center justify-center gap-2 py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
+        <Lock size={14}/>Sign In to {action}
+      </button>
+      <p className="text-[12px] leading-relaxed" style={{color:light?MUTED_L:MUTED_D,...sans}}>Only signed-in members can send messages, so we always know how to reach you. Creating an account takes a minute.</p>
+    </div>
+  );
+}
+
+/** The message to show when a form could not be sent. A lapsed sign-in opens the login page. */
+function sendError(err:unknown): string {
+  if(err instanceof ApiError && err.status===401) { requestSignIn(); return "Please sign in again to send."; }
+  return err instanceof ApiError ? err.message : "Could not send. Please check your connection and try again.";
+}
+
 // ─── Callback form ────────────────────────────────────────────────────────────
 // The "Let Us Call You" form at the bottom of the home page. The floating Quick Enquiry
 // button scrolls here.
 function CallbackForm() {
+  const { user } = useAuth();
   const [name,setName]=useState("");
   const [phone,setPhone]=useState("");
   const [time,setTime]=useState(CALLBACK_TIMES[0]??"");
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [serverErr,setServerErr]=useState("");
+  // Signed in: start from the account's name and phone (still editable).
+  useEffect(()=>{ if(user){ setName(n=>n||user.name||""); setPhone(p=>p||user.phone||""); } },[user]);
+  const send=async()=>{
+    if(!name.trim()||!phone.trim()){ setErr(true); return; }
+    setErr(false); setServerErr(""); setBusy(true);
+    try { await sendCallback({name:name.trim(),phone:phone.trim(),time}); setSent(true); }
+    catch(e) { setServerErr(sendError(e)); }
+    finally { setBusy(false); }
+  };
 
   if (sent) {
     return (
@@ -491,10 +528,13 @@ function CallbackForm() {
         </select>
         <ChevronDown size={15} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:MUTED_L}}/>
       </div>
-      <button onClick={()=>{ if(name.trim()&&phone.trim()){ addMessage({kind:"callback",name:name.trim(),phone:phone.trim(),subject:`Please call: ${time}`,body:`Requested a call back: ${time}.`}); setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
-        Request a Callback
-      </button>
+      {user?(
+        <button onClick={()=>void send()} disabled={busy} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>
+          {busy?"Sending…":"Request a Callback"}
+        </button>
+      ):<SignInToSend action="Request a Callback"/>}
       {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name and phone number.</p>}
+      {serverErr&&<p role="alert" className="text-[14px]" style={{color:MAROON,...sans}}>{serverErr}</p>}
     </div>
   );
 }
@@ -523,12 +563,20 @@ function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:
 function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
   const [active,setActive]=useState(0);
   const featured=ALL_PROPS.filter(p=>p.featured).slice(0,3);
-  const prop=featured[active]||ALL_PROPS[0];
-  useEffect(()=>{ const t=setInterval(()=>setActive(a=>(a+1)%featured.length),6500); return ()=>clearInterval(t); },[]);
+  // The slide on screen. The counter only grows, so it can never divide by an empty list.
+  const slide=active%Math.max(featured.length,1);
+  const prop=featured[slide]||ALL_PROPS[0];
+  useEffect(()=>{ const t=setInterval(()=>setActive(a=>a+1),6500); return ()=>clearInterval(t); },[]);
+  // No properties yet (none added, or the server is down): a plain hero instead of a crash.
+  if(!prop) return (
+    <section className="relative h-[70vh] min-h-[480px] flex items-end px-6 md:px-12 lg:px-20 pb-20" style={{background:"#0a0908"}}>
+      <h1 className="leading-[0.92]" style={{color:FG_DARK,...serif,fontSize:"clamp(2.4rem,5vw,4.5rem)"}}>Nepal Bhoomi Estate Agents</h1>
+    </section>
+  );
   return (
     <section className="relative h-screen min-h-[600px] overflow-hidden flex flex-col justify-end">
       <AnimatePresence mode="wait">
-        <motion.div key={active} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
+        <motion.div key={slide} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
           <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover"/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.4) 45%, rgba(10,9,8,0.08) 100%)"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to right, rgba(10,9,8,0.55) 0%, transparent 65%)"}}/>
@@ -537,14 +585,14 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
       <div className="relative z-10 px-6 md:px-12 lg:px-20 pb-20 w-full">
         <div className="flex items-center gap-4 mb-6"><div style={{width:"3rem",height:"0.5px",background:GOLD}}/><Tag>{prop.badge} · {prop.type}</Tag></div>
         <AnimatePresence mode="wait">
-          <motion.h1 key={active} className={`${prop.tagline?"mb-3":"mb-6"} leading-[0.9]`} style={{color:FG_DARK,...serif,fontSize:"clamp(2.8rem,7.5vw,6.5rem)"}} initial={{opacity:0,y:22}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.85,ease:[0.16,1,0.3,1]}}>{prop.title}</motion.h1>
+          <motion.h1 key={slide} className={`${prop.tagline?"mb-3":"mb-6"} leading-[0.9]`} style={{color:FG_DARK,...serif,fontSize:"clamp(2.8rem,7.5vw,6.5rem)"}} initial={{opacity:0,y:22}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.85,ease:[0.16,1,0.3,1]}}>{prop.title}</motion.h1>
         </AnimatePresence>
         {/* The tagline the admin writes, e.g. "Heritage Reimagined". */}
         <AnimatePresence mode="wait">
-          {prop.tagline&&<motion.p key={`t${active}`} className="mb-6 text-[15px] md:text-[17px] tracking-[0.04em] italic" style={{color:"rgba(240,235,224,0.78)",...serif}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{delay:0.1}}>{prop.tagline}</motion.p>}
+          {prop.tagline&&<motion.p key={`t${slide}`} className="mb-6 text-[15px] md:text-[17px] tracking-[0.04em] italic" style={{color:"rgba(240,235,224,0.78)",...serif}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{delay:0.1}}>{prop.tagline}</motion.p>}
         </AnimatePresence>
         <AnimatePresence mode="wait">
-          <motion.div key={`m${active}`} className="flex flex-wrap items-center gap-x-7 gap-y-3 mb-9" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{delay:0.06}}>
+          <motion.div key={`m${slide}`} className="flex flex-wrap items-center gap-x-7 gap-y-3 mb-9" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{delay:0.06}}>
             <div className="flex items-center gap-1.5"><MapPin size={13} style={{color:GOLD}}/><span className="text-[14px] tracking-[0.12em]" style={{color:"rgba(240,235,224,0.62)",...sans}}>{prop.location}</span></div>
             <span className="w-px h-3" style={{background:"rgba(240,235,224,0.18)"}}/>
             <span className="text-[14px] tracking-[0.12em]" style={{color:"rgba(240,235,224,0.62)",...sans}}>{prop.listing}</span>
@@ -562,8 +610,8 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
           <div className="flex items-center gap-4">
             {featured.map((_,i)=>(
               <button key={i} onClick={()=>setActive(i)} className="flex items-center gap-2">
-                <motion.div animate={{width:i===active?28:14,background:i===active?GOLD:"rgba(240,235,224,0.22)"}} transition={{duration:0.4}} style={{height:"1px"}}/>
-                <span className="text-[10px] tracking-[0.25em]" style={{color:i===active?GOLD:"rgba(240,235,224,0.3)",...sans}}>{String(i+1).padStart(2,"0")}</span>
+                <motion.div animate={{width:i===slide?28:14,background:i===slide?GOLD:"rgba(240,235,224,0.22)"}} transition={{duration:0.4}} style={{height:"1px"}}/>
+                <span className="text-[10px] tracking-[0.25em]" style={{color:i===slide?GOLD:"rgba(240,235,224,0.3)",...sans}}>{String(i+1).padStart(2,"0")}</span>
               </button>
             ))}
           </div>
@@ -1073,7 +1121,9 @@ function TestimonialsSection() {
                 <div className="flex gap-0.5 mb-5">{Array.from({length:t.rating}).map((_,j)=><Star key={j} size={15} fill={GOLD} style={{color:GOLD}}/>)}</div>
                 <p className="text-[15px] leading-[1.75] mb-6" style={{color:MUTED_L,...sans}}>"{t.text}"</p>
                 <div className="flex items-center gap-3 pt-5 border-t" style={{borderColor:BORDER_L}}>
-                  <img src={t.img} alt={t.name} className="w-10 h-10 object-cover rounded-full"/>
+                  {t.img
+                    ?<img src={t.img} alt={t.name} className="w-10 h-10 object-cover rounded-full"/>
+                    :<span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{background:"#e9e3d8",color:GOLD,...serif}}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
                   <div><p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{t.name}</p><p className="text-[12px]" style={{color:MUTED_L,...sans}}>{t.role}</p></div>
                 </div>
               </div>
@@ -1088,6 +1138,8 @@ function TestimonialsSection() {
 // ─── Blog Section ─────────────────────────────────────────────────────────────
 function BlogSection({ go }: { go:Go }) {
   const [feat,...rest]=BLOGS;
+  // No articles (none published yet, or the journal couldn't load): leave the section out.
+  if(!feat) return null;
   return (
     <section className="py-28 md:py-36 border-t" style={{background:CREAM,borderColor:BORDER_L}}>
       <div className="px-6 md:px-12 lg:px-20">
@@ -1467,11 +1519,16 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   const waLink=whatsappLink(`Hello, I'm interested in ${displayRef(p.nbId)} (${p.title}).`);
   const [galIdx,setGalIdx]=useState(0);
   const [lightbox,setLightbox]=useState(false);
+  const { user } = useAuth();
   const [form,setForm]=useState({name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [serverErr,setServerErr]=useState("");
   const [shared,setShared]=useState(false);
-  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setShared(false); },[propertyId]);
+  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setServerErr(""); setShared(false); },[propertyId]);
+  // Signed in: start from the account's details (still editable).
+  useEffect(()=>{ if(user) setForm(v=>({...v,name:v.name||user.name||"",email:v.email||user.email,phone:v.phone||user.phone||""})); },[user]);
   useEffect(()=>{
     if(!lightbox) return;
     const k=(e:KeyboardEvent)=>{
@@ -1630,11 +1687,10 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
               </a>
             </div>
           </div>
-          {reviewsFor(p.id).length>0&&<>
-            <div className="h-px" style={{background:BORDER_L}}/>
-            {/* Reviews: social proof after the facts, before "You May Also Like". */}
-            <ReviewsSection propertyId={p.id}/>
-          </>}
+          <div className="h-px" style={{background:BORDER_L}}/>
+          {/* Reviews: social proof after the facts, before "You May Also Like". Always shown, so
+              a visitor can write the first one. */}
+          <ReviewsSection propertyId={p.id}/>
         </div>
         {/* Right — sticky enquiry */}
         <div className="lg:col-span-1">
@@ -1645,7 +1701,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
                 <CheckCircle2 size={30} style={{color:GOLD}}/>
                 <p className="text-lg" style={{color:FG_LIGHT,...serif}}>Enquiry sent</p>
                 <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>An advisor will be in touch about {p.title} within 24 hours.</p>
-                <button onClick={()=>{setSent(false);setForm({name:"",email:"",phone:"",msg:""});}} className="mt-1 text-[11px] tracking-[0.25em] uppercase transition-colors hover:brightness-110" style={{color:MAROON,...sans}}>Send another</button>
+                <button onClick={()=>{setSent(false);setForm(v=>({...v,msg:""}));}} className="mt-1 text-[11px] tracking-[0.25em] uppercase transition-colors hover:brightness-110" style={{color:MAROON,...sans}}>Send another</button>
               </div>
             ):(<>
               <p className="text-[12px] leading-relaxed" style={{color:MUTED_L,...sans}}>Our advisors respond within 24 hours with full details.</p>
@@ -1659,8 +1715,17 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
                 <label className="text-[10px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>Message</label>
                 <textarea rows={3} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-3 py-2.5 text-[14px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder={`I'm interested in ${displayRef(p.nbId)}...`} style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
-              <button onClick={()=>{ if(form.name.trim()&&(form.email.trim()||form.phone.trim())){ addMessage({kind:"enquiry",name:form.name.trim(),email:form.email.trim()||undefined,phone:form.phone.trim()||undefined,propertyId:p.id,nbId:p.nbId,subject:p.title,body:form.msg.trim()||`Interested in ${displayRef(p.nbId)}.`}); setSent(true);setErr(false);} else setErr(true); }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>Send Enquiry</button>
+              {user?(
+                <button disabled={busy} onClick={async()=>{
+                  if(!form.name.trim()||!(form.email.trim()||form.phone.trim())){ setErr(true); return; }
+                  setErr(false); setServerErr(""); setBusy(true);
+                  try { await sendEnquiry({propertyId:p.id,name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),message:form.msg.trim()}); setSent(true); }
+                  catch(e) { setServerErr(sendError(e)); }
+                  finally { setBusy(false); }
+                }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>{busy?"Sending…":"Send Enquiry"}</button>
+              ):<SignInToSend action="Send an Enquiry"/>}
               {err&&<p className="text-[12px]" style={{color:MAROON,...sans}}>Please add your name and either an email or a phone number.</p>}
+              {serverErr&&<p role="alert" className="text-[12px]" style={{color:MAROON,...sans}}>{serverErr}</p>}
             </>)}
             <a href={waLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3.5 border text-[11px] tracking-[0.22em] uppercase transition-colors hover:bg-[rgba(37,211,102,0.12)]" style={{borderColor:"#25D366",color:"#1f9e4d",background:"rgba(37,211,102,0.07)",...sans}}><MessageCircle size={15}/>Chat on WhatsApp</a>
           </div>
@@ -1926,6 +1991,7 @@ function BlogPage({ go }: { go:Go }) {
         <h1 className="leading-[0.92]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.6rem,5.4vw,4.6rem)"}}>Property Journal</h1>
       </div>
       <div className="px-6 md:px-12 lg:px-20 py-16">
+        {BLOGS.length===0&&<p className="text-[15px]" style={{color:MUTED_L,...sans}}>No articles yet. Please check back soon.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 md:gap-14">
           {BLOGS.map(a=>(
             <button key={a.id} onClick={()=>go("blog-post",{blog:a.id})} className="flex flex-col group text-left">
@@ -1950,6 +2016,12 @@ function BlogPage({ go }: { go:Go }) {
 // ─── Blog Post ─────────────────────────────────────────────────────────────────
 function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:()=>void; backLabel:string }) {
   const a=BLOGS.find(b=>b.id===id)||BLOGS[0];
+  if(!a) return (
+    <div className="min-h-screen pt-32 px-6 md:px-12 lg:px-20" style={{background:BG_LIGHT}}>
+      <p className="text-[15px] mb-6" style={{color:MUTED_L,...sans}}>This article isn't available.</p>
+      <BackButton label={backLabel} onClick={onBack}/>
+    </div>
+  );
   const more=BLOGS.filter(b=>b.id!==a.id);
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
@@ -2031,9 +2103,14 @@ function ServicesPage({ go }: { go:Go }) {
 
 // ─── Contact Page ──────────────────────────────────────────────────────────────
 function ContactPage() {
+  const { user } = useAuth();
   const [form,setForm]=useState({name:"",email:"",phone:"",interest:CONTACT_TOPICS[0]??"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [serverErr,setServerErr]=useState("");
+  // Signed in: start from the account's details (still editable).
+  useEffect(()=>{ if(user) setForm(v=>({...v,name:v.name||user.name||"",email:v.email||user.email,phone:v.phone||user.phone||""})); },[user]);
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-16 md:py-20 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
@@ -2060,8 +2137,17 @@ function ContactPage() {
                 <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Message</label>
                 <textarea rows={4} value={form.msg} onChange={e=>setForm(v=>({...v,msg:e.target.value}))} className="border px-4 py-3 text-[15px] outline-none resize-none" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
               </div>
-              <button onClick={()=>{ if(form.name.trim()&&form.email.trim()){ addMessage({kind:"contact",name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim()||undefined,subject:form.interest,body:form.msg.trim()||"(No message)"}); setSent(true);setErr(false);} else setErr(true); }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Send Enquiry</button>
+              {user?(
+                <button disabled={busy} onClick={async()=>{
+                  if(!form.name.trim()||!form.email.trim()){ setErr(true); return; }
+                  setErr(false); setServerErr(""); setBusy(true);
+                  try { await sendContact({name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),topic:form.interest,message:form.msg.trim()}); setSent(true); }
+                  catch(e) { setServerErr(sendError(e)); }
+                  finally { setBusy(false); }
+                }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Sending…":"Send Enquiry"}</button>
+              ):<SignInToSend action="Send an Enquiry"/>}
               {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name and email address.</p>}
+              {serverErr&&<p role="alert" className="text-[14px]" style={{color:MAROON,...sans}}>{serverErr}</p>}
             </div>
           )}
         </div>
@@ -2479,6 +2565,8 @@ function FreeListingPage({ go }: { go:Go }) {
   const [amenities,setAmenities]=useState<string[]>([]);
   const [err,setErr]=useState("");
   const [done,setDone]=useState(false);
+  // While sending: which photo is uploading ("Uploading photo 2 of 4…"), then the listing itself.
+  const [sending,setSending]=useState("");
 
   const textFields=[
     {l:"Property Title",t:"text",ph:"e.g. Patan 5-Bedroom Villa"},
@@ -2494,18 +2582,33 @@ function FreeListingPage({ go }: { go:Go }) {
   const toggleAmenity=(name:string)=>
     setAmenities(a=>a.includes(name)?a.filter(x=>x!==name):[...a,name]);
 
-  const submit=()=>{
+  const submit=async()=>{
+    if(sending) return;
     const missing=["Property Title","Contact Name","Contact Phone"].find(k=>!(vals[k]||"").trim());
     if(missing){ setErr(`Please fill in "${missing}".`); return; }
     if(!district.trim()){ setErr("Please choose a district."); return; }
     if(images.length===0){ setErr("Please add at least one photo — listings with photos get far more enquiries."); return; }
     // Lands in Admin → Free Listings for review; the seller's details stay private.
     const v=(k:string)=>(vals[k]||"").trim();
-    addListing({seller:{name:v("Contact Name"),phone:v("Contact Phone"),email:v("Contact Email")||undefined},
-      title:v("Property Title"),listing:v("Listing Type")==="For Rent"?"For Rent":"For Sale",type:v("Property Type")&&v("Property Type")!=="All Types"?v("Property Type"):"House/Bungalow",
-      district,price:v("Price (NPR)"),builtArea:v("Built Area"),landArea:v("Land Area"),buildYear:v("Build Year"),description:v("desc"),
-      amenities,photos:images.map(i=>i.url)});
-    setErr(""); setDone(true);
+    setErr("");
+    try {
+      // The photos go up first (one at a time, in order: the first is the cover), then the listing.
+      const photos:string[]=[];
+      for(const [i,img] of images.entries()){
+        setSending(`Uploading photo ${i+1} of ${images.length}…`);
+        photos.push(await uploadListingPhoto(img.file));
+      }
+      setSending("Sending your listing…");
+      await submitListing({sellerName:v("Contact Name"),sellerPhone:v("Contact Phone"),sellerEmail:v("Contact Email"),
+        title:v("Property Title"),listing:v("Listing Type")==="For Rent"?"For Rent":"For Sale",type:v("Property Type")&&v("Property Type")!=="All Types"?v("Property Type"):"House/Bungalow",
+        district,price:v("Price (NPR)"),builtArea:v("Built Area"),landArea:v("Land Area"),buildYear:v("Build Year"),description:v("desc"),
+        amenities,photos});
+      setDone(true);
+    } catch(e) {
+      setErr(sendError(e));
+    } finally {
+      setSending("");
+    }
   };
 
   return (
@@ -2617,7 +2720,7 @@ function FreeListingPage({ go }: { go:Go }) {
             </div>
 
             {err && <p className="mt-6 text-[14px]" style={{color:MAROON,...sans}}>{err}</p>}
-            <button onClick={submit} className="mt-6 w-full py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Submit Free Listing</button>
+            <button onClick={()=>void submit()} disabled={!!sending} className="mt-6 w-full py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{sending||"Submit Free Listing"}</button>
           </>)}
         </div>
 
@@ -2694,8 +2797,44 @@ function visitLabel(v:Visit):string {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+/**
+ * Loads the properties once the sign-in check is done: the admin list for the admin (it adds the
+ * private location the editor needs), the public list for everyone else. Shows a retry bar when
+ * the server can't be reached.
+ */
+function PropertySync() {
+  const { user, status } = useAuth();
+  const admin = user?.role==="ADMIN";
+  // The journal loads alongside: the admin's list includes drafts.
+  useEffect(()=>{ if(status!=="loading") { void loadProperties(admin); void loadArticles(admin); } },[status,admin]);
+  // The team is the same for everyone.
+  useEffect(()=>{ void loadTeam(); void loadTestimonials(); void loadSiteOptions(); void loadSiteSettings(); },[]);
+  // The admin's inbox: loaded on sign-in and checked every 30 s, so new messages (and the red
+  // badge) show up without a reload. Forgotten on sign-out.
+  useEffect(()=>{
+    if(!admin){ clearMessages(); clearAdminReviews(); clearListings(); return; }
+    void loadMessages(); void loadAdminReviews(); void loadListings();
+    const t=window.setInterval(()=>{ void loadMessages(); void loadAdminReviews(); void loadListings(); },30_000);
+    return ()=>window.clearInterval(t);
+  },[admin]);
+  // Which properties this user has hearted (forgotten on sign-out).
+  useEffect(()=>{ if(status==="loading") return; if(user) void loadMyHearts(); else clearMyHearts(); },[user?.id,status]);
+  useDataVersion();
+  if(propertiesStatus!=="error") return null;
+  return (
+    <div role="alert" className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[120] flex flex-wrap items-center gap-4 px-5 py-3.5 border shadow-lg max-w-[calc(100%-2rem)]" style={{background:WHITE,borderColor:"rgba(138,32,48,0.35)"}}>
+      <span className="text-[14px]" style={{color:FG_LIGHT,...sans}}>Couldn't load the properties. {propertiesError}</span>
+      <button onClick={()=>void loadProperties(admin)} className="px-4 py-2 text-[11px] tracking-[0.2em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Try again</button>
+    </div>
+  );
+}
+
 export default function App() {
   const [loading, setLoading]=useState(true);
+  // Re-render every page when the properties arrive (or the admin saves one).
+  useDataVersion();
+  // The loading screen stays until the first property load has finished, so no page shows empty.
+  const showLoader=loading||propertiesStatus==="loading"||articlesStatus==="loading"||teamStatus==="loading"||testimonialsStatus==="loading"||siteStatus==="loading";
   // The backend's Google callback lands back here with ?auth=google or ?auth_error=google.
   const [googleResult]=useState<GoogleResult>(()=>{
     const q=new URLSearchParams(window.location.search);
@@ -2807,9 +2946,10 @@ export default function App() {
     <AuthProvider>
     <div className="min-h-screen bg-background">
       <AnimatePresence>
-        {loading&&<LoadingScreen key="loader" onDone={handleDone}/>}
+        {showLoader&&<LoadingScreen key="loader" onDone={handleDone}/>}
       </AnimatePresence>
-      <motion.div animate={{opacity:loading?0:1}} transition={{duration:0.6}} style={{pointerEvents:loading?"none":"auto"}}>
+      <PropertySync/>
+      <motion.div animate={{opacity:showLoader?0:1}} transition={{duration:0.6}} style={{pointerEvents:showLoader?"none":"auto"}}>
         <Navbar page={page} go={go}/>
         <AnimatePresence mode="wait">
           {/* The three admin pages share one key, so switching between their tabs is instant
@@ -2822,7 +2962,12 @@ export default function App() {
             {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
             {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
             {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
-            {page==="property"&&<PropertyDetailPage propertyId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>}
+            {page==="property"&&(ALL_PROPS.length
+              ? <PropertyDetailPage propertyId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>
+              : <div className="min-h-screen pt-40 px-6 text-center" style={{background:BG_LIGHT}}>
+                  <p className="text-2xl mb-4" style={{color:FG_LIGHT,...serif}}>No properties to show yet.</p>
+                  <button onClick={()=>go("home")} className="text-[11px] tracking-[0.25em] uppercase underline underline-offset-4" style={{color:MAROON,...sans}}>Back to home</button>
+                </div>)}
             {page==="about"&&<AboutPage go={go}/>}
             {page==="team"&&<TeamPage onBack={goBack} backLabel={backLabel}/>}
             {page==="blog"&&<BlogPage go={go}/>}
