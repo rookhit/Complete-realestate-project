@@ -47,7 +47,8 @@ const intParam = (fallback: number, max: number) =>
 export const messageQuerySchema = z.object({
   kind: z.enum(["enquiry", "callback", "contact", "email"]).optional().catch(undefined),
   unread: z.enum(["true", "1"]).optional().catch(undefined),
-  q: z.string().trim().max(100).optional(),
+  // Longer searches are cut to 100 characters, not refused.
+  q: z.string().trim().transform((s) => s.slice(0, 100)).optional().catch(undefined),
   page: intParam(1, 10_000).default(1),
   limit: intParam(50, 200).default(50),
 });

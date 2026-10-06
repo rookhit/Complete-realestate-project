@@ -10,7 +10,7 @@ Backend for a real estate website, built with Next.js (App Router), TypeScript, 
 
 The developer works on Windows with PowerShell. Give commands that work there.
 
-Current phase (updated 2026-10-01): authentication and authorization are built; the database schema for all site content is built and applied (tables only). The property endpoints are built (2026-09-30), property photo / video uploads to Cloudflare R2, the journal (articles), team and testimonial endpoints (2026-10-01), website forms + Admin → Messages, saved dropdown options, lastLoginAt on Users, reviews and hearts, site settings, free listings (2026-10-02). Next: the other content endpoints from FRONTEND_CLAUDE.md §0.4 (videos, hearts and reviews, free listings and messages, site content), each when requested.
+Current phase (updated 2026-10-06): authentication and authorization are built; the database schema for all site content is built and applied (tables only). The property endpoints are built (2026-09-30), property photo / video uploads to Cloudflare R2, the journal (articles), team and testimonial endpoints (2026-10-01), website forms + Admin → Messages, saved dropdown options, lastLoginAt on Users, reviews and hearts, site settings, free listings (2026-10-02); the backend fixes from the 2026-10-05 QA audit (2026-10-06, B1-B5; frontend findings F1-F4 handed to the frontend in FRONTEND_CLAUDE.md §0.0). Next: the other content endpoints from FRONTEND_CLAUDE.md §0.4 (videos, hearts and reviews, free listings and messages, site content), each when requested.
 
 Scope
 
@@ -90,8 +90,8 @@ POST	/api/v1/auth/login/2fa	has mfaToken (body or mfa_pending cookie)	{ code } =
 POST	/api/v1/auth/2fa/setup	logged in (fresh)	{ password? } → { secret, otpauthUrl }.
 POST	/api/v1/auth/2fa/enable	logged in (fresh)	{ code } → { recoveryCodes, accessToken }; revokes all other sessions.
 POST	/api/v1/auth/2fa/disable	logged in (fresh)	{ password?, code } → 204.
-POST	/api/v1/auth/refresh	has refresh cookie	Rotate the refresh token, return { accessToken }. 401 if invalid.
-POST	/api/v1/auth/logout	anyone	Revoke the refresh token, clear the cookie. 204.
+POST	/api/v1/auth/refresh	has refresh cookie	Body {} with Content-Type: application/json (required: CSRF check, as is Origin; else 400). Rotate the refresh token, return { accessToken }. 401 if invalid.
+POST	/api/v1/auth/logout	anyone	Body {} with Content-Type: application/json (required, like /refresh). Revoke the refresh token, clear the cookie. 204.
 GET	/api/v1/auth/me	logged in (Bearer)	Return { user }.
 POST	/api/v1/auth/forgot-password	anyone	Always 204. Emails a reset link if the email matches a user.
 POST	/api/v1/auth/verify-reset-token	anyone	204 if the reset token is still usable, else 400. Does not consume it.
@@ -100,7 +100,7 @@ GET	/api/v1/admin/users	admin only	Return { users } (id, email, name, phone, rol
 GET	/api/cron/cleanup-tokens	scheduler (Bearer CRON_SECRET)	Deletes dead refresh/reset tokens and email codes, old RateLimit rows, audit logs > 180 days, unverified accounts > 7 days. 404 while CRON_SECRET is unset.
 GET	/api/v1/auth/google	anyone (browser navigation)	303 to Google with state + PKCE; the state/verifier live in a short-lived httpOnly cookie.
 GET	/api/v1/auth/google/callback	Google	Verify state + ID token, find/link/create the user, record the login in OAuthAccount, set the refresh cookie, 303 to FRONTEND_ORIGIN/?auth=google (or ?auth_error=google).
-GET	/api/v1/properties	anyone	Live properties, { data, meta }. Query: listing (for-sale | for-rent), type, district, minPrice, maxPrice, preset (hot | new), q (full NB ID, or text in title / type / address / district), sort (newest | price_asc | price_desc | reactions), page, limit (≤ 100). Never the exact location unless the admin chose EXACT.
+GET	/api/v1/properties	anyone	Live properties, { data, meta }. Query: listing (for-sale | for-rent), type, district, minPrice, maxPrice, preset (hot | new), q (full NB ID, or text in title / type / address / district; over 100 characters is cut to 100, never an error), sort (newest | price_asc | price_desc | reactions), page, limit (≤ 100). Never the exact location unless the admin chose EXACT.
 GET	/api/v1/properties/:id	anyone	One live property (404 if deleted).
 GET	/api/v1/properties/:id/related	anyone	3 others with the same listing, same district / type first.
 GET	/api/v1/admin/properties	admin only	Same filters; each item adds deletedAt, mapUrl, exact and edit (the values exactly as the editor sends them).
@@ -127,7 +127,7 @@ PUT	/api/v1/admin/testimonials/order	admin only	{ ids } = every testimonial id i
 POST	/api/v1/enquiries	logged in	"Enquire About This Property": { propertyId, name, email?, phone?, message? } (email or phone required) → 201. Subject = the property's title. 404 if the property isn't listed.
 POST	/api/v1/callbacks	logged in	"Request a Callback": { name, phone, time } → 201.
 POST	/api/v1/contact	logged in	Contact Us: { name, email, phone?, topic, message? } → 201. All three: userId from the token (Message.userId), 30/h per IP ("send-message").
-GET	/api/v1/admin/messages	admin only	?kind=enquiry|callback|contact|email&unread=true&q (name, email, phone, subject, text or a full NB ID)&page&limit (≤ 200). Newest first; meta adds unread. Items: the frontend's Message shape + account { name, email } of the sender.
+GET	/api/v1/admin/messages	admin only	?kind=enquiry|callback|contact|email&unread=true&q (name, email, phone, subject, text or a full NB ID; cut to 100 characters)&page&limit (≤ 200). Newest first; meta adds unread. Items: the frontend's Message shape + account { name, email } of the sender.
 GET	/api/v1/admin/messages/unread-count	admin only	{ data: { unread } }.
 PATCH / DELETE	/api/v1/admin/messages/:id	admin only	{ read?, replied? }; delete = hidden at once, restorable for 60 s, then removed for good (204).
 POST	/api/v1/admin/messages/:id/restore	admin only	Undo a delete (within 60 s; later 404).
@@ -143,7 +143,7 @@ GET	/api/v1/admin/reviews	admin only	?status=pending|published|rejected&property
 GET	/api/v1/admin/reviews/pending-count	admin only	{ data: { pending } }.
 PATCH / DELETE	/api/v1/admin/reviews/:id	admin only	{ status?, verified? } (approve = "published", reject / hide = "rejected", Verified Visit); delete = hidden, restorable 60 s, then removed (204).
 POST	/api/v1/admin/reviews/:id/restore	admin only	Undo a delete (within 60 s; later 404).
-POST	/api/v1/listings	logged in	The Free Listing form: { sellerName, sellerPhone, sellerEmail?, title, listing "For Sale" | "For Rent", type, district (one of the 77), price / builtArea / landArea / buildYear / description as typed, amenities (unknown names dropped), photos (1-20 uploaded URLs) } → 201, status new. 10/h per IP ("send-listing").
+POST	/api/v1/listings	logged in	The Free Listing form: { sellerName, sellerPhone, sellerEmail?, title, listing "For Sale" | "For Rent", type, district (one of the 77), price / builtArea / landArea / buildYear / description as typed, amenities (unknown names dropped), photos (1-20 URLs returned by /listings/uploads — R2 public URL, or the local test store in development, under listings/photos/; any other link → 400 "Photos must be uploaded", since 2026-10-06) } → 201, status new. 10/h per IP ("send-listing").
 POST	/api/v1/listings/uploads	logged in	{ contentType, size } → a signed upload link for one listing photo (images only, ≤ 8 MB, under listings/). 120/h per IP ("listing-upload").
 GET	/api/v1/admin/listings	admin only	Every free listing, newest first, with the seller's private details and account; meta { total, new }.
 GET	/api/v1/admin/listings/new-count	admin only	{ data: { new } }.
@@ -151,6 +151,7 @@ PATCH	/api/v1/admin/listings/:id	admin only	{ status?, draft?, propertyId? }: re
 POST	/api/v1/admin/uploads	admin only	{ kind: image | video, contentType, size, folder?: properties | articles | team | testimonials | site } → 201 { data: { uploadUrl, url, key, headers } }: a 15-min signed PUT URL to Cloudflare R2; the browser uploads the file there and the property stores `url`. Images JPG/PNG/WebP/AVIF/GIF ≤ 8 MB, videos MP4/MOV/WebM ≤ 500 MB. Without the R2 env: in development the local test store (below); in production 503 SERVICE_UNAVAILABLE.
 PUT	/api/v1/uploads/local/<key>?exp&sig	signed link (dev only)	TEST STAND-IN for R2 (lib/storage/local.ts): saves the file in backend-realstate/.uploads/ (gitignored). The HMAC signature (JWT_ACCESS_SECRET, 15 min, key + Content-Type) replaces the admin check, like an R2 signed URL. 404 in production or once R2 is set.
 GET	/api/v1/media/<key>	anyone (dev only)	Serves a file from the local test store. Files there are never copied to R2.
+ANY	/api/v1/<anything else>	anyone	404 { error: { code: "NOT_FOUND", message: "No such endpoint", requestId } } (app/api/v1/[...path]/route.ts, 2026-10-06). Real routes always win.
 Data model (auth only)
 Role enum: USER, ADMIN. AuthProvider enum: GOOGLE.
 User: id (cuid), email (unique, stored lowercase), name, phone, passwordHash (optional — null for Google-only users), role (default USER), emailVerifiedAt, lastLoginAt, lastLoginIp, sessionsRevokedAt, totpSecret (encrypted), totpEnabledAt, totpLastUsedStep, createdAt, updatedAt.
@@ -202,7 +203,7 @@ lib/cron/cleanup-tokens.ts     cleanupExpiredTokens
 app/api/v1/auth/verify-reset-token/route.ts
 app/api/cron/cleanup-tokens/route.ts
 lib/auth/cookies.ts            set and clear the refresh cookie
-lib/auth/guards.ts             getAuthUser, requireAuth, requireAdmin, HttpError, jsonResponse, noContentResponse, errorResponse
+lib/auth/guards.ts             getAuthUser, requireAuth, requireAdmin, HttpError, jsonResponse, noContentResponse, errorResponse (HttpError → its status; a stray ZodError → 400 VALIDATION_FAILED; anything else → 500)
 lib/http/cors.ts               corsHeaders, preflightResponse
 lib/validation/auth.ts         zod schemas
 lib/auth/google.ts             Google authorize URL, PKCE/state, code exchange, ID-token verification (jose remote JWKS)
@@ -216,10 +217,11 @@ app/api/v1/site/route.ts, app/api/v1/admin/site/[section]/route.ts
 lib/content/options.ts         admin-editable dropdown lists (SiteSetting "options:<key>", frontend defaults): loadOptions (property checks), loadSavedOptions, saveOptions
 app/api/v1/site/options/route.ts, app/api/v1/admin/site/options/[key]/route.ts
 lib/content/districts.ts       the 77 districts (copy of the frontend's data/districts.ts)
-lib/storage/r2.ts              Cloudflare R2: signed upload URLs (createUpload), deleteMedia (best effort, our bucket only)
+lib/storage/r2.ts              Cloudflare R2: signed upload URLs (createUpload), deleteMedia (best effort, our bucket only), isUploadedPhoto (free-listing photo check)
 lib/storage/media.ts           deleteUnusedMedia: deletes R2 (or local test) files no property / article still uses
 lib/storage/local.ts           development stand-in for R2: signed local upload links, .uploads/ files
 app/api/v1/uploads/local/[...key]/route.ts, app/api/v1/media/[...key]/route.ts
+app/api/v1/[...path]/route.ts  JSON 404 for unknown /api/v1/* paths
 lib/content/listings.ts        free listings: create (signed in), admin list / update (status, draft, propertyId)
 lib/validation/listing.ts      zod: listing input, photo upload, admin patch
 app/api/v1/listings/route.ts, listings/uploads/, app/api/v1/admin/listings/ (route, new-count, [id])
@@ -392,7 +394,9 @@ Not yet updated: the frontend repo's own CLAUDE.md (a different repo, not checke
 
 2026-10-02 (free listings) — by request, signed-in sellers only: POST /listings (+ /listings/uploads for the photos, under listings/) and the admin's /admin/listings. Publishing reuses the property API (the editor creates the property, then PATCH links it); a published listing's photos are shared with the property, so deleteUnusedMedia also checks ListingSubmission.photos. Every [param] route now exports dynamic = "force-dynamic" (the local upload route crashed the dev worker the same way as the media route). Frontend: the refresh every 30 s no longer undoes a listing / message change still being saved (it used to replace the list while a PATCH was in flight). Verified in Chrome against Supabase: 401 on all four routes signed out; a listing sent through the Free Listing form with 2 photos and an amenity (stored as new with the account; photos under listings/); in Admin → Free Listings (badge 1, samples gone): Save for later, Reject (remembers "draft") and Restore, Review → Publish Now created property NBS008 with the seller's photos, live on the Buy page; test property deleted (purged) and the test listing row and its photos removed.
 
-Test status (updated 2026-10-02; keep this table current after every change)
+2026-10-06 (QA audit fixes) — by request, the backend findings of the 2026-10-05 QA audit (B1-B5; B6, the admin email in this file, is deferred by the owner, as are the frontend findings F1-F4). (B1) `q` on GET /properties, /admin/properties and /admin/messages: over 100 characters is now cut to 100 instead of failing .parse() with a 500 (property.ts / message.ts), and errorResponse (guards.ts) now answers any stray ZodError with 400 VALIDATION_FAILED instead of a 500 + stack trace in the log. (B2) Free-listing photos must be URLs this server handed out from /listings/uploads (isUploadedPhoto in lib/storage/r2.ts: our R2 public URL, or the local test store in development, under listings/photos/); any other link, e.g. a tracking pixel the admin's browser would load, is refused with "Photos must be uploaded". (B3) prisma/seed.ts sets emailVerifiedAt on the admin (create and update), so a fresh database's admin isn't stuck behind an emailed code. (B4) app/api/v1/[...path]/route.ts: unknown /api/v1/* paths answer the JSON 404 envelope (NOT_FOUND) for every method instead of Next's HTML page; real routes still win. (B5) API.md: /auth/refresh and /auth/logout need `{}` with Content-Type: application/json (the check stays: it is part of the CSRF protection). Verified: tsc + eslint clean; schema script (150-char q → 100; external https / http photo refused; local listings/ photo accepted, properties/ photo refused; a ZodError → 400 with fields); dev server: GET/POST to unknown paths (incl. /admin/nope, /a/b/c) → 404 application/json, a real route (OPTIONS /properties 204, unsigned local upload 403) unaffected. NOT re-tested: the free-listing form end to end in the browser with the new photo check, the seed on a fresh database, R2 photo URLs (no R2 yet).
+
+Test status (updated 2026-10-06; keep this table current after every change)
 
 | Feature | Tested in Chrome against Supabase (what was checked) | Not tested yet |
 |---|---|---|
@@ -407,7 +411,9 @@ Test status (updated 2026-10-02; keep this table current after every change)
 | Admin → Messages | Lists real messages with counts; opening marks read on the server; NB ID search; delete + Undo; purge after 60 s; new message appears within 30 s with the pop-up | Emails to the business address (mailbox import not built) |
 | Reviews | 401 signed out; written through the form → pending (not public); approve + Verified Visit in the admin → shown on the property page with the rating link; hide / re-approve; delete + Undo; purge; validation; sample reviews removed | — |
 | Hearts | 401 signed out; heart saved (count +1 in the database), remembered after reload, removed (−1) | Admin property list updating live (it updates on reload; see known limitations) |
-| Free listings | 401 signed out; sent through the real form with photos (uploaded to `listings/`) and an amenity; Save for later, Reject (remembers status) and Restore; Review → Publish Now created a live property with the seller's photos | Photo upload to R2 |
+| Free listings | 401 signed out; sent through the real form with photos (uploaded to `listings/`) and an amenity; Save for later, Reject (remembers status) and Restore; Review → Publish Now created a live property with the seller's photos; 2026-10-06: outside photo URLs refused, own `listings/` uploads accepted (schema script) | Photo upload to R2; the form end to end since the 2026-10-06 photo check |
+| Search / errors (QA fixes 2026-10-06) | 150-character `q` cut to 100 (schema script); stray ZodError → 400; unknown `/api/v1/*` → JSON 404 for GET/POST, real routes unaffected (dev server) | `q` over 100 through the live list endpoints (needs the database) |
+| Admin seed | `emailVerifiedAt` set on create and update (code) | `db:seed` on a fresh database |
 | Users page | "Last Sign-in" shows real dates; IP never sent | — |
 | Auth (register, email code, login, 2FA, reset, Google) | Earlier sessions (see the dated entries); admin sign-in with 2FA used throughout | Real Gmail delivery not re-checked; Google sign-in not re-checked this session |
 | Whole site | Every public page loads with no console errors and no broken images (after the NBS007 photo was re-uploaded) | Production build (`npm run build`), phone-size screens |
@@ -418,11 +424,12 @@ heart count from when the editor was opened (hearts given meanwhile are lost); t
 admin area takes 20-30 s to open after a reload (dev compile only); Chrome slows animations in a background tab, so page
 transitions can look stuck during automated testing.
 
-**Still open:** company videos (`/videos`, `/admin/videos`, video upload); Cloudflare R2 settings (then re-upload the two
+**Still open:** company videos (`/videos`, `/admin/videos`, video upload; the Video table exists — QA finding F3: the admin's Videos tab saves nothing until these exist); Cloudflare R2 settings (then re-upload the two
 local test images: NBS007's photo, article #8's cover); test article #8 ("fgsgsdgsdgsdfsfghf", needs the owner's OK to
 delete); emails to the business address in Messages; real page URLs; the PRODUCTION_CHECKLIST.md items.
 
 Open items (none block running the app):
+- QA audit 2026-10-05, not fixed (owner's decision, 2026-10-06): B6 — the real admin email is written in this file ("Implementation status", the seed entry) and in 3 commits of a public repo; replace it with `<ADMIN_EMAIL from .env>` and make the repo private or change the admin's login email (history keeps it). Frontend findings F1-F4 are listed for the frontend in FRONTEND_CLAUDE.md §0.0; F3 needs the videos endpoints from this backend.
 - Needs a decision: register's 409 still reveals registered emails; real page URLs in the frontend; reconcile this backend with apps/api on feat/monorepo-and-auth-hardening (FRONTEND_CLAUDE.md §7.4/§12).
 - Before production: rotate DATABASE/DIRECT password, GOOGLE_CLIENT_SECRET, JWT_ACCESS_SECRET and TOTP_ENCRYPTION_KEY (all appeared in a chat transcript) and re-enrol admin 2FA; change the weak admin password; set CRON_SECRET and schedule /api/cron/cleanup-tokens; deploy behind a proxy that sets X-Forwarded-For; set VITE_API_URL for the frontend build; keep frontend and API on the same site (SameSite=Strict cookie); consider Supabase transaction pooler (6543) for serverless and hosting near the DB (ap-northeast-2); Supabase free tier pauses when idle and has limited backups.
 - Dev server: every `[param]` route exports `dynamic = "force-dynamic"` (keep doing this for new ones, or `next dev`'s worker crashes with "Failed to generate static paths" and answers 500). After `prisma generate` or adding routes, restart `next dev`.

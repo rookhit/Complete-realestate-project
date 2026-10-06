@@ -81,6 +81,15 @@ export function keyOf(url: string): string | null {
 }
 
 /**
+ * True for a photo URL this server handed out for an upload into `folder`: our R2 bucket, or the
+ * local test store in development. Anything else (another site, a tracking pixel) is false.
+ */
+export function isUploadedPhoto(url: string, folder: UploadFolder): boolean {
+  const key = keyOf(url) ?? (localUploadsAllowed() ? localKeyOf(url) : null);
+  return key !== null && key.startsWith(`${folder}/photos/`);
+}
+
+/**
  * Deletes the files behind these URLs from R2. Links that aren't ours are skipped. Best effort: a
  * failure is logged, never thrown, so a storage hiccup can't block saving or deleting a property.
  */

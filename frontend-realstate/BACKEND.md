@@ -143,6 +143,10 @@ splitting the 2,700-line `App.tsx`.
 
 Newest first, one line each. Append only.
 
+- **2026-10-06 · saksham · QA audit fixes (B1-B5).** Long `q` cut to 100 (no more 500), stray validation errors → 400,
+  free-listing photos must come from `/listings/uploads`, JSON 404 for unknown `/api/v1/*`, seeded admin email-verified,
+  API.md refresh/logout body. Frontend to-do F1-F4 and endpoint changes: `FRONTEND_CLAUDE.md` §0.0. Still owed by the
+  backend: the videos endpoints (F3).
 - **2026-09-30 · saksham · Property endpoints.** Public list / detail / related, admin CRUD + restore + next-ref. Media stored as strings for now.
 
 - **2026-09-30 · saksham · Content schema complete + map privacy.** Migrations `20260930120000`,

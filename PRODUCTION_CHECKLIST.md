@@ -3,7 +3,7 @@
 Things that must be changed or set up before (and when) the site goes live. Add to this list
 whenever something comes up during development; tick items off at deployment.
 
-Last updated: 2026-09-28
+Last updated: 2026-10-06
 
 ## Secrets and accounts
 
@@ -76,12 +76,28 @@ Last updated: 2026-09-28
 - [ ] Run the backend with `NODE_ENV=production` (turns on the `Secure` cookie flag and makes missing
       email settings an error instead of printing codes to the console).
 - [ ] Deploy behind a proxy that sets `X-Forwarded-For`, so rate limits and lockouts see real client IPs.
+- [ ] Once the frontend has real page URLs (QA finding F1, `FRONTEND_CLAUDE.md` §0.0): the frontend host must
+      serve `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
+      `/property/NBS005` answers 404.
 
 ## Database (Supabase)
 
 - [ ] Apply migrations on the production database: `npx prisma migrate deploy` (in `backend-realstate`).
 - [ ] Then run `npm run db:seed` once: it creates the admin **and** the 69 amenities the property
       editor links to (the `Amenity` table is empty until then). Safe to re-run.
+      The seeded admin is email-verified (2026-10-06), so it can sign in without an emailed code.
 - [ ] For serverless hosting, consider the Supabase transaction pooler (port 6543) for `DATABASE_URL`,
       and host the backend near the database region (ap-northeast-2).
 - [ ] Supabase free tier pauses when idle and has limited backups: upgrade or set up backups before launch.
+
+## From the QA audit (2026-10-05)
+
+- [ ] **Admin email in the public repo (B6, deferred)**: `backend-realstate/CLAUDE.md` and 3 commits show the real
+      admin login email. Replace it with `<ADMIN_EMAIL from .env>`, then make the repo private or change the
+      admin's login email (git history keeps the old one).
+- [ ] **Free listings saved before 2026-10-06** may hold outside photo URLs (the upload-only check is new):
+      look over Admin → Free Listings and reject any whose photos are not from the site's own uploads.
+- [ ] Frontend findings F1-F4 (page URLs, Videos not saved, dead footer links, out-of-date admin banner):
+      fix before launch, see `FRONTEND_CLAUDE.md` §0.0. A **privacy policy** page is expected, since the
+      site collects names, phone numbers and emails.
+- [ ] Company videos backend (`/videos`, `/admin/videos`) not built: until it is, Admin → Videos must be hidden.

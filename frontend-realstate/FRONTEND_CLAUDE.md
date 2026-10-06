@@ -12,12 +12,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 0. Backend handoff: quick reference (updated 2026-10-02)
+## 0. Backend handoff: quick reference (updated 2026-10-06)
 
 Start here. Everything the backend needs from the frontend is on this page; the numbered
 sections below go into detail. **Older sections say `apps/web` and `apps/api`: in this repo those
 are `frontend-realstate/` and `backend-realstate/`.** Where an older section disagrees with this
 one, this one is current.
+
+### 0.0 QA audit (2026-10-05): frontend to-do, and what the backend changed
+
+A full QA audit ran on `feat/full-stack-endpoints` @ `79a807a` (separate test database; 340 checks).
+No critical or high issues. The backend findings were fixed on 2026-10-06; **the four frontend
+findings below are for the frontend developer** (the owner chose not to fix them on the backend side).
+
+**Frontend — please fix**
+
+| # | Severity | Where | Problem | What to do |
+|---|---|---|---|---|
+| F1 | Medium | `src/app/App.tsx` (~line 2854: `page` is React state starting at `"home"`; ~2861: "Browser history isn't touched") | The URL is always `/`. Reload (F5) goes back to Home, a property or article can't be shared or bookmarked, and the browser's Back button leaves the site. Sign-in and hearts do survive a reload. | Mirror `page` / `selId` / `blogId` in the URL with `history.pushState` + a `popstate` listener (or `react-router`, already installed), and read the URL on load. Suggested paths: `/buy`, `/rent`, `/property/NBS005`, `/blog/<slug>`, `/about`, `/contact`, `/admin/...`. The existing back-stack (`trail`) can map onto history entries. Data for deep links: **property by NB ID** → `GET /properties?q=NBS005&limit=1` (a full NB ID in `q` matches exactly that property; `GET /properties/:id` takes the numeric `id` only); **article** → `GET /articles/:slug`. Keep the existing `/reset-password?token=` handling. The host must serve `index.html` for every path (SPA fallback; noted in PRODUCTION_CHECKLIST.md). |
+| F3 | Medium | `src/app/admin/ContentEditors.tsx` (~line 638: `upsert(VIDEO_LIST, …)`) | Admin → Videos → Add from YouTube shows the video in the admin list but sends **no request**: visitors never see it and it is gone after a reload. | The backend has **no videos endpoints yet** (the `Video` table exists; shape in §7.3 "Company videos"). Until they exist, hide the Videos tab (or show it read-only with a "coming soon" note). When the backend builds `GET /videos`, `POST/PATCH/DELETE /admin/videos[/:id]`, `PUT /admin/videos/order` (same pattern as testimonials), wire them like `src/api/testimonials.ts`. |
+| F2 | Low | `src/app/App.tsx` (~line 460, footer: `href="#" onClick={e=>e.preventDefault()}`) | "Privacy Policy", "Terms of Use" and "Sitemap" do nothing. | Add the pages or remove the links. A privacy policy is expected: the site collects names, phone numbers and emails. |
+| F4 | Low | `src/app/admin/AdminLayout.tsx` (~line 181, the notice banner) | The banner says journal, team, testimonials, videos, home page, messages, free listings and options "last only until the page is reloaded". Out of date: all of them save to the server except Videos. | Change the text to mention Videos only (or remove the banner once F3 is done). |
+
+**Backend — changed on 2026-10-06 (check your calls still match)**
+
+| # | Endpoint | Change | Frontend impact |
+|---|---|---|---|
+| B1 | `GET /properties`, `GET /admin/properties`, `GET /admin/messages` | `q` over 100 characters is cut to 100 (was a 500). Any bad query value now answers `400 VALIDATION_FAILED`, never a 500. | None needed. Optional: `maxLength={100}` on search inputs. |
+| B2 | `POST /listings` | Each `photos[]` entry must be a URL returned by `POST /listings/uploads` (R2, or the backend's local test store in development, under `listings/photos/`). Any other link (pasted URL, Unsplash, `blob:`) → `400 VALIDATION_FAILED`, `fields: { photos: "Photos must be uploaded" }`. | The form already uploads first (`uploadListingPhoto` → `submitListing`), so it works as is. Never put sample / external images in `photos`; show `fields.photos` if it comes back. |
+| B3 | seed (`npm run db:seed`) | The seeded admin is email-verified, so a fresh database's admin signs in without an emailed code. | None. |
+| B4 | any unknown `/api/v1/*` path | Answers `404` with the normal JSON envelope (`code: "NOT_FOUND"`, "No such endpoint"), not Next's HTML page. | Error handling can always `res.json()` an error from `/api/v1`. A 404 `NOT_FOUND` on a call that used to work means a wrong path. |
+| B5 | `POST /auth/refresh`, `POST /auth/logout` | Docs corrected: send `{}` with `Content-Type: application/json` (without it → 400; it is part of the CSRF protection). Behaviour unchanged. | `auth.tsx` already does this. Keep it, including in any new client. |
+
+Not fixed yet (backend owner's decision): B6, the admin email written in `backend-realstate/CLAUDE.md`.
 
 ### 0.1 Run it
 
@@ -32,7 +59,7 @@ npm run build          # frontend production build
 requests are refused. Use the port that matches your `.env` (the backend developer's is `http://localhost:5173`,
 so run `npm run dev -- --port 5173 --strictPort` there).
 
-**State on 2026-10-02:** the site and admin run on the database: properties, journal, team, testimonials, site
+**State on 2026-10-06** (as on 2026-10-02, plus the QA fixes in §0.0)**:** the site and admin run on the database: properties, journal, team, testimonials, site
 settings (statistics, featured districts, contact, services), dropdown options, the contact / callback / property
 enquiry forms and Admin → Messages, reviews (admin approves first) and hearts, free listings. Only **company videos**
 are still mock (`VIDEO_LIST`). Photos and videos upload to Cloudflare R2, or to a local test store on the backend until
@@ -61,7 +88,7 @@ All under `/api/v1`, error envelope as in §7.1.
 | POST | `/auth/login/2fa` | `auth.tsx` `verifyMfa()` |
 | POST | `/auth/register` | `auth.tsx` `register()` → always `{ verificationRequired, email }` |
 | POST | `/auth/verify-email`, `/auth/resend-verification` | `auth.tsx` `verifyEmail()`, `resendVerification()` |
-| POST | `/auth/refresh`, `/auth/logout` | `auth.tsx` (on load, on 401, Logout) |
+| POST | `/auth/refresh`, `/auth/logout` | `auth.tsx` (on load, on 401, Logout). Body `{}` with `Content-Type: application/json` is **required** (400 without) |
 | GET | `/auth/me` | `auth.tsx` on load |
 | POST | `/auth/forgot-password`, `/auth/verify-reset-token`, `/auth/reset-password` | `auth.tsx`, used by LoginPage and ResetPasswordPage |
 | GET | `/auth/google` → `/auth/google/callback` | LoginPage redirects to it; callback returns to `?auth=google` / `?auth=google_mfa` / `?auth_error=google` |
@@ -75,7 +102,7 @@ All under `/api/v1`, error envelope as in §7.1.
   `roadAccess`, `features`, `hero`, 0 / "—" for not applicable) plus `priceNum` (null = "Negotiable"), `landAreaSqft`,
   `amenities`, `highlights`, `videoUrl`, `floorPlan`, `reactionCount`, `createdAt`, and the location as `approx` + `locationMode`
   (never `mapUrl`). List query: `listing=for-sale|for-rent&type&district&minPrice&maxPrice&preset=hot|new&q&sort=newest|price_asc|price_desc|reactions&page&limit`
-  (`q` = a full NB ID, or text). `meta` = `{ page, limit, total, totalPages }`.
+  (`q` = a full NB ID, or text; over 100 characters is cut to 100). `meta` = `{ page, limit, total, totalPages }`.
 - **Admin item** adds `deletedAt`, `mapUrl`, `exact` and `edit`: the values exactly as `POST` / `PATCH` take them, so the
   editor can load `edit`, change it and send it back. Body (`backend-realstate/lib/validation/property.ts`):
   `{ nbId: "NBS005", title, tagline, description, type, badge|null, featured, verified, price|null, bedrooms|null, bathrooms|null,
@@ -105,12 +132,12 @@ row names the exact function to replace.
 | POST / PATCH / DELETE | `/admin/team[/:id]`, `PUT /admin/team/order` | ADMIN | **Built and wired 2026-10-01** in `admin/ContentEditors.tsx` (TeamSection / TeamEditor); portraits upload to `team/` (`ImageField` `upload`), "Remove photo" clears it |
 | GET | `/testimonials` | public | `TESTIMONIALS`. **Built and wired 2026-10-01**: `loadTestimonials()` fills it; client `src/api/testimonials.ts`. Photo optional (`img?`): initials without one |
 | POST / PATCH / DELETE | `/admin/testimonials[/:id]`, `PUT …/order` | ADMIN | **Built and wired 2026-10-01** in `admin/ContentEditors.tsx` (TestimonialsSection / TestimonialEditor); photos upload to `testimonials/`, "Remove photo" clears it |
-| GET | `/videos` | public | `VIDEO_LIST` / `companyVideos()` |
+| GET | `/videos` | public | `VIDEO_LIST` / `companyVideos()`. **Not built yet** (QA finding F3, §0.0): hide Admin → Videos until it is |
 | POST / PATCH / DELETE | `/admin/videos[/:id]`, `PUT /admin/videos/order` | ADMIN | `upsert(VIDEO_LIST…)` etc. |
 | GET | `/site` → `{ stats?, featuredDistricts?, contact?, services? }` (saved ones only; district counts are computed by the site) | public | **Built and wired 2026-10-02**: `loadSiteSettings()` applies them to `STATS`, `FEATURED_DISTRICTS`, `CONTACT`, `SERVICES` at startup |
 | PUT | `/admin/site/stats`, `/admin/site/featured-districts` | ADMIN | **Built and wired 2026-10-02**: `saveStats()`, `saveFeaturedDistricts()` from `HomePageSection`; district photos upload to `site/` |
 | PUT | `/admin/site/contact` (`ContactInfo`), `/admin/site/services` (whole `Service[]`, in order) | ADMIN | **Built and wired 2026-10-02**: `saveContact()`, `saveServices()` (async, API first) ← `admin/CompanyEditor.tsx` |
-| POST | `/listings` (+ `/listings/uploads` for each photo) | **signed in** | **Built and wired 2026-10-02**: the Free Listing form uploads the photos (`uploadListingPhoto`) then `submitListing()` (`src/api/listings.ts`) |
+| POST | `/listings` (+ `/listings/uploads` for each photo) | **signed in** | **Built and wired 2026-10-02**: the Free Listing form uploads the photos (`uploadListingPhoto`) then `submitListing()` (`src/api/listings.ts`). Since 2026-10-06 `photos` accepts **only** URLs from `/listings/uploads` (else 400 `fields.photos`) |
 | GET / PATCH | `/admin/listings[/:id]`, `/admin/listings/new-count` | ADMIN | **Built and wired 2026-10-02**: `LISTINGS` loaded and polled with the inbox; `updateListing()` saves status / draft / propertyId (rollback + message on failure). Publishing = `createProperty()` then `updateListing({ status: published, propertyId })` (no separate publish endpoint) |
 | GET / PUT | `/site/options` (public), `/admin/site/options/:key` (ADMIN) | | **Built and wired 2026-10-02**: `loadSiteOptions()` applies saved lists at startup; `setOptions()` / `addOption()` show the change and save it (in order per list; rollback + `onOptionSaveFailed` message in the admin) |
 | POST | `/enquiries`, `/callbacks`, `/contact` | **signed in** (decided 2026-10-02) | **Built and wired 2026-10-02**: the three forms post via `src/api/messages.ts`; signed out, the send button is "Sign In to …" (`requestSignIn()`); signed in, name / email / phone start from the account |
@@ -124,7 +151,7 @@ Undo puts back the same record (same `id`, same ref, same position). Either soft
 (`deletedAt`, cleared on undo, e.g. `POST /admin/properties/:id/restore`) or delay the real
 DELETE until the Undo notice closes. Don't hand out a new id on restore.
 
-### 0.4b Test status (updated 2026-10-02; keep current after every change)
+### 0.4b Test status (updated 2026-10-06; keep current after every change)
 
 | Feature | Tested in Chrome against Supabase (what was checked) | Not tested yet |
 |---|---|---|
@@ -139,7 +166,9 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 | Admin → Messages | Lists real messages with counts; opening marks read on the server; NB ID search; delete + Undo; purge after 60 s; new message appears within 30 s with the pop-up | Emails to the business address (mailbox import not built) |
 | Reviews | 401 signed out; written through the form → pending (not public); approve + Verified Visit in the admin → shown on the property page with the rating link; hide / re-approve; delete + Undo; purge; validation; sample reviews removed | — |
 | Hearts | 401 signed out; heart saved (count +1 in the database), remembered after reload, removed (−1) | Admin property list updating live (it updates on reload; see known limitations) |
-| Free listings | 401 signed out; sent through the real form with photos (uploaded to `listings/`) and an amenity; Save for later, Reject (remembers status) and Restore; Review → Publish Now created a live property with the seller's photos | Photo upload to R2 |
+| Free listings | 401 signed out; sent through the real form with photos (uploaded to `listings/`) and an amenity; Save for later, Reject (remembers status) and Restore; Review → Publish Now created a live property with the seller's photos; 2026-10-06: outside photo URLs refused, own `listings/` uploads accepted (schema script) | Photo upload to R2; the form end to end since the 2026-10-06 photo check |
+| Search / errors (QA fixes 2026-10-06) | 150-character `q` cut to 100 (schema script); stray ZodError → 400; unknown `/api/v1/*` → JSON 404 for GET/POST, real routes unaffected (dev server) | `q` over 100 through the live list endpoints (needs the database) |
+| Admin seed | `emailVerifiedAt` set on create and update (code) | `db:seed` on a fresh database |
 | Users page | "Last Sign-in" shows real dates; IP never sent | — |
 | Auth (register, email code, login, 2FA, reset, Google) | Earlier sessions (see the dated entries); admin sign-in with 2FA used throughout | Real Gmail delivery not re-checked; Google sign-in not re-checked this session |
 | Whole site | Every public page loads with no console errors and no broken images (after the NBS007 photo was re-uploaded) | Production build (`npm run build`), phone-size screens |
@@ -302,7 +331,7 @@ authentication only. The remaining work is to replace those frontend constants w
 | Data | `src/app/data/` arrays are filled from the API at startup (`load…()`); the save functions call the API first. Only `VIDEO_LIST` is still mock |
 | Images | Uploaded through `POST /admin/uploads` (sellers: `/listings/uploads`) to Cloudflare R2, or the backend's local test store until R2 is set up. Sample content still hotlinks Unsplash |
 | TypeScript in `backend-realstate` | **Checked.** `next build` runs tsc |
-| Routing | Hand-rolled. A `page` string in React state. **The URL never changes.** An in-app Back button exists on property and article pages |
+| Routing | Hand-rolled. A `page` string in React state. **The URL never changes.** An in-app Back button exists on property and article pages. QA finding F1 (§0.0): to fix |
 | Tests | None committed |
 | TypeScript in `frontend-realstate` | **Checked in the editor** via `tsconfig.json` (added 2026-09-28). Run `npx tsc -p tsconfig.json` to check from the terminal |
 | Linting / formatting | Configured in the backend only |
@@ -713,7 +742,10 @@ fields (table above). Icons appear on the property page only; listing cards no l
 
 Stable `error.code` values the frontend will branch on:
 `VALIDATION_FAILED` · `UNAUTHENTICATED` · `FORBIDDEN` · `NOT_FOUND` · `RATE_LIMITED` ·
-`CONFLICT` · `INTERNAL`.
+`CONFLICT` · `REF_TAKEN` · `SERVICE_UNAVAILABLE` · `INTERNAL`.
+
+Since 2026-10-06 this holds for **every** `/api/v1` path: an unknown path is `404 NOT_FOUND` in this envelope (not an
+HTML page), and a bad query string is `400 VALIDATION_FAILED` (not a 500).
 
 ### 7.2 Properties
 
@@ -1498,6 +1530,7 @@ Ranked by how much they will cost if ignored.
 
 1. **No router in `apps/web`.** No URLs, no deep links, no back button, nothing crawlable. A
    property site that cannot link to a property is not shippable. `react-router` is installed.
+   Confirmed by the 2026-10-05 QA audit (F1); fix plan in §0.0.
 2. **The frontend still talks to nobody.** Auth works on the server and is theatre in the UI.
    Nothing is gated, nothing persists, and any password still "works" in `apps/web`.
 3. **`App.tsx` is still ~2,800 lines** (public pages). Data, admin and shared components are split out; the pages are not yet.
@@ -1567,6 +1600,7 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-06 · backend · QA audit fixes (B1-B5).** Free-listing photos must now be URLs from `/listings/uploads` (the form already sends only those; any other link → 400 "Photos must be uploaded"). Search `q` over 100 characters is cut, not a 500. Unknown `/api/v1/*` paths answer the JSON error envelope (404 NOT_FOUND). `/auth/refresh` and `/auth/logout` docs now say to send `{}` with JSON Content-Type (as `auth.tsx` already does). The seeded admin is email-verified. Frontend findings F1-F4 (page URLs, Videos, footer links, admin notice banner) are for the frontend developer: see §0.0.
 - **2026-10-02 · backend (frontend code) · Free listings, site settings, reviews and hearts, forms and Messages on the
   database.** Signed-in only (owner's decisions): the contact / callback / property enquiry forms, reviews, hearts and free
   listings. Reviews wait for the admin's approval. Saved: dropdown options, statistics, featured districts, contact,
