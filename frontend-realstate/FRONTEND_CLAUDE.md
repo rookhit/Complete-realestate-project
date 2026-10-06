@@ -270,8 +270,8 @@ Details and endpoints: §7.9.
 
 `Page` values (`App.tsx`): home, buy, rent, hot, new-listings, map, area, property, about, team,
 blog, blog-post, services, emi, contact, login, register, reset-password, free-listing, videos,
-admin, admin-users, admin-reviews, admin-listings (Free Listings), admin-messages (Messages). There are still no URLs per page (§5); only `/reset-password`
-is read from the address bar.
+admin, admin-users, admin-reviews, admin-listings (Free Listings), admin-messages (Messages). Each has its own URL
+(§5), e.g. `/buy`, `/property/12-…`, `/admin/messages`.
 
 The only thing the frontend stores in the browser: admin drafts in `localStorage` under
 `nb-admin-draft:property:<id|new>`, removed when saved or discarded. Tokens are never stored
@@ -475,10 +475,27 @@ protection and leaves `FRONTEND_ORIGIN` as the only defence.
 
 ## 5. Page list and routing
 
-Routing is `apps/web/src/app/App.tsx` → `App()`. A `Page` string selects one component. **There is no
-router, so there is no URL, no deep link, no shareable link, no browser back button, and nothing
-for search engines to crawl.** Fixing this means adopting `react-router` (already a dependency,
-currently unused) and is the single highest-value frontend change.
+Routing is `src/app/App.tsx` → `App()`. A `Page` string selects one component, and **every page has
+its own URL**, kept in sync with the browser history API (no router library; `react-router` was
+removed). Reload, the browser's Back/Forward and shared links all work.
+
+- `PAGE_PATHS` maps each page to a path; `urlOf()` builds the address, `visitFromUrl()` reads it.
+  Properties are `/property/<id>-<title-slug>` and articles `/blog/<id>-<title-slug>`; only the id
+  counts, so a renamed title never breaks an old link. A missing id shows "no longer listed" /
+  "isn't available" rather than another item. Filters (`type`, `district`, `view`, `preset`, `q`) go
+  in the query string. Unknown paths open the home page. `reset-password` has no path: the emailed
+  token is single-use, so the address drops it at once.
+- `go()` pushes a history entry `{ nb:1, i, v, prev }` (the page, and the one before it). The
+  in-page "Back to …" button calls `history.back()`, so it and the browser button share one history;
+  on a shared link with nothing before it, Back goes to the natural parent (Buy/Rent, Journal…).
+  Scroll positions are restored by App (`history.scrollRestoration="manual"`).
+- **Signing in returns the visitor.** When a page sends someone to login/register, App remembers it
+  (`returnTo`). After a sign-in prompt (`requestSignIn()`: heart, review, a form's "Sign In to …",
+  Free Listing's Log In) they go straight back, with Back skipping the login page; after the plain
+  Login link the "Welcome back" button names the page ("Back to Contact"). Form text survives the
+  trip in sessionStorage (`data/drafts.ts` → `useDraft`): contact, callback, enquiry and review.
+- **Hosting must serve `index.html` for every path** (single-page app fallback). `vite dev` and
+  `vite preview` already do; on Vercel/Netlify/Nginx add the usual rewrite to `/index.html`.
 
 | `Page` value | Component | Notes for backend |
 |---|---|---|
@@ -528,9 +545,9 @@ type NavOpts = {
 type Go = (p: Page, o?: NavOpts) => void;
 ```
 
-`go()` is threaded down as a prop to nearly every component. When routing moves to react-router,
-`go()` becomes a thin wrapper over `navigate()` and `NavOpts` becomes the query string. Keep the
-signature — it is the frontend's internal navigation contract.
+`go()` is threaded down as a prop to nearly every component. It pushes the browser history entry
+and `NavOpts` (minus `scrollTo`/`blog`) becomes the query string. Keep the signature — it is the
+frontend's internal navigation contract.
 
 ---
 
@@ -1496,8 +1513,9 @@ that has to act on it. **Treat the reminder as the prompt, not the guarantee.**
 
 Ranked by how much they will cost if ignored.
 
-1. **No router in `apps/web`.** No URLs, no deep links, no back button, nothing crawlable. A
-   property site that cannot link to a property is not shippable. `react-router` is installed.
+1. **Pages are client-rendered.** Every page now has a URL (§5), but the HTML is built in the
+   browser, so search engines that don't run JavaScript see an empty page. Pre-rendering or SSR
+   would fix that. The host must also serve `index.html` for every path.
 2. **The frontend still talks to nobody.** Auth works on the server and is theatre in the UI.
    Nothing is gated, nothing persists, and any password still "works" in `apps/web`.
 3. **`App.tsx` is still ~2,800 lines** (public pages). Data, admin and shared components are split out; the pages are not yet.
@@ -1566,6 +1584,14 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-10-06 · frontend · QA audit fixes F1, F2, F4, F5, F6, F7 (branch `fix/frontend-audit-issues`).** Every page
+  has a URL (`/property/12-…`, `/blog/3-…`, `/admin/messages`, filters in the query string): reload, browser
+  Back/Forward and shared links work; old or wrong links say "no longer listed" (§5). Signing in from a prompt
+  returns the visitor to that page with their typed text (`data/drafts.ts`). Phones: property pages no longer
+  scroll sideways (the map box's `aspect-ratio` + `min-height` forced 520 px), nor does Admin → Free Listings
+  table view. Removed the dead Privacy/Terms/Sitemap footer links; the admin banner now names only Videos as
+  unsaved. **Hosting must serve `index.html` for every path.** Still open: F3 (Videos need a backend).
 
 - **2026-10-02 · backend (frontend code) · Free listings, site settings, reviews and hearts, forms and Messages on the
   database.** Signed-in only (owner's decisions): the contact / callback / property enquiry forms, reviews, hearts and free

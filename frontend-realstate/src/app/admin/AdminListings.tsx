@@ -162,7 +162,9 @@ export function AdminListings({ nav }: { nav: AdminNav }) {
       {list.length === 0 ? (
         <EmptyState title={LISTINGS.length ? "Nothing here" : "No free listings yet"} text={newListingsCount() ? "Try another filter." : "When a seller submits the Free Listing form, it appears here with a red count."} />
       ) : view === "table" ? (
-        <div className="border overflow-x-auto" style={{ borderColor: BORDER_L, background: WHITE }}>
+        // relative: below md the Actions column isn't sticky, and its sr-only label (position:absolute)
+        // would otherwise be placed against the page and widen it.
+        <div className="relative border overflow-x-auto" style={{ borderColor: BORDER_L, background: WHITE }}>
           <table className="w-full min-w-[960px] text-left border-collapse">
             <thead>
               <tr style={{ background: "#faf7f2" }}>

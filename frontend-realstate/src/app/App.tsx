@@ -25,6 +25,7 @@ import { submitListing } from "@/api/listings";
 import { uploadListingPhoto } from "@/api/uploads";
 import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
 import { useDataVersion } from "@/app/data/store";
+import { useDraft } from "@/app/data/drafts";
 import {
   BLOGS, articlesStatus, loadArticles, siteStatus, loadSiteSettings, TESTIMONIALS, testimonialsStatus, loadTestimonials, TEAM, teamStatus, loadTeam, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
   companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
@@ -457,7 +458,7 @@ function Footer({ go }: { go:Go }) {
       {/* Extra room at the bottom so the floating Enquiry / WhatsApp buttons never cover these links. */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 pt-8 pb-32 sm:pb-8 sm:pr-32 lg:pr-40">
         <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© 2025 Nepal Bhoomi Estate Agents. All rights reserved.</p>
-        <div className="flex gap-5">{["Privacy Policy","Terms of Use","Sitemap"].map(t=><a key={t} href="#" onClick={e=>e.preventDefault()} className="text-[12px] hover:opacity-70" style={{color:MUTED_D,...sans}}>{t}</a>)}</div>
+        {/* Privacy Policy / Terms of Use links go here once those pages are written (they were dead "#" links). */}
       </div>
     </footer>
   );
@@ -490,19 +491,22 @@ function sendError(err:unknown): string {
 // button scrolls here.
 function CallbackForm() {
   const { user } = useAuth();
-  const [name,setName]=useState("");
-  const [phone,setPhone]=useState("");
-  const [time,setTime]=useState(CALLBACK_TIMES[0]??"");
+  // Kept for the tab, so what a visitor typed survives "Sign In to Request a Callback".
+  const [draft,setDraft,clearDraft]=useDraft("callback",{name:"",phone:"",time:CALLBACK_TIMES[0]??""});
+  const {name,phone,time}=draft;
+  const setName=(v:string)=>setDraft(d=>({...d,name:v}));
+  const setPhone=(v:string)=>setDraft(d=>({...d,phone:v}));
+  const setTime=(v:string)=>setDraft(d=>({...d,time:v}));
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
   const [serverErr,setServerErr]=useState("");
   // Signed in: start from the account's name and phone (still editable).
-  useEffect(()=>{ if(user){ setName(n=>n||user.name||""); setPhone(p=>p||user.phone||""); } },[user]);
+  useEffect(()=>{ if(user) setDraft(d=>({...d,name:d.name||user.name||"",phone:d.phone||user.phone||""})); },[user]);
   const send=async()=>{
     if(!name.trim()||!phone.trim()){ setErr(true); return; }
     setErr(false); setServerErr(""); setBusy(true);
-    try { await sendCallback({name:name.trim(),phone:phone.trim(),time}); setSent(true); }
+    try { await sendCallback({name:name.trim(),phone:phone.trim(),time}); setSent(true); clearDraft(); }
     catch(e) { setServerErr(sendError(e)); }
     finally { setBusy(false); }
   };
@@ -1520,7 +1524,8 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   const [galIdx,setGalIdx]=useState(0);
   const [lightbox,setLightbox]=useState(false);
   const { user } = useAuth();
-  const [form,setForm]=useState({name:"",email:"",phone:"",msg:""});
+  // Kept for the tab (per property), so the enquiry survives a sign-in prompt.
+  const [form,setForm]=useDraft(`enquiry:${p.id}`,{name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -1675,7 +1680,9 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
               share link the backend hasn't resolved): the area by name. */}
           <div>
             <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Location</p>
-            <div className="relative border overflow-hidden" style={{borderColor:BORDER_L,background:"#e9e3d8",aspectRatio:"16/8",minHeight:260}}>
+            {/* width:100% matters: with only aspect-ratio + min-height, the 260px minimum makes the box
+                520px wide on phones and the whole page scrolls sideways. */}
+            <div className="relative border overflow-hidden" style={{borderColor:BORDER_L,background:"#e9e3d8",aspectRatio:"16/8",minHeight:260,width:"100%"}}>
               {area
                 ? <AreaMap area={area} card={mapCardOf(p)} exact={import.meta.env.DEV ? exactFor(p) : null} fallback={mapFallback}/>
                 : mapFallback}
@@ -1719,7 +1726,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
                 <button disabled={busy} onClick={async()=>{
                   if(!form.name.trim()||!(form.email.trim()||form.phone.trim())){ setErr(true); return; }
                   setErr(false); setServerErr(""); setBusy(true);
-                  try { await sendEnquiry({propertyId:p.id,name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),message:form.msg.trim()}); setSent(true); }
+                  try { await sendEnquiry({propertyId:p.id,name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),message:form.msg.trim()}); setSent(true); setForm(v=>({...v,msg:""})); }
                   catch(e) { setServerErr(sendError(e)); }
                   finally { setBusy(false); }
                 }} className="flex items-center justify-center gap-2 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}><Send size={14}/>{busy?"Sending…":"Send Enquiry"}</button>
@@ -2015,7 +2022,8 @@ function BlogPage({ go }: { go:Go }) {
 
 // ─── Blog Post ─────────────────────────────────────────────────────────────────
 function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:()=>void; backLabel:string }) {
-  const a=BLOGS.find(b=>b.id===id)||BLOGS[0];
+  // A shared link to an article that has since been removed says so, rather than showing another one.
+  const a=BLOGS.find(b=>b.id===id);
   if(!a) return (
     <div className="min-h-screen pt-32 px-6 md:px-12 lg:px-20" style={{background:BG_LIGHT}}>
       <p className="text-[15px] mb-6" style={{color:MUTED_L,...sans}}>This article isn't available.</p>
@@ -2104,7 +2112,8 @@ function ServicesPage({ go }: { go:Go }) {
 // ─── Contact Page ──────────────────────────────────────────────────────────────
 function ContactPage() {
   const { user } = useAuth();
-  const [form,setForm]=useState({name:"",email:"",phone:"",interest:CONTACT_TOPICS[0]??"",msg:""});
+  // Kept for the tab, so the message survives "Sign In to Send an Enquiry".
+  const [form,setForm]=useDraft("contact",{name:"",email:"",phone:"",interest:CONTACT_TOPICS[0]??"",msg:""});
   const [sent,setSent]=useState(false);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -2141,7 +2150,7 @@ function ContactPage() {
                 <button disabled={busy} onClick={async()=>{
                   if(!form.name.trim()||!form.email.trim()){ setErr(true); return; }
                   setErr(false); setServerErr(""); setBusy(true);
-                  try { await sendContact({name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),topic:form.interest,message:form.msg.trim()}); setSent(true); }
+                  try { await sendContact({name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),topic:form.interest,message:form.msg.trim()}); setSent(true); setForm(v=>({...v,msg:""})); }
                   catch(e) { setServerErr(sendError(e)); }
                   finally { setBusy(false); }
                 }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Sending…":"Send Enquiry"}</button>
@@ -2240,11 +2249,24 @@ function VerifyEmailForm({ email, onBack, onMfa }: { email:string; onBack:()=>vo
 type GoogleResult = "success" | "mfa" | "error" | null;
 const GOOGLE_ERROR="Google sign-in failed. Please try again.";
 
-function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResult }) {
+/** What the login/register pages need to send a visitor back to where they were (App → returnAfterSignIn). */
+type SignInReturn = { returnLabel?:string|null; onReturn?:(onlyPrompted:boolean)=>boolean };
+
+/** Signed in during this visit to the page: a sign-in prompt sends them straight back. */
+function useReturnOnSignIn(user:unknown, onReturn?:SignInReturn["onReturn"]) {
+  const signedOut=useRef(!user);
+  useEffect(()=>{
+    if(!user){ signedOut.current=true; return; }
+    if(signedOut.current){ signedOut.current=false; onReturn?.(true); }
+  },[user]);
+}
+
+function LoginPage({ go, googleResult=null, returnLabel=null, onReturn }: { go:Go; googleResult?:GoogleResult } & SignInReturn) {
   const [mode,setMode]=useState<"signin"|"forgot">("signin");
   const [email,setEmail]=useState("");
   const [pw,setPw]=useState("");
   const { user, status, login, verifyMfa } = useAuth();
+  useReturnOnSignIn(user, onReturn);
   const [err,setErr]=useState(googleResult==="error" ? GOOGLE_ERROR : "");
   const [busy,setBusy]=useState(false);
   // Second step for accounts with 2FA. token is undefined after Google sign-in (it's in a cookie).
@@ -2330,7 +2352,7 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
             <CheckCircle2 size={34} style={{color:GOLD}}/>
             <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Welcome back</h2>
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>You are signed in as {user.email}.</p>
-            <button onClick={()=>go("home")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Continue Browsing</button>
+            <button onClick={()=>{ if(!onReturn?.(false)) go("home"); }} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>{returnLabel ?? "Continue Browsing"}</button>
           </div>
         ) : mode==="forgot" ? (
           resetSent ? (
@@ -2399,11 +2421,12 @@ function LoginPage({ go, googleResult=null }: { go:Go; googleResult?:GoogleResul
 }
 
 // ─── Register Page ─────────────────────────────────────────────────────────────
-function RegisterPage({ go }: { go:Go }) {
+function RegisterPage({ go, returnLabel=null, onReturn }: { go:Go } & SignInReturn) {
   // Agency and agent sign-up were removed. They implied a licence-verification
   // and approval flow that does not exist on either side, and an unverified
   // "agent" listing property is a fraud vector. Members only for now.
   const { user, register } = useAuth();
+  useReturnOnSignIn(user, onReturn);
   const [vals,setVals]=useState<Record<string,string>>({});
   // Registered; waiting for the emailed code (no session until the email is verified).
   const [verifying,setVerifying]=useState<string|null>(null);
@@ -2446,7 +2469,7 @@ function RegisterPage({ go }: { go:Go }) {
             <CheckCircle2 size={34} style={{color:GOLD}}/>
             <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>{vals["Full Name"] ? "Account created" : "You are signed in"}</h2>
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Welcome to Nepal Bhoomi, {user.name||user.email}.</p>
-            <button onClick={()=>go("home")} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Start Browsing</button>
+            <button onClick={()=>{ if(!onReturn?.(false)) go("home"); }} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>{returnLabel ?? "Start Browsing"}</button>
           </div>
         ):verifying?(
           <div className="border p-10" style={{background:WHITE,borderColor:BORDER_L}}>
@@ -2630,7 +2653,7 @@ function FreeListingPage({ go }: { go:Go }) {
                   Free listings are for members, so our team knows who sent each property. It takes a minute to create an account.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3 mt-2">
-                  <button onClick={()=>go("login")} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Log In</button>
+                  <button onClick={requestSignIn} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Log In</button>
                   <button onClick={()=>go("register")} className="px-8 py-4 border text-[11px] tracking-[0.25em] uppercase transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>Create Account</button>
                 </div>
               </>}
@@ -2796,6 +2819,53 @@ function visitLabel(v:Visit):string {
   return `Back to ${name}`;
 }
 
+// ─── Addresses ────────────────────────────────────────────────────────────────
+// Every page has its own URL, so reloading, the browser's Back/Forward and shared links work.
+// The host must answer every path with index.html (single-page app fallback).
+const PAGE_PATHS: Partial<Record<Page,string>> = {
+  home:"/", buy:"/buy", rent:"/rent", hot:"/hot", "new-listings":"/new-listings", map:"/map", area:"/area",
+  about:"/about", team:"/team", blog:"/blog", services:"/services", emi:"/emi-calculator", contact:"/contact",
+  login:"/login", register:"/register", "free-listing":"/free-listing", videos:"/videos",
+  admin:"/admin", "admin-users":"/admin/users", "admin-reviews":"/admin/reviews", "admin-listings":"/admin/listings", "admin-messages":"/admin/messages",
+  // reset-password has none: the emailed token is single-use, so a reload there opens the home page.
+};
+/** The filters that belong in the address bar. scrollTo and blog are one-off instructions. */
+const QUERY_KEYS=["type","district","view","preset","q"] as const;
+const slugOf=(s:string)=>s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60);
+
+/** e.g. /property/12-sauraha-riverside-retreat, /blog/3-vastu-shastra…, /buy?district=Lalitpur */
+function urlOf(v:Visit):string {
+  let path=PAGE_PATHS[v.page] ?? "/";
+  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); path=`/property/${v.selId}${p?`-${slugOf(p.title)}`:""}`; }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); path=`/blog/${v.blogId}${b?`-${slugOf(b.title)}`:""}`; }
+  const q=new URLSearchParams();
+  for(const k of QUERY_KEYS){ const val=v.nav[k]; if(val) q.set(k,String(val)); }
+  const s=q.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+/** The page an address points to. The id before the dash is what counts; unknown paths open Home. */
+function visitFromUrl(pathname:string, search:string):Visit {
+  const home:Visit={ page:"home", nav:{}, selId:1, blogId:1, scrollY:0 };
+  const path=pathname.replace(/\/+$/,"")||"/";
+  const prop=path.match(/^\/property\/(\d+)/); if(prop) return { ...home, page:"property", selId:Number(prop[1]) };
+  const post=path.match(/^\/blog\/(\d+)/); if(post) return { ...home, page:"blog-post", blogId:Number(post[1]) };
+  const page=(Object.keys(PAGE_PATHS) as Page[]).find(p=>PAGE_PATHS[p]===path);
+  if(!page) return home;
+  const q=new URLSearchParams(search); const nav:NavOpts={};
+  const view=q.get("view"), preset=q.get("preset");
+  if(q.get("type")) nav.type=q.get("type")!;
+  if(q.get("district")) nav.district=q.get("district")!;
+  if(view==="list"||view==="grid"||view==="map") nav.view=view;
+  if(preset==="hot"||preset==="new") nav.preset=preset;
+  if(q.get("q")) nav.q=q.get("q")!;
+  return { ...home, page, nav };
+}
+
+/** What App keeps in each browser history entry: the page, and the one before it (for "Back to …"). */
+type HistoryEntry = { nb:1; i:number; v:Visit; prev:Visit|null };
+const historyEntry=():HistoryEntry|null=>{ const s=window.history.state as HistoryEntry|null; return s?.nb===1 ? s : null; };
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 /**
  * Loads the properties once the sign-in check is done: the admin list for the admin (it adds the
@@ -2841,34 +2911,50 @@ export default function App() {
     const auth=q.get("auth");
     return auth==="google" ? "success" : auth==="google_mfa" ? "mfa" : q.get("auth_error")==="google" ? "error" : null;
   });
-  useEffect(()=>{
-    if(googleResult) window.history.replaceState(null,"",window.location.pathname);
-  },[googleResult]);
-  // The password reset email links to /reset-password?token=... Take the token, then drop it
-  // from the address bar (and history) right away.
+  // The password reset email links to /reset-password?token=... Take the token; the address bar
+  // drops it on the first render (see the history set-up below).
   const [resetToken]=useState<string|null>(()=>
     window.location.pathname==="/reset-password" ? new URLSearchParams(window.location.search).get("token") ?? "" : null);
-  useEffect(()=>{
-    if(resetToken!==null) window.history.replaceState(null,"","/");
-  },[resetToken]);
-  const [page, setPage]=useState<Page>(resetToken!==null ? "reset-password" : googleResult ? "login" : "home");
-  const [selId, setSelId]=useState(1);
-  const [blogId, setBlogId]=useState(1);
-  const [nav, setNav]=useState<NavOpts>({});
+  // The first page: the reset and Google landings, else the address (a reload keeps its entry).
+  const [start]=useState<Visit>(()=>{
+    const home:Visit={ page:"home", nav:{}, selId:1, blogId:1, scrollY:0 };
+    if(resetToken!==null) return { ...home, page:"reset-password" };
+    if(googleResult) return { ...home, page:"login" };
+    const h=historyEntry();
+    if(h && h.v.page!=="reset-password") return { ...h.v, scrollY:0 };
+    return visitFromUrl(window.location.pathname, window.location.search);
+  });
+  const [page, setPage]=useState<Page>(start.page);
+  const [selId, setSelId]=useState(start.selId);
+  const [blogId, setBlogId]=useState(start.blogId);
+  const [nav, setNav]=useState<NavOpts>(start.nav);
   const handleDone=useCallback(()=>setLoading(false),[]);
 
-  // ── Back button ──
-  // Pages visited so far (newest last). Browser history isn't touched.
+  // ── History and the Back button ──
+  // Each page is a browser history entry (see urlOf), so the browser's Back/Forward work and the
+  // in-page "Back to …" button uses the same history. Each entry also remembers the page before it.
   // `here` is the page on screen; go() reads it before the next render, so it's the page being left.
   const here=useRef<Visit>({ page, nav, selId, blogId, scrollY:0 });
   here.current={ page, nav, selId, blogId, scrollY:0 };
-  const trail=useRef<Visit[]>([]);
+  const [prev,setPrev]=useState<Visit|null>(()=>historyEntry()?.prev ?? null);
   const restoreY=useRef<number|null>(null);
-  const [trailLen,setTrailLen]=useState(0);
+  // Set when a page sends the visitor to sign in: where they were, so they can go straight back.
+  // `auto` = a sign-in prompt (heart, review, a form) rather than the Login link.
+  const returnTo=useRef<{ v:Visit; i:number; auto:boolean }|null>(null);
   // The property a link has just chosen (setId runs right before go), so opening another
   // property from "You May Also Like" counts as a new page rather than the same one.
   const nextSelId=useRef<number|null>(null);
   const setSelIdFromLink=useCallback((id:number)=>{ nextSelId.current=id; setSelId(id); },[]);
+
+  // Label this first entry (and tidy its address) so Back and reload know what it is.
+  useEffect(()=>{
+    window.history.scrollRestoration="manual";
+    const h=historyEntry();
+    // A deep link keeps its own path: the title in it may not have loaded yet.
+    const url=start.page==="property"||start.page==="blog-post" ? window.location.pathname : urlOf(start);
+    const entry:HistoryEntry={ nb:1, i:h?.i ?? 0, v:start, prev:h?.prev ?? null };
+    window.history.replaceState(entry,"",url);
+  },[]);
 
   const go=useCallback<Go>((p,o={})=>{
     const from=here.current;
@@ -2877,9 +2963,17 @@ export default function App() {
     const same=from.page===p && JSON.stringify(from.nav)===JSON.stringify(o)
       && (o.blog===undefined || o.blog===from.blogId) && (p!=="property" || toSel===from.selId);
     if(!same){
-      trail.current.push({ ...from, scrollY:window.scrollY });
-      if(trail.current.length>50) trail.current.shift();
-      setTrailLen(trail.current.length);
+      const cur=historyEntry(); const i=cur?.i ?? 0;
+      const left:Visit={ ...from, scrollY:window.scrollY };
+      // The page being left keeps its scroll position, for Back.
+      window.history.replaceState({ ...(cur ?? { nb:1, i, prev:null }), v:left },"");
+      const to:Visit={ page:p, nav:o, selId:toSel, blogId:o.blog ?? from.blogId, scrollY:0 };
+      const entry:HistoryEntry={ nb:1, i:i+1, v:to, prev:left };
+      window.history.pushState(entry,"",urlOf(to));
+      setPrev(left);
+      const signIn=(x:Page)=>x==="login"||x==="register";
+      if(signIn(p)) { if(!signIn(from.page)) returnTo.current={ v:left, i, auto:false }; }
+      else returnTo.current=null;
     }
     restoreY.current=null;
     setPage(p); setNav(o);
@@ -2888,12 +2982,26 @@ export default function App() {
     // jumping back to the top. Everything else opens at the top.
     if(!(from.page.startsWith("admin")&&p.startsWith("admin"))) window.scrollTo(0,0);
   },[]);
-  // A signed-out visitor tapped the heart or "Write a Review" (auth.tsx → requestSignIn).
-  useEffect(()=>onSignInRequest(()=>go("login")),[go]);
+  // A signed-out visitor tapped the heart, "Write a Review" or a form's "Sign In to …" button
+  // (auth.tsx → requestSignIn): after signing in they go straight back to that page.
+  useEffect(()=>onSignInRequest(()=>{ go("login"); if(returnTo.current) returnTo.current.auto=true; }),[go]);
+
+  // The browser's Back/Forward (and the in-page Back button, which calls history.back()).
+  useEffect(()=>{
+    const onPop=()=>{
+      const h=historyEntry();
+      const v=h?.v ?? visitFromUrl(window.location.pathname, window.location.search);
+      restoreY.current=v.scrollY;
+      setPage(v.page); setNav(v.nav); setSelId(v.selId); setBlogId(v.blogId); setPrev(h?.prev ?? null);
+      if(v.page!=="login"&&v.page!=="register") returnTo.current=null;
+      window.scrollTo(0,0);
+    };
+    window.addEventListener("popstate",onPop);
+    return ()=>window.removeEventListener("popstate",onPop);
+  },[]);
 
   /** Where the Back button leads: the previous page, or the natural parent if there is none. */
   const backTarget=():Visit=>{
-    const prev=trail.current[trail.current.length-1];
     if(prev) return prev;
     const h=here.current;
     const listing=ALL_PROPS.find(x=>x.id===h.selId)?.listing;
@@ -2901,15 +3009,30 @@ export default function App() {
     return { page:parent, nav:{}, selId:h.selId, blogId:h.blogId, scrollY:0 };
   };
   const goBack=useCallback(()=>{
-    const prev=trail.current.pop();
-    setTrailLen(trail.current.length);
-    if(!prev){ const t=backTarget(); go(t.page,t.nav); trail.current=[]; setTrailLen(0); return; }
-    restoreY.current=prev.scrollY;
-    setPage(prev.page); setNav(prev.nav); setSelId(prev.selId); setBlogId(prev.blogId);
-    window.scrollTo(0,0);
-  },[go]);
-  // Recomputed whenever the page or the trail changes, so the button always names its target.
-  const backLabel=useMemo(()=>visitLabel(backTarget()),[trailLen,page,selId,blogId,nav]);
+    if(historyEntry()?.prev){ window.history.back(); return; }
+    // Opened from a link: there is nothing before this page, so go to its natural parent.
+    const t=backTarget(); go(t.page,t.nav);
+  },[go,prev]);
+  // Worked out on every render: on a shared link the parent (Buy or Rent) is only known once the
+  // properties have loaded.
+  const backLabel=visitLabel(backTarget());
+
+  /**
+   * After signing in from another page: back to it, with Back skipping the login page. Returns
+   * false when there is nowhere to return to (or, with onlyPrompted, the visitor used the Login link).
+   */
+  const returnAfterSignIn=useCallback((onlyPrompted:boolean):boolean=>{
+    const r=returnTo.current;
+    if(!r||(onlyPrompted&&!r.auto)) return false;
+    returnTo.current=null;
+    const cur=historyEntry();
+    if(cur&&r.i<cur.i){ window.history.go(r.i-cur.i); return true; }
+    setSelIdFromLink(r.v.selId);
+    go(r.v.page, r.v.page==="blog-post" ? { ...r.v.nav, blog:r.v.blogId } : r.v.nav);
+    restoreY.current=r.v.scrollY;
+    return true;
+  },[go,setSelIdFromLink]);
+  const returnLabel=returnTo.current && returnTo.current.v.page!=="home" ? visitLabel(returnTo.current.v) : null;
 
   // After Back, scroll to where the visitor was. Retried briefly because the page is still
   // animating in and images are loading; stops as soon as they scroll themselves.
@@ -2962,11 +3085,12 @@ export default function App() {
             {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
             {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
             {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
-            {page==="property"&&(ALL_PROPS.length
+            {page==="property"&&(ALL_PROPS.some(x=>x.id===selId)
               ? <PropertyDetailPage propertyId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>
+              // An old or mistyped link: the property was sold, removed or never existed.
               : <div className="min-h-screen pt-40 px-6 text-center" style={{background:BG_LIGHT}}>
-                  <p className="text-2xl mb-4" style={{color:FG_LIGHT,...serif}}>No properties to show yet.</p>
-                  <button onClick={()=>go("home")} className="text-[11px] tracking-[0.25em] uppercase underline underline-offset-4" style={{color:MAROON,...sans}}>Back to home</button>
+                  <p className="text-2xl mb-4" style={{color:FG_LIGHT,...serif}}>{ALL_PROPS.length ? "This property is no longer listed." : "No properties to show yet."}</p>
+                  <button onClick={()=>go(ALL_PROPS.length ? "buy" : "home")} className="text-[11px] tracking-[0.25em] uppercase underline underline-offset-4" style={{color:MAROON,...sans}}>{ALL_PROPS.length ? "See all properties" : "Back to home"}</button>
                 </div>)}
             {page==="about"&&<AboutPage go={go}/>}
             {page==="team"&&<TeamPage onBack={goBack} backLabel={backLabel}/>}
@@ -2975,8 +3099,8 @@ export default function App() {
             {page==="services"&&<ServicesPage go={go}/>}
             {page==="emi"&&<EMICalculator/>}
             {page==="contact"&&<ContactPage/>}
-            {page==="login"&&<LoginPage go={go} googleResult={googleResult}/>}
-            {page==="register"&&<RegisterPage go={go}/>}
+            {page==="login"&&<LoginPage go={go} googleResult={googleResult} returnLabel={returnLabel} onReturn={returnAfterSignIn}/>}
+            {page==="register"&&<RegisterPage go={go} returnLabel={returnLabel} onReturn={returnAfterSignIn}/>}
             {page==="free-listing"&&<FreeListingPage go={go}/>}
             {page.startsWith("admin")&&(
               <Suspense fallback={<div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}><p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading the admin…</p></div>}>

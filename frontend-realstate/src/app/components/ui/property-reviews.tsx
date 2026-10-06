@@ -5,6 +5,7 @@ import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from ".
 import { StarRow } from "./star-row";
 import { loadReviews, ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
+import { hasDraft, useDraft } from "@/app/data/drafts";
 import { postReview } from "@/api/reviews";
 import { ApiError, requestSignIn, useAuth } from "@/app/auth";
 
@@ -20,7 +21,8 @@ export function ReviewsSection({ propertyId }: { propertyId: number }) {
   useEffect(() => { void loadReviews(propertyId); }, [propertyId]);
   const all = reviewsFor(propertyId);
   const [expanded, setExpanded] = useState(false);
-  const [writing, setWriting] = useState(false);
+  // Reopened if a review was half-written before a sign-in prompt sent the visitor away.
+  const [writing, setWriting] = useState(() => hasDraft(`review:${propertyId}`));
 
   const avg = ratingFor(propertyId);
   const shown = expanded ? all : all.slice(0, VISIBLE);
@@ -170,9 +172,12 @@ export function ReviewCard({ r }: { r: Review }) {
 // else's name. The review waits for the admin's approval before it shows.
 export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClose: () => void }) {
   const { user } = useAuth();
-  const [rating, setRating] = useState(0);
+  // Kept for the tab, so a lapsed sign-in doesn't lose the review.
+  const [draft, setDraft, clearDraft] = useDraft(`review:${propertyId}`, { rating: 0, text: "" });
+  const { rating, text } = draft;
+  const setRating = (v: number) => setDraft(d => ({ ...d, rating: v }));
+  const setText = (v: string) => setDraft(d => ({ ...d, text: v }));
   const [hover, setHover] = useState(0);
-  const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -183,7 +188,7 @@ export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClos
     if (text.trim().length < 20) { setErr("Please write at least a couple of sentences."); return; }
     if (busy) return;
     setErr(""); setBusy(true);
-    try { await postReview(propertyId, { rating, text: text.trim() }); setSent(true); }
+    try { await postReview(propertyId, { rating, text: text.trim() }); setSent(true); clearDraft(); }
     catch (e) {
       if (e instanceof ApiError && e.status === 401) requestSignIn();
       setErr(e instanceof ApiError ? e.message : "Could not send. Please check your connection and try again.");
@@ -204,7 +209,7 @@ export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClos
     <div className="p-7 md:p-8 border flex flex-col gap-5" style={{ background: WHITE, borderColor: BORDER_L }}>
       <div className="flex items-center justify-between gap-4">
         <p className="text-[11px] tracking-[0.3em] uppercase" style={{ color: GOLD, ...sans }}>Write a Review</p>
-        <button onClick={onClose} aria-label="Cancel review" className="p-1 transition-colors hover:text-[#8a2030]" style={{ color: MUTED_L }}><X size={16} /></button>
+        <button onClick={() => { clearDraft(); onClose(); }} aria-label="Cancel review" className="p-1 transition-colors hover:text-[#8a2030]" style={{ color: MUTED_L }}><X size={16} /></button>
       </div>
 
       <div className="flex flex-col gap-2">
