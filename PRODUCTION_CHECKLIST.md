@@ -53,6 +53,15 @@ Last updated: 2026-10-06
       saved properties are deleted by the backend when removed from a property or when the property
       is deleted for good.
 
+- [ ] `R2_PUBLIC_URL` is an `r2.dev` address (set 2026-10-08 for development). Cloudflare rate-limits r2.dev and
+      doesn't recommend it for production: connect a custom domain (e.g. `media.<site>`), point `R2_PUBLIC_URL` at it,
+      and re-upload or rewrite any stored r2.dev URLs.
+- [ ] Photos keep their EXIF metadata (phone photos often hold the exact GPS point), which undoes the
+      "Approximate area" map for anyone who downloads a listing photo. Strip it before upload (e.g. re-encode in the
+      browser) or with an R2-side process.
+- [ ] Free-listing uploads are limited per IP only (120/h × 8 MB). Consider a per-account limit too, plus the
+      lifecycle rule above, so one account can't fill the bucket.
+
 ## Maps
 
 - [ ] Open a property page and Buy → Map view on the **production build** and check the map tiles

@@ -22,8 +22,8 @@ one, this one is current.
 ### 0.0 QA audit (2026-10-05): frontend to-do, and what the backend changed
 
 A full QA audit ran on `feat/full-stack-endpoints` @ `79a807a` (separate test database; 340 checks).
-No critical or high issues. The backend findings were fixed on 2026-10-06; **the four frontend
-findings below are for the frontend developer** (the owner chose not to fix them on the backend side).
+No critical or high issues. The backend findings were fixed on 2026-10-06; **the frontend
+findings below are for the frontend developer** (F5 added 2026-10-08) (the owner chose not to fix them on the backend side).
 
 **Frontend — please fix**
 
@@ -31,6 +31,7 @@ findings below are for the frontend developer** (the owner chose not to fix them
 |---|---|---|---|---|
 | F1 | Medium | `src/app/App.tsx` (~line 2854: `page` is React state starting at `"home"`; ~2861: "Browser history isn't touched") | The URL is always `/`. Reload (F5) goes back to Home, a property or article can't be shared or bookmarked, and the browser's Back button leaves the site. Sign-in and hearts do survive a reload. | Mirror `page` / `selId` / `blogId` in the URL with `history.pushState` + a `popstate` listener (or `react-router`, already installed), and read the URL on load. Suggested paths: `/buy`, `/rent`, `/property/NBS005`, `/blog/<slug>`, `/about`, `/contact`, `/admin/...`. The existing back-stack (`trail`) can map onto history entries. Data for deep links: **property by NB ID** → `GET /properties?q=NBS005&limit=1` (a full NB ID in `q` matches exactly that property; `GET /properties/:id` takes the numeric `id` only); **article** → `GET /articles/:slug`. Keep the existing `/reset-password?token=` handling. The host must serve `index.html` for every path (SPA fallback; noted in PRODUCTION_CHECKLIST.md). |
 | F3 | Medium | `src/app/admin/ContentEditors.tsx` (~line 638: `upsert(VIDEO_LIST, …)`) | Admin → Videos → Add from YouTube shows the video in the admin list but sends **no request**: visitors never see it and it is gone after a reload. | The backend has **no videos endpoints yet** (the `Video` table exists; shape in §7.3 "Company videos"). Until they exist, hide the Videos tab (or show it read-only with a "coming soon" note). When the backend builds `GET /videos`, `POST/PATCH/DELETE /admin/videos[/:id]`, `PUT /admin/videos/order` (same pattern as testimonials), wire them like `src/api/testimonials.ts`. |
+| F5 | Medium | Property page in `src/app/App.tsx` (`Prop.videoUrl`, mapped in `src/api/properties.ts:59`) | Found 2026-10-08. The admin uploads a property video (stored in Cloudflare R2, returned as `videoUrl` by `GET /properties/:id`), but the public property page never shows it: only the admin editor plays it. | When `videoUrl` is set, show a `<video controls playsInline preload="metadata" src={videoUrl}>` (e.g. a "Video Tour" section under the gallery). Leave `crossOrigin` off (R2's public URL sends no CORS headers for GET). Test with NBS007, which has a video. |
 | F2 | Low | `src/app/App.tsx` (~line 460, footer: `href="#" onClick={e=>e.preventDefault()}`) | "Privacy Policy", "Terms of Use" and "Sitemap" do nothing. | Add the pages or remove the links. A privacy policy is expected: the site collects names, phone numbers and emails. |
 | F4 | Low | `src/app/admin/AdminLayout.tsx` (~line 181, the notice banner) | The banner says journal, team, testimonials, videos, home page, messages, free listings and options "last only until the page is reloaded". Out of date: all of them save to the server except Videos. | Change the text to mention Videos only (or remove the banner once F3 is done). |
 
@@ -76,7 +77,7 @@ the R2 settings exist. What each feature was tested for: §0.4b.
 | Backend | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google sign-in |
 | Backend | `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_FROM_NAME` | Verification codes and reset links |
 | Backend | `CRON_SECRET`, `NODE_ENV`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Cleanup cron auth, mode, seeded admin |
-| Backend | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare R2 for uploads. Not set yet: in development uploads go to `backend-realstate/.uploads/` instead |
+| Backend | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare R2 for uploads. Set in development since 2026-10-08. Upload links are signed for the exact `Content-Type` and file size: PUT the same `File` with the returned `headers` (as `src/api/uploads.ts` does), or R2 answers 403 |
 
 ### 0.3 Endpoints already built (frontend call sites)
 
@@ -151,12 +152,12 @@ Undo puts back the same record (same `id`, same ref, same position). Either soft
 (`deletedAt`, cleared on undo, e.g. `POST /admin/properties/:id/restore`) or delay the real
 DELETE until the Undo notice closes. Don't hand out a new id on restore.
 
-### 0.4b Test status (updated 2026-10-06; keep current after every change)
+### 0.4b Test status (updated 2026-10-08; keep current after every change)
 
 | Feature | Tested in Chrome against Supabase (what was checked) | Not tested yet |
 |---|---|---|
 | Properties (admin CRUD, Undo, purge) | Create / get / patch / delete through the API and editor; delete hides at once, Undo within 60 s, row purged after 60 s; 409 on a taken NB ID; Buy / Rent counts match the database | Editor overwriting hearts given while it is open (known limitation) |
-| Property photos / video | Upload on pick with progress (local test store), `blob:` refused, file deleted when removed from a property or the property is purged, shared photos kept | Upload to Cloudflare R2 (no R2 settings yet) |
+| Property photos / video | Upload on pick with progress (local test store), `blob:` refused, file deleted when removed from a property or the property is purged, shared photos kept | Upload to Cloudflare R2 through the editor in Chrome (R2 set 2026-10-08; the backend's signed upload checked against the bucket by script) |
 | Dropdown options | Add / remove a property type in the admin, kept after reload, used by a property save; unknown type 400; failed save rolls back with a message | — |
 | Journal | Public list / slug / draft 404; create / edit / reorder / delete; cover upload to `articles/`; validation | Cover upload to R2 |
 | Team | Create without photo (initials on cards and profile); portrait upload to `team/`, removed photo deleted; reorder; delete; validation | Portrait upload to R2 |

@@ -68,7 +68,13 @@ export async function createUpload(kind: UploadKind, contentType: string, size: 
   if (!r2) return { ...createLocalUpload(key, contentType, origin), key, headers: { "Content-Type": contentType } };
   const target = new URL(`${r2.endpoint}/${key}`);
   target.searchParams.set("X-Amz-Expires", String(UPLOAD_URL_SECONDS));
-  const signed = await r2.client.sign(new Request(target, { method: "PUT", headers: { "Content-Type": contentType } }), { aws: { signQuery: true } });
+  // allHeaders: aws4fetch leaves Content-Type and Content-Length out of the signature by default,
+  // and then R2 takes any type and size (e.g. an HTML page served from our media domain). Signed,
+  // a different type or size answers 403. The browser sends Content-Length itself (the file's size).
+  const signed = await r2.client.sign(
+    new Request(target, { method: "PUT", headers: { "Content-Type": contentType, "Content-Length": String(size) } }),
+    { aws: { signQuery: true, allHeaders: true } },
+  );
   return { uploadUrl: signed.url, url: `${r2.publicUrl}/${key}`, key, headers: { "Content-Type": contentType } };
 }
 
