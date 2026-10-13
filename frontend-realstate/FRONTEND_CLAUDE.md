@@ -155,12 +155,13 @@ Undo puts back the same record (same `id`, same ref, same position). Either soft
 (`deletedAt`, cleared on undo, e.g. `POST /admin/properties/:id/restore`) or delay the real
 DELETE until the Undo notice closes. Don't hand out a new id on restore.
 
-### 0.4b Test status (updated 2026-10-08; keep current after every change)
+### 0.4b Test status (updated 2026-10-13; keep current after every change)
 
 | Feature | Tested in Chrome against Supabase (what was checked) | Not tested yet |
 |---|---|---|
 | Properties (admin CRUD, Undo, purge) | Create / get / patch / delete through the API and editor; delete hides at once, Undo within 60 s, row purged after 60 s; 409 on a taken NB ID; Buy / Rent counts match the database | Editor overwriting hearts given while it is open (known limitation) |
 | Property photos / video | Upload on pick with progress (local test store), `blob:` refused, file deleted when removed from a property or the property is purged, shared photos kept | Upload to Cloudflare R2 through the editor in Chrome (R2 set 2026-10-08; the backend's signed upload checked against the bucket by script) |
+| Page URLs, Video Tour, cover frame (F1/F5 + Adjust thumbnail; merged into `feat/full-stack-endpoints` 2026-10-13) | saksham, Chrome against Supabase: `/property/13-…` (NBS007) opens directly with its own tab title; "Video Tour" button jumps to the section and the R2 video loads; in-page Back returns to `/buy`; a district filter goes into the address; `/property/99999-…` says "no longer listed"; no console errors; `npm run typecheck` clean. The frontend developer reports 375 / 768 / 1440px checks | Admin Adjust tool and framed cards (by saksham; needs an admin sign-in); sign-in return-to and drafts; production build |
 | Dropdown options | Add / remove a property type in the admin, kept after reload, used by a property save; unknown type 400; failed save rolls back with a message | — |
 | Journal | Public list / slug / draft 404; create / edit / reorder / delete; cover upload to `articles/`; validation | Cover upload to R2 |
 | Team | Create without photo (initials on cards and profile); portrait upload to `team/`, removed photo deleted; reorder; delete; validation | Portrait upload to R2 |
@@ -185,7 +186,7 @@ transitions can look stuck during automated testing.
 
 **Still open:** company videos (`/videos`, `/admin/videos`, video upload); Cloudflare R2 settings (then re-upload the two
 local test images: NBS007's photo, article #8's cover); test article #8 ("fgsgsdgsdgsdfsfghf", needs the owner's OK to
-delete); emails to the business address in Messages; real page URLs; the PRODUCTION_CHECKLIST.md items.
+delete); emails to the business address in Messages; the PRODUCTION_CHECKLIST.md items. (Real page URLs: done, F1.)
 
 ### 0.5 Shapes and exact vocabularies
 
@@ -1588,7 +1589,7 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 | Date | From | Question / request | Status |
 |---|---|---|---|
-| 2026-10-13 | Frontend | **Please review the `coverFrame` backend addition** (branch `fix/frontend-audit-issues`): `Property.coverFrame Json?`, migration `20261013090000_property_cover_frame` (one nullable JSONB column), validation in `lib/validation/property.ts`, output in `lib/content/properties.ts` (public only while `src === gallery[0]`). Done on the owner's request for the admin's "Adjust thumbnail" tool. **The migration is already applied to the Supabase database** (via the session pooler). Pull this branch **before you create your next migration**; if `prisma migrate dev` reports drift, do **not** accept a reset. | **Needs saksham** |
+| 2026-10-13 | Frontend | **Please review the `coverFrame` backend addition** (branch `fix/frontend-audit-issues`): `Property.coverFrame Json?`, migration `20261013090000_property_cover_frame` (one nullable JSONB column), validation in `lib/validation/property.ts`, output in `lib/content/properties.ts` (public only while `src === gallery[0]`). Done on the owner's request for the admin's "Adjust thumbnail" tool. **The migration is already applied to the Supabase database** (via the session pooler). Pull this branch **before you create your next migration**; if `prisma migrate dev` reports drift, do **not** accept a reset. | **Done 2026-10-13**: reviewed and accepted by saksham; branch fast-forwarded into `feat/full-stack-endpoints`, `migrate status` clean |
 | 2026-09-28 | Frontend | **Admin panel is built, frontend only.** Please build §7.8 (properties, uploads, articles, team, testimonials, videos, site settings) and §7.7 (reviews, reactions). Suggested Prisma models are in §7.8. | **Needs saksham** |
 | 2026-09-28 | Frontend | **Property references `#NBS345` / `#NBL345`** (top priority): one number sequence, prefix from `listing`, `q` search must match them. Rules in §0.5. | **Needs saksham** |
 | 2026-09-28 | Frontend | Add **`lastLoginAt`** to `USER_SELECT` in `GET /admin/users`; the Users page column is ready. | **Needs saksham** |
@@ -1622,6 +1623,12 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-13 · backend · `/auth/refresh` no longer loses the session after a reload mid-refresh.** The old cookie now
+  gets a fresh token for 30 s while the one issued to the aborted response is unused (it used to answer 409 until the
+  user was signed out everywhere). No frontend change: `refreshOnce()`'s retry on 409 is still right for a two-tab race.
+- **2026-10-13 · saksham · Merged `fix/frontend-audit-issues` into `feat/full-stack-endpoints` (fast-forward).** Reviewed
+  the `coverFrame` backend addition (§12, accepted: PATCH without it keeps the saved frame, public items drop it once the
+  cover changes). Checked in Chrome: deep link, Video Tour, Back, filters in the address, "no longer listed" (§0.4b).
 - **2026-10-13 · frontend (+ backend field) · "Adjust thumbnail" for the property cover.** In the editor (step 5, Photos) the
   cover has **Adjust**: drag the photo in a 4:3 frame, zoom 1-3×, live previews of the real card and the home banner
   (desktop and phone), Reset, keyboard arrows / + / −. Saved as `coverFrame` `{ src, x, y, zoom }` and applied with

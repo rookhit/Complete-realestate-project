@@ -85,9 +85,9 @@ Last updated: 2026-10-06
 - [ ] Run the backend with `NODE_ENV=production` (turns on the `Secure` cookie flag and makes missing
       email settings an error instead of printing codes to the console).
 - [ ] Deploy behind a proxy that sets `X-Forwarded-For`, so rate limits and lockouts see real client IPs.
-- [ ] Once the frontend has real page URLs (QA finding F1, `FRONTEND_CLAUDE.md` §0.0): the frontend host must
-      serve `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
-      `/property/NBS005` answers 404.
+- [ ] **The frontend has real page URLs now (F1, merged 2026-10-13)**: the frontend host must serve
+      `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
+      `/property/13-…` answers 404.
 
 ## Database (Supabase)
 
@@ -106,7 +106,7 @@ Last updated: 2026-10-06
       admin's login email (git history keeps the old one).
 - [ ] **Free listings saved before 2026-10-06** may hold outside photo URLs (the upload-only check is new):
       look over Admin → Free Listings and reject any whose photos are not from the site's own uploads.
-- [ ] Frontend findings F1-F4 (page URLs, Videos not saved, dead footer links, out-of-date admin banner):
-      fix before launch, see `FRONTEND_CLAUDE.md` §0.0. A **privacy policy** page is expected, since the
-      site collects names, phone numbers and emails.
-- [ ] Company videos backend (`/videos`, `/admin/videos`) not built: until it is, Admin → Videos must be hidden.
+- [x] Frontend findings F1, F2, F4, F5 fixed (merged 2026-10-13). The dead footer links were removed, but a
+      **privacy policy** page is still expected, since the site collects names, phone numbers and emails.
+- [ ] Company videos backend (`/videos`, `/admin/videos`) not built. Admin → Videos is view-only meanwhile
+      (`VIDEOS_EDITABLE = false` in `ContentEditors.tsx`); set it to `true` once the endpoints are wired.
