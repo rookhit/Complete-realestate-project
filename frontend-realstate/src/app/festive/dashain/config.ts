@@ -24,14 +24,14 @@ export const DASHAIN = {
       "Wishing you and your family a joyful Dashain, blessed with tika, jamara and the warmth of home. " +
       "This festive season, enjoy our Bijayadashami offers on selected homes, land and apartments.",
     blessing: "विजया दशमीको हार्दिक मङ्गलमय शुभकामना",
-    primary: { label: "Explore Offers", page: "hot" },
-    secondary: { label: "Talk to an Advisor", page: "contact" },
+    /** The only button: the wish comes first, so no "talk to us" here. */
+    primary: { label: "View Properties", page: "buy" },
     close: "Close the Dashain greeting",
   },
 } as const;
 
-/** The App pages the pop-up's buttons can open. */
-export type DashainPage = typeof DASHAIN.copy.primary.page | typeof DASHAIN.copy.secondary.page;
+/** The App page the pop-up's button opens. */
+export type DashainPage = typeof DASHAIN.copy.primary.page;
 
 /**
  * Whether the festival is on. `?dashain=on` / `?dashain=off` in the address overrides the dates,

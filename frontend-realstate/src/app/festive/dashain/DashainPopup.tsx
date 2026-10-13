@@ -143,13 +143,10 @@ export default function DashainPopup({ onClose, onNavigate }: { onClose: () => v
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.05, duration: 0.6 }}>
             {copy.message}
           </motion.p>
-          <motion.div className="mt-2 w-full flex flex-col sm:flex-row gap-3 justify-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.15 }}>
+          <motion.div className="mt-2 w-full flex justify-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.15 }}>
             <button type="button" onClick={() => go(copy.primary.page)}
-              className="px-7 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
+              className="w-full sm:w-auto px-9 py-3.5 text-[11px] tracking-[0.25em] uppercase transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
               style={{ ...sans, background: PALETTE.gold, color: PALETTE.maroonDeep, fontWeight: 600 }}>{copy.primary.label}</button>
-            <button type="button" onClick={() => go(copy.secondary.page)}
-              className="px-7 py-3.5 text-[11px] tracking-[0.25em] uppercase border transition-colors hover:bg-white/10"
-              style={{ ...sans, borderColor: `${PALETTE.cream}66`, color: PALETTE.cream }}>{copy.secondary.label}</button>
           </motion.div>
           <motion.p className="mt-2 text-[13px] sm:text-[14px]" style={{ ...deva, color: PALETTE.goldSoft }} lang="ne"
             initial={{ opacity: 0 }} animate={{ opacity: 0.9 }} transition={{ delay: 1.3 }}>
