@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import type { Role } from "@/generated/prisma/client";
 import { verifyAccessToken } from "@/lib/auth/jwt";
 import { prisma } from "@/lib/prisma";
@@ -143,6 +144,16 @@ export function errorResponse(request: Request, error: unknown): NextResponse {
     return NextResponse.json(
       { error: { code: error.code, message: error.message, fields: error.fields, requestId } },
       { status: error.status, headers: { ...corsHeaders(request), ...error.headers } },
+    );
+  }
+
+  // A schema .parse() that threw (e.g. a bad query string): the caller's mistake, not ours.
+  if (error instanceof ZodError) {
+    const issue = error.issues[0];
+    const message = issue?.message ?? "Invalid request";
+    return NextResponse.json(
+      { error: { code: "VALIDATION_FAILED", message, fields: { [String(issue?.path[0] ?? "query")]: message }, requestId } },
+      { status: 400, headers: corsHeaders(request) },
     );
   }
 

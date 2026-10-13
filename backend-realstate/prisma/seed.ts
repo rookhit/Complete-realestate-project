@@ -25,8 +25,10 @@ async function main(): Promise<void> {
   const name = "Nepal Bhoomi Admin";
   const admin = await prisma.user.upsert({
     where: { email: normalizedEmail },
-    update: { passwordHash, role: "ADMIN", name },
-    create: { email: normalizedEmail, passwordHash, role: "ADMIN", name },
+    // Verified up front: the address comes from the operator's own .env, and without this a fresh
+    // database's admin would be stuck behind an emailed code (or locked out with no Gmail set up).
+    update: { passwordHash, role: "ADMIN", name, emailVerifiedAt: new Date() },
+    create: { email: normalizedEmail, passwordHash, role: "ADMIN", name, emailVerifiedAt: new Date() },
     select: { id: true, email: true },
   });
 

@@ -114,7 +114,8 @@ export const propertyQuerySchema = z.object({
   minPrice: z.coerce.number().int().min(0).optional().catch(undefined),
   maxPrice: z.coerce.number().int().min(0).optional().catch(undefined),
   preset: z.enum(["hot", "new"]).optional().catch(undefined),
-  q: z.string().trim().max(100).optional(),
+  // Longer searches are cut to 100 characters, not refused.
+  q: z.string().trim().transform((s) => s.slice(0, 100)).optional().catch(undefined),
   sort: z.enum(["newest", "price_asc", "price_desc", "reactions"]).catch("newest").default("newest"),
   page: intParam(1, 10_000).default(1),
   limit: intParam(20, 100).default(20),

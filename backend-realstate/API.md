@@ -217,7 +217,7 @@ admin endpoints answer `403` until it is enabled.
 
 ## `POST /auth/refresh`
 
-No body needed — reads the `refresh_token` cookie. Rotates it (old one revoked, new one issued)
+Send `{}` with `Content-Type: application/json` (the body is ignored, but the header is required: it is part of the CSRF protection, as is the `Origin` check). Reads the `refresh_token` cookie. Rotates it (old one revoked, new one issued)
 and returns a fresh access token.
 
 **Success — `200`**, sets a new `refresh_token` cookie:
@@ -237,7 +237,7 @@ few hundred ms and call `/auth/refresh` once more (the frontend's `auth.tsx` doe
 
 ## `POST /auth/logout`
 
-No body needed. Revokes the refresh token (if present) and clears the cookie.
+Send `{}` with `Content-Type: application/json`, like `/auth/refresh`. Revokes the refresh token (if present) and clears the cookie.
 
 **Success — `204`**, no body.
 

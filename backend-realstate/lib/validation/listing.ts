@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { isUploadedPhoto } from "@/lib/storage/r2";
 
 // Free listings: the seller's form (signed-in only) and the admin's review.
 
 const text = (max: number) => z.string().trim().max(max, `At most ${max} characters`);
-const photo = z.string().trim().max(2000).regex(/^https?:\/\/\S+$/i, "Photos must be uploaded");
+// Only URLs from POST /listings/uploads: an outside link would make the admin's browser load it.
+const photo = z.string().trim().max(2000).refine((url) => isUploadedPhoto(url, "listings"), "Photos must be uploaded");
 
 /** POST /api/v1/listings — what the seller typed, as typed. */
 export const listingInputSchema = z.object({
