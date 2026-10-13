@@ -34,6 +34,8 @@ export interface Message {
 
 /** The inbox, newest first. Empty until an admin signs in. */
 export const MESSAGES: Message[] = [];
+/** True once the first load has finished: what was already there then isn't news. */
+export let messagesLoaded = false;
 let loadRun = 0;
 /** Messages with a change on its way: a refresh that started before it finished must not undo it. */
 const saving = new Map<number, number>();
@@ -46,6 +48,7 @@ export async function loadMessages(): Promise<void> {
     if (run !== loadRun) return;
     // Keep this screen's version of any message that is still being saved.
     MESSAGES.splice(0, MESSAGES.length, ...list.map(m => (saving.has(m.id) ? MESSAGES.find(x => x.id === m.id) ?? m : m)));
+    messagesLoaded = true;
     emitChange();
   } catch { /* offline or signed out: try again on the next poll */ }
 }
@@ -53,6 +56,7 @@ export async function loadMessages(): Promise<void> {
 /** Signed out: forget the admin's inbox. */
 export function clearMessages(): void {
   loadRun++;
+  messagesLoaded = false;
   if (MESSAGES.length) { MESSAGES.splice(0); emitChange(); }
 }
 

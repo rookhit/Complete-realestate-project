@@ -38,6 +38,8 @@ export interface ListingSubmission {
 
 /** Every listing, newest first. Empty until an admin signs in. */
 export const LISTINGS: ListingSubmission[] = [];
+/** True once the first load has finished: what was already there then isn't news. */
+export let listingsLoaded = false;
 let loadRun = 0;
 /** Listings with a save on its way: a refresh that started before it finished must not undo it. */
 const saving = new Map<number, number>();
@@ -51,6 +53,7 @@ export async function loadListings(): Promise<void> {
     // Keep this screen's version of any listing that is still being saved.
     const next = list.map(l => (saving.has(l.id) ? LISTINGS.find(x => x.id === l.id) ?? l : l));
     LISTINGS.splice(0, LISTINGS.length, ...next);
+    listingsLoaded = true;
     emitChange();
   } catch { /* try again on the next poll */ }
 }
@@ -58,6 +61,7 @@ export async function loadListings(): Promise<void> {
 /** Signed out: forget the admin's list. */
 export function clearListings(): void {
   loadRun++;
+  listingsLoaded = false;
   if (LISTINGS.length) { LISTINGS.splice(0); emitChange(); }
 }
 

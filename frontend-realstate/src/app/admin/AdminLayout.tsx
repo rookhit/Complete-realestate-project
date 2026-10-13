@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { AnimatePresence, motion } from "motion/react";
 import { Bell, ClipboardList, ExternalLink, Info, LayoutDashboard, Mail, MessageSquare, Users, X } from "lucide-react";
 import { useAuth } from "@/app/auth";
-import { MESSAGES, MESSAGE_KINDS, unreadCount } from "@/app/data/messages";
+import { MESSAGES, MESSAGE_KINDS, messagesLoaded, unreadCount } from "@/app/data/messages";
 import { pendingReviewCount } from "@/app/data/reviews";
-import { LISTINGS, newListingsCount } from "@/app/data/listings";
+import { LISTINGS, listingsLoaded, newListingsCount } from "@/app/data/listings";
 import { useDataVersion } from "@/app/data/store";
 import { BG_LIGHT, BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { BackButton } from "@/app/components/ui/back-button";
@@ -50,10 +50,14 @@ type Fresh = { kind: string; name: string; subject: string; page: AdminPage };
 function NewMessageNotice({ onOpen }: { onOpen: (page: AdminPage) => void }) {
   useDataVersion();
   const seen = useRef(new Set([...MESSAGES.map(m => `m${m.id}`), ...LISTINGS.map(l => `l${l.id}`)]));
+  // Whether each list had loaded by the last check. After a reload this page opens before the
+  // inbox arrives; that first load is what was already there, not news.
+  const loaded = useRef({ m: messagesLoaded, l: listingsLoaded });
   const [fresh, setFresh] = useState<Fresh | null>(null);
   useEffect(() => {
-    const m = MESSAGES.find(x => !seen.current.has(`m${x.id}`));
-    const l = LISTINGS.find(x => !seen.current.has(`l${x.id}`));
+    const m = loaded.current.m ? MESSAGES.find(x => !seen.current.has(`m${x.id}`)) : undefined;
+    const l = loaded.current.l ? LISTINGS.find(x => !seen.current.has(`l${x.id}`)) : undefined;
+    loaded.current = { m: messagesLoaded, l: listingsLoaded };
     MESSAGES.forEach(x => seen.current.add(`m${x.id}`));
     LISTINGS.forEach(x => seen.current.add(`l${x.id}`));
     const incoming: Fresh | null = l ? { kind: "Free Listing", name: l.seller.name, subject: l.title, page: "admin-listings" }

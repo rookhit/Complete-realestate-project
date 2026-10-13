@@ -504,8 +504,10 @@ function CallbackForm() {
   // Signed in: start from the account's name and phone (still editable).
   useEffect(()=>{ if(user) setDraft(d=>({...d,name:d.name||user.name||"",phone:d.phone||user.phone||""})); },[user]);
   const send=async()=>{
+    // Clear the last attempt's server message first, so it doesn't sit under a new one.
+    setServerErr("");
     if(!name.trim()||!phone.trim()){ setErr(true); return; }
-    setErr(false); setServerErr(""); setBusy(true);
+    setErr(false); setBusy(true);
     try { await sendCallback({name:name.trim(),phone:phone.trim(),time}); setSent(true); clearDraft(); }
     catch(e) { setServerErr(sendError(e)); }
     finally { setBusy(false); }
@@ -1243,7 +1245,7 @@ function CallbackSection() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUY / RENT PAGE (LuxuryEstate Image 2 style)
 // ═══════════════════════════════════════════════════════════════════════════════
-function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
+function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
   const [view,setView]=useState<"list"|"grid"|"map">(nav.view??"list");
   const [typeF,setTypeF]=useState(nav.type??"All Types");
   const [distF,setDistF]=useState(nav.district??"All");
@@ -1253,6 +1255,17 @@ function BuyRentPage({ listing, go, setId, nav={} }: { listing:"For Sale"|"For R
   const [query,setQuery]=useState(nav.q??"");
   const [sortBy,setSortBy]=useState<SortKey>("newest");
   const resultsRef=useRef<HTMLDivElement>(null);
+  // Mirror the filters in the address (keepFilters), so reload, Back and a shared link keep them.
+  // Debounced: browsers limit how often the address can change, and search updates per keystroke.
+  useEffect(()=>{
+    const t=window.setTimeout(()=>keepFilters(page,{
+      type:typeF!=="All Types" ? typeF : undefined,
+      district:distF!=="All" ? distF : undefined,
+      q:query.trim() || undefined,
+      view:view!=="list" ? view : undefined,
+    }),300);
+    return ()=>window.clearTimeout(t);
+  },[page,typeF,distF,query,view]);
   const preset=nav.preset;
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
@@ -1788,7 +1801,7 @@ function EMICalculator() {
           {[
             {label:"Loan Amount (NPR)",val:loan,set:setLoan,min:500000,max:50000000,step:100000,fmt:(v:number)=>fmt(v)},
             {label:"Annual Interest Rate (%)",val:rate,set:setRate,min:1,max:25,step:0.5,fmt:(v:number)=>`${v}%`},
-            {label:"Loan Duration (Months)",val:months,set:setMonths,min:12,max:360,step:12,fmt:(v:number)=>`${v} months (${Math.round(v/12)} years)`},
+            {label:"Loan Duration (Months)",val:months,set:setMonths,min:12,max:360,step:12,fmt:(v:number)=>{ const y=Math.round(v/12); return `${v} months (${y} ${y===1?"year":"years"})`; }},
           ].map(f=>(
             <div key={f.label} className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -2128,7 +2141,8 @@ function ContactPage() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2">
         <div className="px-8 md:px-12 py-16 border-r" style={{borderColor:BORDER_L,background:WHITE}}>
-          {sent?(<div className="flex flex-col items-start gap-4 py-8"><CheckCircle2 size={32} style={{color:GOLD}}/><p className="text-xl" style={{color:FG_LIGHT,...serif}}>Thank you for your enquiry.</p><p className="text-[15px]" style={{color:MUTED_L,...sans}}>We will be in contact within 24 hours.</p></div>):(
+          {sent?(<div className="flex flex-col items-start gap-4 py-8"><CheckCircle2 size={32} style={{color:GOLD}}/><p className="text-xl" style={{color:FG_LIGHT,...serif}}>Thank you for your enquiry.</p><p className="text-[15px]" style={{color:MUTED_L,...sans}}>We will be in contact within 24 hours.</p>
+            <button onClick={()=>setSent(false)} className="mt-1 text-[11px] tracking-[0.25em] uppercase transition-colors hover:brightness-110" style={{color:MAROON,...sans}}>Send another</button></div>):(
             <div className="flex flex-col gap-5 max-w-lg">
               {[{k:"name",l:"Full Name",t:"text",ph:"Your name"},{k:"email",l:"Email",t:"email",ph:"your@email.com"},{k:"phone",l:"Phone",t:"tel",ph:"+977 ..."}].map(f=>(
                 <div key={f.k} className="flex flex-col gap-1.5">
@@ -2148,14 +2162,16 @@ function ContactPage() {
               </div>
               {user?(
                 <button disabled={busy} onClick={async()=>{
-                  if(!form.name.trim()||!form.email.trim()){ setErr(true); return; }
-                  setErr(false); setServerErr(""); setBusy(true);
+                  setServerErr("");
+                  // A message is required here: unlike a property enquiry, a blank one tells the office nothing.
+                  if(!form.name.trim()||!form.email.trim()||!form.msg.trim()){ setErr(true); return; }
+                  setErr(false); setBusy(true);
                   try { await sendContact({name:form.name.trim(),email:form.email.trim(),phone:form.phone.trim(),topic:form.interest,message:form.msg.trim()}); setSent(true); setForm(v=>({...v,msg:""})); }
                   catch(e) { setServerErr(sendError(e)); }
                   finally { setBusy(false); }
                 }} className="py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Sending…":"Send Enquiry"}</button>
               ):<SignInToSend action="Send an Enquiry"/>}
-              {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name and email address.</p>}
+              {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>Please enter your name, email address and a message.</p>}
               {serverErr&&<p role="alert" className="text-[14px]" style={{color:MAROON,...sans}}>{serverErr}</p>}
             </div>
           )}
@@ -2790,9 +2806,9 @@ function HomePage({ go, setId, scrollTo }: { go:Go; setId:(id:number)=>void; scr
 /** A page the visitor was on: everything go() changes, plus how far down they had scrolled. */
 type Visit = { page:Page; nav:NavOpts; selId:number; blogId:number; scrollY:number };
 
-/** "Back to …" text for a page, e.g. "Back to Properties for Sale" or a property's title. */
-function visitLabel(v:Visit):string {
-  const name=(():string=>{
+/** A page's name, e.g. "Properties for Sale" or a property's title. */
+function visitName(v:Visit):string {
+  return (():string=>{
     switch(v.page){
       case "home": case "videos": return "Home";
       case "buy":  return v.nav.district ? `Properties in ${v.nav.district}` : "Properties for Sale";
@@ -2816,8 +2832,13 @@ function visitLabel(v:Visit):string {
       case "admin": case "admin-users": case "admin-reviews": case "admin-listings": case "admin-messages": return "Admin";
     }
   })();
-  return `Back to ${name}`;
 }
+
+/** "Back to …" text for a page, e.g. "Back to Properties for Sale" or a property's title. */
+const visitLabel=(v:Visit):string=>`Back to ${visitName(v)}`;
+
+/** The browser tab's title: the page's name, or just the company on the home page. */
+const visitTitle=(v:Visit):string=>v.page==="home"||v.page==="videos" ? "Nepal Bhoomi Estate Agents" : `${visitName(v)} · Nepal Bhoomi`;
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
 // Every page has its own URL, so reloading, the browser's Back/Forward and shared links work.
@@ -2865,6 +2886,21 @@ function visitFromUrl(pathname:string, search:string):Visit {
 /** What App keeps in each browser history entry: the page, and the one before it (for "Back to …"). */
 type HistoryEntry = { nb:1; i:number; v:Visit; prev:Visit|null };
 const historyEntry=():HistoryEntry|null=>{ const s=window.history.state as HistoryEntry|null; return s?.nb===1 ? s : null; };
+
+/**
+ * A page changed its own filters (Buy/Rent): put them in the address and in this history entry,
+ * so reload, Back and a copied link keep them. Replaces the entry instead of adding one, and
+ * doesn't touch App's nav, which would re-mount the page mid-typing.
+ */
+function keepFilters(page:Page, filters:Pick<NavOpts,"type"|"district"|"q"|"view">) {
+  const h=historyEntry();
+  // The visitor may already have moved on (the call is debounced): leave other pages' entries alone.
+  if(!h||h.v.page!==page) return;
+  const v:Visit={ ...h.v, nav:{ ...h.v.nav, ...filters } };
+  const url=urlOf(v);
+  if(url===window.location.pathname+window.location.search) return;
+  window.history.replaceState({ ...h, v },"",url);
+}
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 /**
@@ -2964,7 +3000,8 @@ export default function App() {
       && (o.blog===undefined || o.blog===from.blogId) && (p!=="property" || toSel===from.selId);
     if(!same){
       const cur=historyEntry(); const i=cur?.i ?? 0;
-      const left:Visit={ ...from, scrollY:window.scrollY };
+      // The entry's nav, not App's: Buy/Rent keep their own filter changes there (keepFilters).
+      const left:Visit={ ...from, nav:cur&&cur.v.page===from.page ? cur.v.nav : from.nav, scrollY:window.scrollY };
       // The page being left keeps its scroll position, for Back.
       window.history.replaceState({ ...(cur ?? { nb:1, i, prev:null }), v:left },"");
       const to:Visit={ page:p, nav:o, selId:toSel, blogId:o.blog ?? from.blogId, scrollY:0 };
@@ -3016,6 +3053,9 @@ export default function App() {
   // Worked out on every render: on a shared link the parent (Buy or Rent) is only known once the
   // properties have loaded.
   const backLabel=visitLabel(backTarget());
+  // The tab title follows the page. No dependency list: a property's or article's title is only
+  // known once the data has loaded, which re-renders App without changing the page.
+  useEffect(()=>{ document.title=visitTitle({ page, nav, selId, blogId, scrollY:0 }); });
 
   /**
    * After signing in from another page: back to it, with Back skipping the login page. Returns
@@ -3079,12 +3119,12 @@ export default function App() {
               instead of fading out and in like a change of page. */}
           <motion.div key={page.startsWith("admin") ? "admin-area" : `${page}|${selId}|${blogId}|${navKey}`} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.38,ease:[0.16,1,0.3,1]}}>
             {page==="home"&&<HomePage go={go} setId={setSelIdFromLink} scrollTo={nav.scrollTo}/>}
-            {page==="buy"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
-            {page==="rent"&&<BuyRentPage listing="For Rent" go={go} setId={setSelIdFromLink} nav={nav}/>}
-            {page==="hot"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"hot"}}/>}
-            {page==="new-listings"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
-            {page==="map"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
-            {page==="area"&&<BuyRentPage listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="buy"&&<BuyRentPage page={page} listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="rent"&&<BuyRentPage page={page} listing="For Rent" go={go} setId={setSelIdFromLink} nav={nav}/>}
+            {page==="hot"&&<BuyRentPage page={page} listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"hot"}}/>}
+            {page==="new-listings"&&<BuyRentPage page={page} listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,preset:"new"}}/>}
+            {page==="map"&&<BuyRentPage page={page} listing="For Sale" go={go} setId={setSelIdFromLink} nav={{...nav,view:"map"}}/>}
+            {page==="area"&&<BuyRentPage page={page} listing="For Sale" go={go} setId={setSelIdFromLink} nav={nav}/>}
             {page==="property"&&(ALL_PROPS.some(x=>x.id===selId)
               ? <PropertyDetailPage propertyId={selId} go={go} setId={setSelIdFromLink} onBack={goBack} backLabel={backLabel}/>
               // An old or mistyped link: the property was sold, removed or never existed.

@@ -42,7 +42,7 @@ export function FloorPlanViewer({ boxes, footer }: { boxes: PlanBox[]; footer?: 
             const on = b.id === active;
             return (
               <button key={b.id} type="button" aria-label={`${b.name}, ${planArea(b.area)}`}
-                onMouseEnter={() => setActive(b.id)} onFocus={() => setActive(b.id)} onClick={() => setActive(on ? null : b.id)}
+                onMouseEnter={() => setActive(b.id)} onFocus={() => setActive(b.id)} onClick={() => setActive(b.id)}
                 className="absolute transition-colors duration-200 outline-none"
                 style={{ ...boxPosition(b), border: `1.5px solid ${on ? MAROON : "rgba(26,22,17,0.55)"}`, background: on ? "rgba(138,32,48,0.08)" : "rgba(255,255,255,0.72)", zIndex: on ? 2 : 1 }}>
                 <BoxLabel b={b} on={on} />
@@ -61,7 +61,7 @@ export function FloorPlanViewer({ boxes, footer }: { boxes: PlanBox[]; footer?: 
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 sm:px-5 py-3.5 border-t" style={{ borderColor: BORDER_L }}>
         {boxes.map(b => (
-          <button key={b.id} type="button" onMouseEnter={() => setActive(b.id)} onMouseLeave={() => setActive(null)} onClick={() => setActive(b.id === active ? null : b.id)}
+          <button key={b.id} type="button" onMouseEnter={() => setActive(b.id)} onMouseLeave={() => setActive(null)} onClick={() => setActive(b.id)}
             className="flex items-center gap-2 text-[12px] transition-colors" style={{ color: b.id === active ? MAROON : MUTED_L, ...sans }}>
             <span className="w-2.5 h-2.5 border" style={{ borderColor: b.id === active ? MAROON : "rgba(26,22,17,0.55)" }} />
             {b.name} <span className="tabular-nums" style={{ color: FG_LIGHT }}>{planArea(b.area)}</span>

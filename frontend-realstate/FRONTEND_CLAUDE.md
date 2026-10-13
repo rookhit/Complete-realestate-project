@@ -1585,6 +1585,13 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-07 · frontend · Follow-up QA fixes, checked at 375 / 768 / 1440px.** F1 completed: district, type,
+  search and view chosen on Buy/Rent now go into the address (`keepFilters`, debounced, same history entry), so reload,
+  Back and copied links keep them. Tab titles per page (was "Create Initial Page"). Photos that fail to load are hidden
+  instead of showing their alt text (`main.tsx`). Contact form needs a message and has "Send another"; callback form
+  no longer keeps an old server error. EMI "1 year". Floor plan click selects a room (hover then click used to undo
+  it). Admin "new message" pop-up no longer fires for old messages after a reload (`messagesLoaded`/`listingsLoaded`).
+  No API changes.
 - **2026-10-06 · frontend · QA audit fixes F1, F2, F4, F5, F6, F7 (branch `fix/frontend-audit-issues`).** Every page
   has a URL (`/property/12-…`, `/blog/3-…`, `/admin/messages`, filters in the query string): reload, browser
   Back/Forward and shared links work; old or wrong links say "no longer listed" (§5). Signing in from a prompt
