@@ -1623,6 +1623,11 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-13 · frontend · Dashain 2083 decorations (temporary).** Home page: a greeting pop-up ("Happy Dashain",
+  "Bijayadashami Offers", once per visit) with falling ribbons, and a 3D changa kite (three.js) that climbs as you scroll.
+  All in `src/app/festive/dashain/` (lazy chunks; switches itself off after 25 Oct, preview with `?dashain=on`). To take
+  it down: that folder's README (delete the folder, the 2 lines marked `Dashain` in `App.tsx`, `npm uninstall three
+  @types/three`). Also: the loading screen says "Nepal Bhoomi Real Estate" instead of "Luxury Real Estate · Nepal".
 - **2026-10-13 · backend · `/auth/refresh` no longer loses the session after a reload mid-refresh.** The old cookie now
   gets a fresh token for 30 s while the one issued to the aborted response is unused (it used to answer 409 until the
   user was signed out everywhere). No frontend change: `refreshOnce()`'s retry on 409 is still right for a two-tab race.

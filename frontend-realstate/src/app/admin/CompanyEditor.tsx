@@ -61,7 +61,7 @@ export function CompanySection({ notify }: { notify: Notify }) {
           </Field>
           <Field label="Email"><TextInput type="email" value={c.email} onChange={v => setField("email", v)} placeholder="info@nepalbhoomi.com" /></Field>
           <div className="hidden md:block" />
-          <Field label="Office Address" hint="Line breaks are kept."><TextArea rows={3} value={c.address} onChange={v => setField("address", v)} placeholder={"Jhamsikhel Road, Lalitpur\nKathmandu Valley, Nepal"} /></Field>
+          <Field label="Office Address" hint="Line breaks are kept."><TextArea rows={3} value={c.address} onChange={v => setField("address", v)} placeholder={"Lazimpat, Kathmandu\nOpposite Image Channel building"} /></Field>
           <Field label="Office Hours" hint="Line breaks are kept."><TextArea rows={3} value={c.hours} onChange={v => setField("hours", v)} placeholder={"Sunday–Friday: 9:00 AM – 6:00 PM\nSaturday: By Appointment"} /></Field>
           <div className="md:col-span-2 pt-5 border-t" style={{ borderColor: BORDER_L }}>
             <p className="text-[10px] tracking-[0.28em] uppercase mb-4" style={{ color: GOLD, ...sans }}>Social Links · leave empty to hide the icon in the footer</p>

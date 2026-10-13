@@ -203,6 +203,38 @@ export function parseRef(input: string): string | null {
 /** True when a search is this property's full NB ID, however it is typed. */
 export const matchesRef = (nbId: string, query: string): boolean => parseRef(query) === nbId.toUpperCase();
 
+/**
+ * How well a property matches what someone is typing in a search box; 0 = not at all. Used by the
+ * Buy/Rent results and the suggestions under the box, so the two always agree. Understands NB IDs
+ * typed in part and any way ("nb", "#nbs", "nbl00", "nbs4", "NBS-004", "004"), and words found in
+ * the title, place, district, type, badge or "sale" / "rent" (every word must match).
+ */
+export function searchScore(p: Prop, query: string): number {
+  const q = query.trim();
+  if (!q) return 1;
+  const ref = p.nbId.toUpperCase();
+  const compact = q.replace(/[#\s-]/g, "").toUpperCase();
+  let best = 0;
+  if (compact && parseRef(compact) === ref) best = 100;
+  else if (compact && /^N(B([SL]\d*)?)?$/.test(compact) && ref.startsWith(compact)) best = 80;
+  else {
+    const typed = compact.match(/^(NB[SL])0*(\d+)$/);
+    const num = refNumber(ref);
+    if (typed && ref.startsWith(typed[1]) && String(num).startsWith(typed[2])) best = 75;
+    else if (/^\d+$/.test(compact)) {
+      if (Number(compact) === num) best = 90;
+      else if (String(num).padStart(3, "0").startsWith(compact) || String(num).startsWith(compact)) best = 60;
+    }
+  }
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const title = p.title.toLowerCase();
+  const rest = [p.location, p.district, p.type, p.badge, p.listing, p.listing === "For Rent" ? "rent rental lease" : "sale buy"].join(" ").toLowerCase();
+  if (words.every(w => title.includes(w) || rest.includes(w))) {
+    best = Math.max(best, title.startsWith(words[0]) ? 70 : words.every(w => title.includes(w)) ? 55 : 35);
+  }
+  return best;
+}
+
 /** The live property already using this NB ID (same sequence, same number), if any. */
 export function refTaken(listing: Listing, n: number, exceptId?: number): Prop | null {
   return n > 0 ? ALL_PROPS.find(p => p.id !== exceptId && p.listing === listing && refNumber(p.nbId) === n) ?? null : null;

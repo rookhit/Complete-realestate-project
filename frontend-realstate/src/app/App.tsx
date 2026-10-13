@@ -5,7 +5,7 @@ import {
   Phone, Mail, MessageCircle, Send, Bed, Bath, Square, Share2,
   Play, Grid3X3, List as ListIcon, Map, Calculator, Star,
   Home, Landmark, Layers, CheckCircle2,
-  Instagram, Facebook, Youtube, Linkedin, ZoomIn,
+  Instagram, Facebook, Youtube, Linkedin,
   SlidersHorizontal, RotateCcw, User, FileText, PlusCircle,
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
@@ -15,7 +15,7 @@ import {
 import logoImg from "@/imports/image.png";
 import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, matchesRef, propertiesError, propertiesStatus, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
@@ -26,6 +26,9 @@ import { uploadListingPhoto } from "@/api/uploads";
 import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
 import { useDataVersion } from "@/app/data/store";
 import { useDraft } from "@/app/data/drafts";
+import { follow, leaveToCard } from "@/app/links";
+import { articleMeta, articlePath, propertyMeta, propertyPath, staticPageMeta, type PageMeta } from "@/seo/meta";
+import { SITE_URL, applyHead } from "@/seo/head";
 import {
   BLOGS, articlesStatus, loadArticles, siteStatus, loadSiteSettings, TESTIMONIALS, testimonialsStatus, loadTestimonials, TEAM, teamStatus, loadTeam, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
   companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
@@ -55,6 +58,7 @@ import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
 import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
+import { DashainFestival } from "@/app/festive/dashain"; // Dashain 2083: remove after the festival (festive/dashain/README.md)
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -226,7 +230,7 @@ function LoadingScreen({ onDone }: { onDone:()=>void }) {
           ))}
           <img src={logoImg} alt="Nepal Bhoomi" className="w-20 h-20 object-contain" />
         </motion.div>
-        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Luxury Real Estate · Nepal</motion.p>
+        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Nepal Bhoomi Real Estate</motion.p>
         <motion.div style={{width:"0.5px",background:GOLD_DIM}} initial={{height:0,opacity:0}} animate={{height:44,opacity:1}} transition={{delay:1.5,duration:0.8}} />
       </div>
     </motion.div>
@@ -275,18 +279,18 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
         style={{ background: scrolled||page!=="home"?"#0a0908":"transparent", borderBottom:scrolled||page!=="home"?`1px solid ${BORDER_D}`:"1px solid transparent", backdropFilter:scrolled?"blur(20px)":"none" }}>
         <div className="flex items-center gap-5 2xl:gap-7 px-6 md:px-12 xl:px-10 2xl:px-20 h-20">
           {/* Logo */}
-          <button onClick={()=>go("home")} className="flex items-center gap-2.5 shrink-0">
+          <a href={"/"} onClick={follow(()=>go("home"))} className="flex items-center gap-2.5 shrink-0">
             <img src={logoImg} alt="NB" className="h-8 w-8 object-contain" />
             <div className="hidden sm:flex flex-col leading-none">
               <span className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</span>
               <span className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</span>
             </div>
-          </button>
+          </a>
           {/* Desktop nav */}
           <div className="hidden xl:flex items-center gap-0.5 2xl:gap-1 ml-2 2xl:ml-4">
             {navLinks.map(n => (
               <div key={n.label} className="relative" onMouseEnter={()=>n.items&&setDropdown(n.label)} onMouseLeave={()=>setDropdown(null)}>
-                <button onClick={()=>n.page&&go(n.page)}
+                <a href={hrefOf(n.page)} onClick={follow(()=>n.page&&go(n.page))}
                   className="group/nav relative flex items-center gap-1 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors"
                   style={{color:page===(n.page)?GOLD:"rgba(240,235,224,0.72)",...sans}}>
                   {n.label}{n.items&&<ChevronDown size={13} className="transition-transform duration-300 group-hover/nav:rotate-180"/>}
@@ -296,7 +300,7 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                     className={`pointer-events-none absolute left-1/2 bottom-0.5 h-px -translate-x-1/2 transition-all duration-400 ease-out group-hover/nav:w-[calc(100%-1.5rem)] ${page===(n.page)?"w-[calc(100%-1.5rem)]":"w-0"}`}
                     style={{ background: GOLD }}
                   />
-                </button>
+                </a>
                 {n.items&&dropdown===n.label&&(
                   <motion.div className="absolute top-full left-0 w-52 border py-2 z-50"
                     style={{background:"#0a0908",borderColor:BORDER_D}}
@@ -317,18 +321,18 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                 )}
               </div>
             ))}
-            <button onClick={()=>go("emi")} className="group/nav relative flex items-center gap-1.5 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
+            <a href={hrefOf("emi")} onClick={follow(()=>go("emi"))} className="group/nav relative flex items-center gap-1.5 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
               <Calculator size={14}/>EMI
               <span
                 className={`pointer-events-none absolute left-1/2 bottom-0.5 h-px -translate-x-1/2 transition-all duration-400 ease-out group-hover/nav:w-[calc(100%-1.5rem)] ${page==="emi"?"w-[calc(100%-1.5rem)]":"w-0"}`}
                 style={{ background: GOLD }}
               />
-            </button>
+            </a>
           </div>
           {/* Right side */}
           <div className="hidden xl:flex items-center gap-2.5 2xl:gap-3 ml-auto">
-            <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
-              style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</button>
+            <a href={hrefOf("free-listing")} onClick={follow(()=>go("free-listing"))} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
+              style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</a>
             {user ? (<>
               {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page.startsWith("admin")?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin{badge}</button>}
               <span className="flex items-center gap-1.5 px-1.5 text-[12px] max-w-[180px] truncate" title={`${user.name||""} · ${user.email}`} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/><span className="hidden 2xl:inline">{user.name||user.email}</span></span>
@@ -370,10 +374,10 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                   <motion.li key={n.label} className="border-b" style={{borderColor:"rgba(240,235,224,0.07)"}}
                     initial={{opacity:0,x:-28}} animate={{opacity:1,x:0}} transition={{delay:0.1+i*0.045,duration:0.5,ease:[0.16,1,0.3,1]}}>
                     <div className="flex items-center gap-2">
-                      <button onClick={()=>{go(n.page);setMenu(false);}} className="flex-1 flex items-baseline gap-4 py-[15px] text-left">
+                      <a href={hrefOf(n.page)} onClick={follow(()=>{go(n.page);setMenu(false);})} className="flex-1 flex items-baseline gap-4 py-[15px] text-left">
                         <span className="w-5 text-[10px] tracking-[0.12em] tabular-nums" style={{color:active?GOLD:"rgba(240,235,224,0.32)",...sans}}>{String(i+1).padStart(2,"0")}</span>
                         <span className="text-[18px] font-light tracking-[0.03em] transition-colors" style={{color:active?GOLD:FG_DARK,...sans}}>{n.label}</span>{n.page==="admin"&&badge}
-                      </button>
+                      </a>
                       {n.items&&(
                         <button onClick={()=>setOpenSub(expanded?null:n.label)} aria-label={`${expanded?"Hide":"Show"} ${n.label} property types`} aria-expanded={expanded}
                           className="w-8 h-8 rounded-full flex items-center justify-center transition-colors" style={{color:expanded?GOLD:"rgba(240,235,224,0.5)",background:expanded?"rgba(176,136,72,0.12)":"transparent"}}>
@@ -438,7 +442,7 @@ function Footer({ go }: { go:Go }) {
             <img src={logoImg} alt="NB" className="h-9 w-9 object-contain"/>
             <div><div className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</div><div className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</div></div>
           </div>
-          <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's premier luxury real estate advisory, representing the country's most exceptional residential and investment properties.</p>
+          <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's trusted real estate advisory, representing the country's most exceptional residential and investment properties.</p>
           <div className="flex gap-3">{([[Instagram,"Instagram",CONTACT.instagram],[Facebook,"Facebook",CONTACT.facebook],[Youtube,"YouTube",CONTACT.youtube],[Linkedin,"LinkedIn",CONTACT.linkedin]] as const).filter(([,,url])=>url.trim()).map(([I,name,url])=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={name} className="transition-opacity hover:opacity-70" style={{color:MUTED_D}}><I size={15}/></a>)}</div>
         </div>
         {[
@@ -450,7 +454,7 @@ function Footer({ go }: { go:Go }) {
             <p className="text-[10px] tracking-[0.32em] uppercase mb-4" style={{color:GOLD,...sans}}>{col.title}</p>
             <div className="flex flex-col gap-2.5">
               {col.links.map(({l,p,o}:any)=>(
-                <button key={l} onClick={()=>go(p as Page,o)} className="text-[14px] text-left transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</button>
+                <a key={l} href={hrefOf(p as Page,o)} onClick={follow(()=>go(p as Page,o))} className="text-[14px] text-left transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
               ))}
             </div>
           </div>
@@ -458,7 +462,7 @@ function Footer({ go }: { go:Go }) {
       </div>
       {/* Extra room at the bottom so the floating Enquiry / WhatsApp buttons never cover these links. */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 pt-8 pb-32 sm:pb-8 sm:pr-32 lg:pr-40">
-        <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© 2025 Nepal Bhoomi Estate Agents. All rights reserved.</p>
+        <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© {new Date().getFullYear()} Nepal Bhoomi Estate Agents. All rights reserved.</p>
         {/* Privacy Policy / Terms of Use links go here once those pages are written (they were dead "#" links). */}
       </div>
     </footer>
@@ -557,7 +561,7 @@ function QuickEnquiryFloat({ overHero=false, onEnquire }: { overHero?:boolean; o
 // ─── PropertyCard ─────────────────────────────────────────────────────────────
 // The card design lives in components/ui/property-cards.tsx (shared with the admin's live preview).
 function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:number)=>void; light?:boolean }) {
-  return <ListingCard p={p} light={light} onOpen={()=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>;
+  return <ListingCard p={p} light={light} href={hrefOf("property",{},p.id)} onOpen={()=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>;
 }
 
 // Favourites and reactions (FavButton, ReactionButton) live in components/ui/reaction-button.tsx.
@@ -609,10 +613,10 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
         </AnimatePresence>
         <div className="flex flex-wrap items-center justify-between gap-6 pr-20 sm:pr-0">
           <div className="flex gap-3">
-            <button onClick={()=>{setId(prop.id);go("property");window.scrollTo(0,0);}} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase group transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
+            <a href={hrefOf("property",{},prop.id)} onClick={follow(()=>{setId(prop.id);go("property");window.scrollTo(0,0);})} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase group transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
               View Property<ArrowRight size={14} className="transition-transform group-hover:translate-x-1"/>
-            </button>
-            <button onClick={()=>go("buy")} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase border transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.65)",borderColor:"rgba(240,235,224,0.2)",...sans}}>All Properties</button>
+            </a>
+            <a href={hrefOf("buy")} onClick={follow(()=>go("buy"))} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase border transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.65)",borderColor:"rgba(240,235,224,0.2)",...sans}}>All Properties</a>
           </div>
           <div className="flex items-center gap-4">
             {featured.map((_,i)=>(
@@ -652,16 +656,16 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Discover the homes capturing attention right now. This curated selection showcases Nepal's most sought-after properties.</p>
           </div>
           <div className="flex flex-col gap-3">
-            <button onClick={()=>go("hot")} className="flex items-center justify-center py-4 text-[12px] tracking-[0.22em] uppercase transition-all hover:brightness-110" style={{background:FG_LIGHT,color:WHITE,...sans}}>See all Hot Properties</button>
+            <a href={hrefOf("hot")} onClick={follow(()=>go("hot"))} className="flex items-center justify-center py-4 text-[12px] tracking-[0.22em] uppercase transition-all hover:brightness-110" style={{background:FG_LIGHT,color:WHITE,...sans}}>See all Hot Properties</a>
             <div className="flex gap-3">
-              <button onClick={()=>scroll(-1)} className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={18}/></button>
-              <button onClick={()=>scroll(1)} className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={18}/></button>
+              <button onClick={()=>scroll(-1)} aria-label="Previous properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={18}/></button>
+              <button onClick={()=>scroll(1)} aria-label="Next properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={18}/></button>
             </div>
           </div>
         </div>
         {/* Horizontal scroll */}
         <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
-          {hot.map(p=><HotCard key={p.id} p={p} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
+          {hot.map(p=><HotCard key={p.id} p={p} href={hrefOf("property",{},p.id)} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
         </div>
       </div>
     </section>
@@ -676,7 +680,7 @@ function NewListingsSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-14">
           <SectionTitle tag="Just Listed" h={"New Listings"} dark={false}/>
-          <button onClick={()=>go("new-listings")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All New <ArrowRight size={14}/></button>
+          <a href={hrefOf("new-listings")} onClick={follow(()=>go("new-listings"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All New <ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
           {news.slice(0,3).map(p=><PropertyCard key={p.id} p={p} go={go} setId={setId} light/>)}
@@ -711,7 +715,7 @@ function LocationStripsSection({ go }: { go:Go }) {
       {/* Full-bleed horizontal image strip (Image 3 style) */}
       <div className="flex overflow-x-auto" style={{scrollbarWidth:"none"}}>
         {locs.map(l=>(
-          <button key={l.name} onClick={()=>go("buy",{district:l.name})} className="relative shrink-0 overflow-hidden group"
+          <a key={l.name} href={hrefOf("buy",{district:l.name})} onClick={follow(()=>go("buy",{district:l.name}))} className="relative shrink-0 overflow-hidden group"
             style={{width:`${share}%`,minWidth:"280px",height:tileH}}>
             <img src={l.img} alt={l.name} className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
             <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.94) 0%, rgba(10,9,8,0.58) 36%, rgba(10,9,8,0.06) 76%)"}}/>
@@ -720,7 +724,7 @@ function LocationStripsSection({ go }: { go:Go }) {
               <p className="leading-[1.04]" style={{color:WHITE,...serif,fontSize:"clamp(1.8rem,2.6vw,2.6rem)"}}>{l.name}</p>
               <div className="mt-5 h-px w-10 transition-all duration-500 ease-out group-hover:w-24" style={{background:GOLD}}/>
             </div>
-          </button>
+          </a>
         ))}
       </div>
     </section>
@@ -1117,8 +1121,8 @@ function TestimonialsSection() {
             <h2 className="leading-[0.93]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.2vw,3.4rem)"}}>What Our Clients Say</h2>
           </div>
           <div className="flex gap-2">
-            <button onClick={()=>setIdx(i=>(i-1+TESTIMONIALS.length)%TESTIMONIALS.length)} className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
-            <button onClick={()=>setIdx(i=>(i+1)%TESTIMONIALS.length)} className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
+            <button onClick={()=>setIdx(i=>(i-1+TESTIMONIALS.length)%TESTIMONIALS.length)} aria-label="Previous testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
+            <button onClick={()=>setIdx(i=>(i+1)%TESTIMONIALS.length)} aria-label="Next testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
           </div>
         </div>
         <AnimatePresence mode="wait">
@@ -1152,10 +1156,10 @@ function BlogSection({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-14">
           <SectionTitle tag="Insights & News" h={"Property Journal"} dark={false}/>
-          <button onClick={()=>go("blog")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All Articles<ArrowRight size={14}/></button>
+          <a href={hrefOf("blog")} onClick={follow(()=>go("blog"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All Articles<ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
-          <button onClick={()=>go("blog-post",{blog:feat.id})} className="lg:col-span-3 flex flex-col group text-left">
+          <a href={hrefOf("blog-post",{blog:feat.id})} onClick={follow(()=>go("blog-post",{blog:feat.id}))} className="lg:col-span-3 flex flex-col group text-left">
             <div className="relative overflow-hidden mb-4" style={{aspectRatio:"16/9"}}>
               <img src={feat.image} alt={feat.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
               <div className="absolute top-4 left-4"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{feat.cat}</span></div>
@@ -1166,17 +1170,17 @@ function BlogSection({ go }: { go:Go }) {
             </p>
             <h3 className="text-xl leading-snug mb-2 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{feat.title}</h3>
             <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>{feat.excerpt}</p>
-          </button>
+          </a>
           <div className="lg:col-span-2 flex flex-col gap-8">
             {rest.map(a=>(
-              <button key={a.id} onClick={()=>go("blog-post",{blog:a.id})} className="flex gap-4 group text-left">
+              <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex gap-4 group text-left">
                 <div className="w-36 h-28 overflow-hidden shrink-0"><img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
                 <div>
                   <span className="text-[10px] tracking-[0.26em] uppercase" style={{color:GOLD,...sans}}>{a.cat}</span>
                   <p className="text-[15px] leading-snug mt-1 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</p>
                   <p className="text-[11px] mt-1" style={{color:MUTED_L,...sans}}>{a.date}</p>
                 </div>
-              </button>
+              </a>
             ))}
           </div>
         </div>
@@ -1192,7 +1196,7 @@ function ServicesSectionHome({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-16">
           <SectionTitle tag="What We Do" h={"Our Services"}/>
-          <button onClick={()=>go("services")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></button>
+          <a href={hrefOf("services")} onClick={follow(()=>go("services"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_D}}>
           {SERVICES.map(s=>(
@@ -1244,7 +1248,7 @@ function CallbackSection() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BUY / RENT PAGE (LuxuryEstate Image 2 style)
+// BUY / RENT PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
   const [view,setView]=useState<"list"|"grid"|"map">(nav.view??"list");
@@ -1270,17 +1274,16 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
   const preset=nav.preset;
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
-  // Match the fields someone would actually type: title, location, district,
-  // type and the reference ("#NBS004", "nbs004" or just "004"). Not the description: a match buried in
-  // a paragraph gives results the user cannot see the reason for.
+  // Match what someone would actually type (searchScore): title, place, district, type and the NB ID,
+  // even in part ("nb", "#nbs00", "004"). Not the description: a match buried in a paragraph gives
+  // results the user cannot see the reason for.
   const q=query.trim().toLowerCase();
-  const matchesQuery=(p:Prop)=>
-    !q ||
-    p.title.toLowerCase().includes(q) ||
-    p.location.toLowerCase().includes(q) ||
-    p.district.toLowerCase().includes(q) ||
-    matchesRef(p.nbId,q) ||
-    p.type.toLowerCase().includes(q);
+  const matchesQuery=(p:Prop)=>searchScore(p,q)>0;
+  // Suggestions under the search box: every listing (sale and rent), best match first; on a tie this
+  // page's own listing (sale on Buy, rent on Rent) comes first.
+  const own=(p:Prop)=>p.listing===listing ? 1 : 0;
+  const suggestions=!q ? [] : ALL_PROPS.map(p=>({p,s:searchScore(p,q)})).filter(x=>x.s>0)
+    .sort((a,b)=>b.s-a.s||own(b.p)-own(a.p)||a.p.nbId.localeCompare(b.p.nbId)).slice(0,6).map(x=>x.p);
   const props=ALL_PROPS.filter(p=>{
     if(p.listing!==listing) return false;
     if(preset==="hot"&&!(p.badge==="Hot"||p.featured)) return false;
@@ -1385,14 +1388,15 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
       </div>
       {/* Category breakdown */}
       <div className="px-6 md:px-12 lg:px-20 py-7 border-b" style={{borderColor:BORDER_L}}>
-        <p className="text-[14px] mb-3" style={{color:MUTED_L,...sans}}>{props.length} {props.length===1?"property":"properties"} found &middot; {heading} in Nepal</p>
+        <h1 className="text-[14px] mb-3" style={{color:MUTED_L,...sans}}>{props.length} {props.length===1?"property":"properties"} found &middot; {heading} in Nepal</h1>
         <div className="flex flex-wrap gap-x-8 gap-y-1">
           {types.slice(1).map(t=>{ const c=ALL_PROPS.filter(x=>x.listing===listing&&x.type===t).length; return c>0&&(<button key={t} onClick={()=>setTypeF(typeF===t?"All Types":t)} className="text-[14px] transition-colors hover:text-[#8a2030]" style={{color:typeF===t?MAROON:MUTED_L,...sans}}>{t} ({c})</button>); })}
         </div>
       </div>
       {/* Results */}
       <div ref={resultsRef} className="px-6 md:px-12 lg:px-20 py-14" style={{scrollMarginTop:"13rem"}}>
-        <ResultsToolbar count={props.length} query={query} onQuery={setQuery} sort={sortBy} onSort={setSortBy}/>
+        <ResultsToolbar count={props.length} query={query} onQuery={setQuery} sort={sortBy} onSort={setSortBy}
+          suggestions={suggestions} onPick={p=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>
         {props.length===0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-2xl" style={{color:FG_LIGHT,...serif}}>No properties match these filters</p>
@@ -1429,7 +1433,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                     {/* Phones: price under the title. Wider: price on the right. */}
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-4 mb-1.5">
                       <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag nbId={p.nbId}/></div>
-                        <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</h3></div>
+                        <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}><a href={hrefOf("property",{},p.id)} onClick={leaveToCard}>{p.title}</a></h3></div>
                       <div className="sm:text-right shrink-0">
                         <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{p.price}</p>
                         {p.listing==="For Rent"&&<p className="text-[11px]" style={{color:MUTED_L,...sans}}>per month</p>}
@@ -1449,10 +1453,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                       <img src={logoImg} alt="NB" className="w-6 h-6 object-contain opacity-60"/>
                       <span className="text-[11px]" style={{color:MUTED_L,...sans}}>Nepal Bhoomi</span>
                     </div>
-                    <div className="flex gap-2">
-                      <button aria-label="Enquire" className="p-2 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}} onClick={e=>{e.stopPropagation();setId(p.id);go("property");}}><Mail size={15}/></button>
-                      <ReactionButton id={p.id} size="sm"/>
-                    </div>
+                    <ReactionButton id={p.id} size="sm"/>
                   </div>
                 </div>
               </div>
@@ -1550,17 +1551,35 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setServerErr(""); setShared(false); },[propertyId]);
   // Signed in: start from the account's details (still editable).
   useEffect(()=>{ if(user) setForm(v=>({...v,name:v.name||user.name||"",email:v.email||user.email,phone:v.phone||user.phone||""})); },[user]);
+  // Photos: ← / → step through them on the page and in the full-screen view (not while typing in
+  // a form); Escape closes the full-screen view. The page doesn't scroll behind it.
+  const photos=p.gallery.length;
+  const prevPhoto=useCallback(()=>setGalIdx(i=>(i-1+photos)%photos),[photos]);
+  const nextPhoto=useCallback(()=>setGalIdx(i=>(i+1)%photos),[photos]);
   useEffect(()=>{
-    if(!lightbox) return;
     const k=(e:KeyboardEvent)=>{
-      if(e.key==="Escape") setLightbox(false);
-      if(e.key==="ArrowLeft") setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length);
-      if(e.key==="ArrowRight") setGalIdx(i=>(i+1)%p.gallery.length);
+      const t=e.target as HTMLElement|null;
+      if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if(e.key==="Escape"&&lightbox) setLightbox(false);
+      if(photos<2) return;
+      if(e.key==="ArrowLeft"){ e.preventDefault(); prevPhoto(); }
+      if(e.key==="ArrowRight"){ e.preventDefault(); nextPhoto(); }
     };
     window.addEventListener("keydown",k);
-    document.body.style.overflow="hidden";
+    if(lightbox) document.body.style.overflow="hidden";
     return ()=>{ window.removeEventListener("keydown",k); document.body.style.overflow=""; };
-  },[lightbox,p.gallery.length]);
+  },[lightbox,photos,prevPhoto,nextPhoto]);
+  // Swipe left / right on phones (photo on the page, or the full-screen view).
+  const swipeX=useRef<number|null>(null);
+  const swipe={
+    onTouchStart:(e:React.TouchEvent)=>{ swipeX.current=e.touches[0].clientX; },
+    onTouchEnd:(e:React.TouchEvent)=>{
+      const start=swipeX.current; swipeX.current=null;
+      if(start===null||photos<2) return;
+      const dx=e.changedTouches[0].clientX-start;
+      if(Math.abs(dx)>45){ if(dx<0) nextPhoto(); else prevPhoto(); }
+    },
+  };
   const share=async()=>{
     const url=typeof window!=="undefined"?window.location.href:"";
     try{
@@ -1581,23 +1600,26 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
     {l:"Road Access",v:p.roadAccess,i:<Route size={14}/>},
     {l:"Facing",v:p.facing,i:<Compass size={14}/>},
     {l:"Build Year",v:p.buildYear>0?String(p.buildYear):"—",i:<Calendar size={14}/>},
-    {l:"Verified",v:p.verified?"Yes":"No",i:<CheckCircle2 size={14}/>},
-  ];
+    {l:"Verified",v:p.verified?"Yes":"",i:<CheckCircle2 size={14}/>},
+  // Only rows with something to say: a listing with few details shouldn't show a column of "—".
+  ].filter(d=>typeof d.v!=="string" || (d.v.trim()!=="" && d.v!=="—"));
   return (
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       {/* Breadcrumb */}
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <a href={"/"} onClick={follow(()=>go("home"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</a>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go(p.listing==="For Sale"?"buy":"rent")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</button>
+        <a href={hrefOf(p.listing==="For Sale"?"buy":"rent")} onClick={follow(()=>go(p.listing==="For Sale"?"buy":"rent"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</a>
         <span style={{color:MUTED_L}}>/</span>
         <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{p.title}</span>
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
       </div>
       {/* Hero gallery */}
-      <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}}>
+      <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}} {...swipe}>
         <img src={p.gallery[galIdx]} alt={p.title} className="w-full h-full object-cover"/>
-        <div className="absolute inset-0" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
+        {/* The whole photo opens the full-screen view (the gradient sits on top, so it is the button). */}
+        <button type="button" onClick={()=>setLightbox(true)} aria-label={`View photo ${galIdx+1} of ${photos} full screen`}
+          className="absolute inset-0 w-full h-full cursor-zoom-in" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
         {/* Thumbs */}
         <div className="absolute bottom-5 left-5 md:left-10 flex gap-2 z-10">
           {p.gallery.map((g,i)=>(
@@ -1606,9 +1628,6 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             </button>
           ))}
         </div>
-        <button onClick={()=>setLightbox(true)} className="absolute top-5 right-5 p-2.5 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}>
-          <ZoomIn size={16}/>
-        </button>
         {/* The tour sits below the description; this takes visitors to it from the photos. */}
         {p.videoUrl&&(
           <button onClick={()=>document.getElementById("video-tour")?.scrollIntoView({behavior:"smooth",block:"start"})}
@@ -1617,9 +1636,10 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             <Play size={13} fill="white"/>Video Tour
           </button>
         )}
-        {p.gallery.length>1&&<>
-          <button onClick={()=>setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronLeft size={18}/></button>
-          <button onClick={()=>setGalIdx(i=>(i+1)%p.gallery.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronRight size={18}/></button>
+        {photos>1&&<>
+          <button onClick={prevPhoto} aria-label="Previous photo" className="absolute left-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronLeft size={18}/></button>
+          <button onClick={nextPhoto} aria-label="Next photo" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronRight size={18}/></button>
+          <span className="absolute top-5 right-5 px-2.5 py-1 text-[11px] tracking-[0.15em] tabular-nums pointer-events-none" style={{background:"rgba(0,0,0,0.45)",color:WHITE,...sans}}>{galIdx+1} / {photos}</span>
         </>}
       </div>
       {/* Info bar */}
@@ -1783,13 +1803,28 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       {/* Lightbox */}
       <AnimatePresence>
         {lightbox&&(
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:"rgba(0,0,0,0.95)"}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setLightbox(false)}>
-            <button onClick={()=>setLightbox(false)} aria-label="Close" className="absolute top-5 right-5 p-2.5 border" style={{borderColor:"rgba(255,255,255,0.2)",color:WHITE}}><X size={18}/></button>
-            <div className="relative max-w-5xl w-full px-10" onClick={e=>e.stopPropagation()}>
-              <img src={p.gallery[galIdx]} alt="" className="w-full h-auto max-h-[80vh] object-contain"/>
-              <button onClick={()=>setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length)} className="absolute left-0 top-1/2 -translate-y-1/2 p-3" style={{color:WHITE}}><ChevronLeft size={24}/></button>
-              <button onClick={()=>setGalIdx(i=>(i+1)%p.gallery.length)} className="absolute right-0 top-1/2 -translate-y-1/2 p-3" style={{color:WHITE}}><ChevronRight size={24}/></button>
+          // Above the header (z-50) and the floating buttons; a click on the dark backdrop closes it.
+          <motion.div role="dialog" aria-modal="true" aria-label={`${p.title}: photos`} className="fixed inset-0 z-[95] flex flex-col items-center justify-center gap-4 px-3 sm:px-6 py-16"
+            style={{background:"rgba(0,0,0,0.95)"}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setLightbox(false)} {...swipe}>
+            <span className="absolute top-6 left-5 text-[12px] tracking-[0.18em] tabular-nums" style={{color:"rgba(255,255,255,0.75)",...sans}}>{galIdx+1} / {photos}</span>
+            <button onClick={()=>setLightbox(false)} aria-label="Close" className="absolute top-5 right-5 p-2.5 border transition-colors hover:bg-white/10" style={{borderColor:"rgba(255,255,255,0.2)",color:WHITE}}><X size={18}/></button>
+            <div className="relative w-full max-w-5xl flex items-center justify-center" onClick={e=>e.stopPropagation()}>
+              <img key={galIdx} src={p.gallery[galIdx]} alt={`${p.title}, photo ${galIdx+1} of ${photos}`} className="max-w-full max-h-[72vh] object-contain select-none" draggable={false}/>
+              {photos>1&&<>
+                <button onClick={prevPhoto} aria-label="Previous photo" className="absolute left-0 sm:-left-14 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors hover:bg-white/10" style={{color:WHITE,background:"rgba(0,0,0,0.35)"}}><ChevronLeft size={24}/></button>
+                <button onClick={nextPhoto} aria-label="Next photo" className="absolute right-0 sm:-right-14 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors hover:bg-white/10" style={{color:WHITE,background:"rgba(0,0,0,0.35)"}}><ChevronRight size={24}/></button>
+              </>}
             </div>
+            {photos>1&&(
+              <div className="flex gap-2 max-w-full overflow-x-auto px-1 pb-1" onClick={e=>e.stopPropagation()}>
+                {p.gallery.map((g,i)=>(
+                  <button key={i} onClick={()=>setGalIdx(i)} aria-label={`Photo ${i+1}`} aria-current={i===galIdx}
+                    className="shrink-0 w-16 h-12 sm:w-20 sm:h-14 overflow-hidden border-2 transition-all" style={{borderColor:i===galIdx?GOLD:"transparent",opacity:i===galIdx?1:0.5}}>
+                    <img src={g} alt="" className="w-full h-full object-cover"/>
+                  </button>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1900,13 +1935,13 @@ function AboutPage({ go }: { go:Go }) {
         <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(14,13,11,1) 0%, rgba(14,13,11,0.25) 100%)"}}/>
         <div className="absolute bottom-10 left-6 md:left-12 lg:left-20 right-6">
           <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag>Our Story</Tag></div>
-          <h1 className="leading-[0.9] max-w-3xl" style={{color:FG_DARK,...serif,fontSize:"clamp(2.6rem,5.4vw,5rem)"}}>Nepal's Most Trusted Luxury Real Estate Advisory</h1>
+          <h1 className="leading-[0.9] max-w-3xl" style={{color:FG_DARK,...serif,fontSize:"clamp(2.6rem,5.4vw,5rem)"}}>Nepal's Most Trusted Real Estate Advisory</h1>
         </div>
       </div>
       {/* Mission + Vision */}
       <div className="grid grid-cols-1 lg:grid-cols-2 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
         {[{title:"Our Mission",text:"To connect Nepal's most discerning buyers, sellers and investors with exceptional properties — delivered with honesty, expertise and unwavering client focus."},
-          {title:"Our Vision",text:"To be the benchmark of luxury real estate advisory in Nepal, recognised internationally for the quality of our portfolio, the expertise of our team and the integrity of our practice."}].map(s=>(
+          {title:"Our Vision",text:"To be the benchmark of real estate advisory in Nepal, recognised internationally for the quality of our portfolio, the expertise of our team and the integrity of our practice."}].map(s=>(
           <div key={s.title} className="border-r last:border-0 px-10 py-16" style={{borderColor:BORDER_L}}>
             <div className="flex items-center gap-3 mb-5"><GoldLine/><Tag c={GOLD}>Nepal Bhoomi</Tag></div>
             <h2 className="text-2xl mb-4" style={{color:FG_LIGHT,...serif}}>{s.title}</h2>
@@ -1933,9 +1968,9 @@ function AboutPage({ go }: { go:Go }) {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12">
           <h2 className="text-3xl" style={{color:FG_LIGHT,...serif}}>Our Team</h2>
           {TEAM.length>ABOUT_TEAM_LIMIT&&(
-            <button onClick={()=>go("team")} className="self-start sm:self-auto flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>
+            <a href={hrefOf("team")} onClick={follow(()=>go("team"))} className="self-start sm:self-auto flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>
               Meet the Full Team ({TEAM.length})<ArrowRight size={14}/>
-            </button>
+            </a>
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
@@ -2036,7 +2071,7 @@ function BlogPage({ go }: { go:Go }) {
         {BLOGS.length===0&&<p className="text-[15px]" style={{color:MUTED_L,...sans}}>No articles yet. Please check back soon.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 md:gap-14">
           {BLOGS.map(a=>(
-            <button key={a.id} onClick={()=>go("blog-post",{blog:a.id})} className="flex flex-col group text-left">
+            <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
                 <img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
@@ -2047,7 +2082,7 @@ function BlogPage({ go }: { go:Go }) {
                 <span className="text-[11px]" style={{color:MUTED_L,...sans}}>{a.date} &middot; {a.read}</span>
                 <span className="text-[11px] tracking-[0.2em] uppercase" style={{color:MAROON,...sans}}>Read &rarr;</span>
               </div>
-            </button>
+            </a>
           ))}
         </div>
       </div>
@@ -2069,9 +2104,9 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <a href={"/"} onClick={follow(()=>go("home"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</a>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go("blog")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</button>
+        <a href={hrefOf("blog")} onClick={follow(()=>go("blog"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</a>
         <span style={{color:MUTED_L}}>/</span>
         <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{a.cat}</span>
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
@@ -2084,12 +2119,19 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
       <article className="px-6 md:px-12 lg:px-20 py-16">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center gap-3 mb-5"><GoldLine/><Tag c={GOLD}>{a.date} &middot; {a.read} read</Tag></div>
-          <h1 className="leading-[0.95]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4.5vw,3.4rem)"}}>{a.title}</h1>
+          {/* Devanagari has tall vowel signs above and below the line, so a Nepali title needs more room. */}
+          <h1 className={/[ऀ-ॿ]/.test(a.title)?"leading-[1.3]":"leading-[0.95]"} style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4.5vw,3.4rem)"}}>{a.title}</h1>
           <p className="mt-8 pt-8 border-t leading-[1.75]" style={{borderColor:BORDER_L,color:MUTED_L,...sans,fontSize:"1.05rem"}}>{a.excerpt}</p>
-          {/* The full article, written in the admin. Paragraphs are separated by a blank line. */}
-          {a.body&&a.body.split(/\n\s*\n/).map(t=>t.trim()).filter(Boolean).map((para,i)=>(
-            <p key={i} className="mt-6 leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}>{para}</p>
-          ))}
+          {/* The full article, written in the admin. Paragraphs are separated by a blank line. A short
+              line with no closing punctuation is a subheading; a line starting with "•" is a bullet. */}
+          {a.body&&a.body.split(/\n\s*\n/).map(t=>t.trim()).filter(Boolean).map((para,i)=>
+            !para.includes("\n")&&para.length<=70&&!/[।.!:;,"”']$/.test(para)&&!para.startsWith("•") ? (
+              <h2 key={i} className="mt-10 leading-[1.3]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.35rem,2.4vw,1.7rem)"}}>{para}</h2>
+            ) : para.startsWith("•") ? (
+              <p key={i} className="mt-3 pl-6 relative leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}><span aria-hidden="true" className="absolute left-1" style={{color:GOLD}}>•</span>{para.replace(/^•\s*/,"")}</p>
+            ) : (
+              <p key={i} className="mt-6 leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}>{para}</p>
+            ))}
           <div className="flex items-center gap-3 mt-10 pt-6 border-t" style={{borderColor:BORDER_L}}>
             <div className="w-9 h-9 flex items-center justify-center rounded-full" style={{background:"rgba(176,136,72,0.14)",color:GOLD}}><FileText size={15}/></div>
             <div>
@@ -2103,7 +2145,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
         <p className="text-[11px] tracking-[0.32em] uppercase mb-8" style={{color:GOLD,...sans}}>More From The Journal</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {more.map(b=>(
-            <button key={b.id} onClick={()=>go("blog-post",{blog:b.id})} className="flex flex-col group text-left">
+            <a key={b.id} href={hrefOf("blog-post",{blog:b.id})} onClick={follow(()=>go("blog-post",{blog:b.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
                 <img src={b.image} alt={b.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
@@ -2113,7 +2155,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
                 <span className="flex items-center gap-1.5"><Calendar size={12} style={{color:GOLD}}/>{b.date}</span>
                 <span className="flex items-center gap-1.5"><Clock size={12} style={{color:GOLD}}/>{b.read}</span>
               </span>
-            </button>
+            </a>
           ))}
         </div>
       </div>
@@ -2136,7 +2178,7 @@ function ServicesPage({ go }: { go:Go }) {
             <div className="w-14 h-14 flex items-center justify-center border mb-6" style={{borderColor:BORDER_L,color:MAROON}}><ServiceIcon name={s.icon}/></div>
             <h3 className="text-xl mb-3" style={{color:FG_LIGHT,...serif}}>{s.title}</h3>
             <p className="text-[15px] leading-[1.75]" style={{color:MUTED_L,...sans}}>{s.desc}</p>
-            <button onClick={()=>go("contact")} className="mt-6 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase group/btn" style={{color:MAROON,...sans}}>Learn More <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-1"/></button>
+            <a href={hrefOf("contact")} onClick={follow(()=>go("contact"))} className="mt-6 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase group/btn" style={{color:MAROON,...sans}}>Learn More <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-1"/></a>
           </div>
         ))}
       </div>
@@ -2421,7 +2463,7 @@ function LoginPage({ go, googleResult=null, returnLabel=null, onReturn }: { go:G
           )
         ) : (
           <>
-            <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Sign In</h2>
+            <h1 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Sign In</h1>
             <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>Access your Nepal Bhoomi account</p>
             <div className="flex flex-col gap-1.5 mb-4">
               <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Email Address</label>
@@ -2514,7 +2556,7 @@ function RegisterPage({ go, returnLabel=null, onReturn }: { go:Go } & SignInRetu
             <VerifyEmailForm email={verifying} onBack={()=>setVerifying(null)} onMfa={()=>go("login")}/>
           </div>
         ):(<>
-          <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Create Account</h2>
+          <h1 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Create Account</h1>
           <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>Join Nepal Bhoomi to save properties and contact advisors</p>
           <div className="border p-8 flex flex-col gap-4" style={{background:WHITE,borderColor:BORDER_L}}>
             {textFields.map(f=>(
@@ -2859,8 +2901,21 @@ function visitName(v:Visit):string {
 /** "Back to …" text for a page, e.g. "Back to Properties for Sale" or a property's title. */
 const visitLabel=(v:Visit):string=>`Back to ${visitName(v)}`;
 
-/** The browser tab's title: the page's name, or just the company on the home page. */
-const visitTitle=(v:Visit):string=>v.page==="home"||v.page==="videos" ? "Nepal Bhoomi Estate Agents" : `${visitName(v)} · Nepal Bhoomi`;
+/**
+ * What search engines and link previews see for a page (src/seo/meta.ts): title, description,
+ * canonical address, preview picture and structured data.
+ */
+function visitMeta(v:Visit):PageMeta {
+  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); }
+  // Area pages show the same properties as Buy for that district.
+  const path=v.page==="area" ? "/buy" : PAGE_PATHS[v.page] ?? "/";
+  const m=staticPageMeta(SITE_URL, path, v.nav.district);
+  // Still loading, or removed: the page's own name, and no stray canonical to the home page.
+  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), jsonLd:[] };
+  if(v.page==="reset-password") return { ...m, noindex:true };
+  return m;
+}
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
 // Every page has its own URL, so reloading, the browser's Back/Forward and shared links work.
@@ -2874,17 +2929,22 @@ const PAGE_PATHS: Partial<Record<Page,string>> = {
 };
 /** The filters that belong in the address bar. scrollTo and blog are one-off instructions. */
 const QUERY_KEYS=["type","district","view","preset","q"] as const;
-const slugOf=(s:string)=>s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60);
 
 /** e.g. /property/12-sauraha-riverside-retreat, /blog/3-vastu-shastra…, /buy?district=Lalitpur */
 function urlOf(v:Visit):string {
   let path=PAGE_PATHS[v.page] ?? "/";
-  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); path=`/property/${v.selId}${p?`-${slugOf(p.title)}`:""}`; }
-  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); path=`/blog/${v.blogId}${b?`-${slugOf(b.title)}`:""}`; }
+  // Same addresses as the pre-rendered pages and the sitemap (src/seo/meta.ts).
+  if(v.page==="property") path=propertyPath(ALL_PROPS.find(x=>x.id===v.selId) ?? { id:v.selId });
+  if(v.page==="blog-post") path=articlePath(BLOGS.find(x=>x.id===v.blogId) ?? { id:v.blogId });
   const q=new URLSearchParams();
   for(const k of QUERY_KEYS){ const val=v.nav[k]; if(val) q.set(k,String(val)); }
   const s=q.toString();
   return s ? `${path}?${s}` : path;
+}
+
+/** The address of a page, for a real link (links.ts): hrefOf("buy",{district:"Lalitpur"}), hrefOf("property",{},12). */
+function hrefOf(page:Page, o:NavOpts={}, id=0):string {
+  return urlOf({ page, nav:o, selId:id, blogId:o.blog ?? 0, scrollY:0 });
 }
 
 /** The page an address points to. The id before the dash is what counts; unknown paths open Home. */
@@ -3077,7 +3137,7 @@ export default function App() {
   const backLabel=visitLabel(backTarget());
   // The tab title follows the page. No dependency list: a property's or article's title is only
   // known once the data has loaded, which re-renders App without changing the page.
-  useEffect(()=>{ document.title=visitTitle({ page, nav, selId, blogId, scrollY:0 }); });
+  useEffect(()=>{ applyHead(visitMeta({ page, nav, selId, blogId, scrollY:0 }), CONTACT); });
 
   /**
    * After signing in from another page: back to it, with Back skipping the login page. Returns
@@ -3134,6 +3194,7 @@ export default function App() {
         {showLoader&&<LoadingScreen key="loader" onDone={handleDone}/>}
       </AnimatePresence>
       <PropertySync/>
+      <DashainFestival page={page} ready={!showLoader} go={p=>go(p)}/>{/* Dashain 2083: remove after the festival */}
       <motion.div animate={{opacity:showLoader?0:1}} transition={{duration:0.6}} style={{pointerEvents:showLoader?"none":"auto"}}>
         <Navbar page={page} go={go}/>
         <AnimatePresence mode="wait">

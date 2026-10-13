@@ -138,7 +138,7 @@ export const ABOUT_TEAM_LIMIT = 6;
 export const DEPARTMENTS = ["Leadership", "Sales & Advisory", "Lettings", "Legal & Documentation", "Marketing", "Client Relations"];
 export const LANGUAGES = ["Nepali", "English", "Hindi", "Newari", "Maithili", "Bhojpuri", "Tamang", "Chinese", "Japanese", "Korean"];
 export const SPECIALITIES = [
-  "Luxury Residences", "Family Homes", "Apartments", "Land & Development", "Commercial Property", "Rentals & Lettings",
+  "Independent Houses", "Family Homes", "Apartments", "Land & Development", "Commercial Property", "Rentals & Lettings",
   "NRN Investors", "First-time Buyers", "Heritage Homes", "Investment Advisory", "Legal & Documentation", "Vastu",
 ];
 
@@ -231,11 +231,11 @@ export interface ContactInfo {
 }
 
 export const CONTACT: ContactInfo = {
-  address: "Jhamsikhel Road, Lalitpur\nKathmandu Valley, Nepal",
-  phone: "+977 1 400 0000",
-  whatsapp: "+977 980 000 0000",
+  address: "Lazimpat, Kathmandu\nOpposite Image Channel building",
+  phone: "+977 9818783518",
+  whatsapp: "+977 9818783518",
   email: "info@nepalbhoomi.com",
-  hours: "Sunday–Friday: 9:00 AM – 6:00 PM\nSaturday: By Appointment",
+  hours: "Sunday–Friday: 9:30 AM – 6:00 PM\nSaturday: Closed",
   instagram: "", facebook: "", youtube: "", linkedin: "",
 };
 
