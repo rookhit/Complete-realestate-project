@@ -231,11 +231,11 @@ export interface ContactInfo {
 }
 
 export const CONTACT: ContactInfo = {
-  address: "Jhamsikhel Road, Lalitpur\nKathmandu Valley, Nepal",
+  address: "Lazimpat, Kathmandu\nOpposite Image Channel building",
   phone: "+977 9818783518",
   whatsapp: "+977 9818783518",
   email: "info@nepalbhoomi.com",
-  hours: "Sunday–Friday: 9:00 AM – 6:00 PM\nSaturday: By Appointment",
+  hours: "Sunday–Friday: 9:30 AM – 6:00 PM\nSaturday: Closed",
   instagram: "", facebook: "", youtube: "", linkedin: "",
 };
 

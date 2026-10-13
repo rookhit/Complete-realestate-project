@@ -26,6 +26,9 @@ import { uploadListingPhoto } from "@/api/uploads";
 import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
 import { useDataVersion } from "@/app/data/store";
 import { useDraft } from "@/app/data/drafts";
+import { follow, leaveToCard } from "@/app/links";
+import { articleMeta, articlePath, propertyMeta, propertyPath, staticPageMeta, type PageMeta } from "@/seo/meta";
+import { SITE_URL, applyHead } from "@/seo/head";
 import {
   BLOGS, articlesStatus, loadArticles, siteStatus, loadSiteSettings, TESTIMONIALS, testimonialsStatus, loadTestimonials, TEAM, teamStatus, loadTeam, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
   companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
@@ -276,18 +279,18 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
         style={{ background: scrolled||page!=="home"?"#0a0908":"transparent", borderBottom:scrolled||page!=="home"?`1px solid ${BORDER_D}`:"1px solid transparent", backdropFilter:scrolled?"blur(20px)":"none" }}>
         <div className="flex items-center gap-5 2xl:gap-7 px-6 md:px-12 xl:px-10 2xl:px-20 h-20">
           {/* Logo */}
-          <button onClick={()=>go("home")} className="flex items-center gap-2.5 shrink-0">
+          <a href={"/"} onClick={follow(()=>go("home"))} className="flex items-center gap-2.5 shrink-0">
             <img src={logoImg} alt="NB" className="h-8 w-8 object-contain" />
             <div className="hidden sm:flex flex-col leading-none">
               <span className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</span>
               <span className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</span>
             </div>
-          </button>
+          </a>
           {/* Desktop nav */}
           <div className="hidden xl:flex items-center gap-0.5 2xl:gap-1 ml-2 2xl:ml-4">
             {navLinks.map(n => (
               <div key={n.label} className="relative" onMouseEnter={()=>n.items&&setDropdown(n.label)} onMouseLeave={()=>setDropdown(null)}>
-                <button onClick={()=>n.page&&go(n.page)}
+                <a href={hrefOf(n.page)} onClick={follow(()=>n.page&&go(n.page))}
                   className="group/nav relative flex items-center gap-1 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors"
                   style={{color:page===(n.page)?GOLD:"rgba(240,235,224,0.72)",...sans}}>
                   {n.label}{n.items&&<ChevronDown size={13} className="transition-transform duration-300 group-hover/nav:rotate-180"/>}
@@ -297,7 +300,7 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                     className={`pointer-events-none absolute left-1/2 bottom-0.5 h-px -translate-x-1/2 transition-all duration-400 ease-out group-hover/nav:w-[calc(100%-1.5rem)] ${page===(n.page)?"w-[calc(100%-1.5rem)]":"w-0"}`}
                     style={{ background: GOLD }}
                   />
-                </button>
+                </a>
                 {n.items&&dropdown===n.label&&(
                   <motion.div className="absolute top-full left-0 w-52 border py-2 z-50"
                     style={{background:"#0a0908",borderColor:BORDER_D}}
@@ -318,18 +321,18 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                 )}
               </div>
             ))}
-            <button onClick={()=>go("emi")} className="group/nav relative flex items-center gap-1.5 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
+            <a href={hrefOf("emi")} onClick={follow(()=>go("emi"))} className="group/nav relative flex items-center gap-1.5 px-2.5 2xl:px-3 py-2 text-[12px] tracking-[0.16em] 2xl:tracking-[0.2em] uppercase transition-colors" style={{color:page==="emi"?GOLD:"rgba(240,235,224,0.72)",...sans}}>
               <Calculator size={14}/>EMI
               <span
                 className={`pointer-events-none absolute left-1/2 bottom-0.5 h-px -translate-x-1/2 transition-all duration-400 ease-out group-hover/nav:w-[calc(100%-1.5rem)] ${page==="emi"?"w-[calc(100%-1.5rem)]":"w-0"}`}
                 style={{ background: GOLD }}
               />
-            </button>
+            </a>
           </div>
           {/* Right side */}
           <div className="hidden xl:flex items-center gap-2.5 2xl:gap-3 ml-auto">
-            <button onClick={()=>go("free-listing")} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
-              style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</button>
+            <a href={hrefOf("free-listing")} onClick={follow(()=>go("free-listing"))} className="flex items-center gap-1.5 px-4 py-2 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent"
+              style={{color:FG_DARK,borderColor:GOLD_DIM,...sans}}><PlusCircle size={14}/>Free Listing</a>
             {user ? (<>
               {user.role==="ADMIN"&&<button onClick={()=>go("admin")} className="flex items-center gap-1.5 px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition-all hover:border-accent" style={{color:page.startsWith("admin")?GOLD:FG_DARK,borderColor:GOLD_DIM,...sans}}><Settings size={14}/>Admin{badge}</button>}
               <span className="flex items-center gap-1.5 px-1.5 text-[12px] max-w-[180px] truncate" title={`${user.name||""} · ${user.email}`} style={{color:"rgba(240,235,224,0.72)",...sans}}><User size={14}/><span className="hidden 2xl:inline">{user.name||user.email}</span></span>
@@ -371,10 +374,10 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
                   <motion.li key={n.label} className="border-b" style={{borderColor:"rgba(240,235,224,0.07)"}}
                     initial={{opacity:0,x:-28}} animate={{opacity:1,x:0}} transition={{delay:0.1+i*0.045,duration:0.5,ease:[0.16,1,0.3,1]}}>
                     <div className="flex items-center gap-2">
-                      <button onClick={()=>{go(n.page);setMenu(false);}} className="flex-1 flex items-baseline gap-4 py-[15px] text-left">
+                      <a href={hrefOf(n.page)} onClick={follow(()=>{go(n.page);setMenu(false);})} className="flex-1 flex items-baseline gap-4 py-[15px] text-left">
                         <span className="w-5 text-[10px] tracking-[0.12em] tabular-nums" style={{color:active?GOLD:"rgba(240,235,224,0.32)",...sans}}>{String(i+1).padStart(2,"0")}</span>
                         <span className="text-[18px] font-light tracking-[0.03em] transition-colors" style={{color:active?GOLD:FG_DARK,...sans}}>{n.label}</span>{n.page==="admin"&&badge}
-                      </button>
+                      </a>
                       {n.items&&(
                         <button onClick={()=>setOpenSub(expanded?null:n.label)} aria-label={`${expanded?"Hide":"Show"} ${n.label} property types`} aria-expanded={expanded}
                           className="w-8 h-8 rounded-full flex items-center justify-center transition-colors" style={{color:expanded?GOLD:"rgba(240,235,224,0.5)",background:expanded?"rgba(176,136,72,0.12)":"transparent"}}>
@@ -451,7 +454,7 @@ function Footer({ go }: { go:Go }) {
             <p className="text-[10px] tracking-[0.32em] uppercase mb-4" style={{color:GOLD,...sans}}>{col.title}</p>
             <div className="flex flex-col gap-2.5">
               {col.links.map(({l,p,o}:any)=>(
-                <button key={l} onClick={()=>go(p as Page,o)} className="text-[14px] text-left transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</button>
+                <a key={l} href={hrefOf(p as Page,o)} onClick={follow(()=>go(p as Page,o))} className="text-[14px] text-left transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
               ))}
             </div>
           </div>
@@ -558,7 +561,7 @@ function QuickEnquiryFloat({ overHero=false, onEnquire }: { overHero?:boolean; o
 // ─── PropertyCard ─────────────────────────────────────────────────────────────
 // The card design lives in components/ui/property-cards.tsx (shared with the admin's live preview).
 function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:number)=>void; light?:boolean }) {
-  return <ListingCard p={p} light={light} onOpen={()=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>;
+  return <ListingCard p={p} light={light} href={hrefOf("property",{},p.id)} onOpen={()=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>;
 }
 
 // Favourites and reactions (FavButton, ReactionButton) live in components/ui/reaction-button.tsx.
@@ -610,10 +613,10 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
         </AnimatePresence>
         <div className="flex flex-wrap items-center justify-between gap-6 pr-20 sm:pr-0">
           <div className="flex gap-3">
-            <button onClick={()=>{setId(prop.id);go("property");window.scrollTo(0,0);}} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase group transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
+            <a href={hrefOf("property",{},prop.id)} onClick={follow(()=>{setId(prop.id);go("property");window.scrollTo(0,0);})} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase group transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>
               View Property<ArrowRight size={14} className="transition-transform group-hover:translate-x-1"/>
-            </button>
-            <button onClick={()=>go("buy")} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase border transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.65)",borderColor:"rgba(240,235,224,0.2)",...sans}}>All Properties</button>
+            </a>
+            <a href={hrefOf("buy")} onClick={follow(()=>go("buy"))} className="flex items-center gap-2.5 px-8 py-4 text-[11px] tracking-[0.25em] uppercase border transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.65)",borderColor:"rgba(240,235,224,0.2)",...sans}}>All Properties</a>
           </div>
           <div className="flex items-center gap-4">
             {featured.map((_,i)=>(
@@ -653,7 +656,7 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Discover the homes capturing attention right now. This curated selection showcases Nepal's most sought-after properties.</p>
           </div>
           <div className="flex flex-col gap-3">
-            <button onClick={()=>go("hot")} className="flex items-center justify-center py-4 text-[12px] tracking-[0.22em] uppercase transition-all hover:brightness-110" style={{background:FG_LIGHT,color:WHITE,...sans}}>See all Hot Properties</button>
+            <a href={hrefOf("hot")} onClick={follow(()=>go("hot"))} className="flex items-center justify-center py-4 text-[12px] tracking-[0.22em] uppercase transition-all hover:brightness-110" style={{background:FG_LIGHT,color:WHITE,...sans}}>See all Hot Properties</a>
             <div className="flex gap-3">
               <button onClick={()=>scroll(-1)} aria-label="Previous properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={18}/></button>
               <button onClick={()=>scroll(1)} aria-label="Next properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={18}/></button>
@@ -662,7 +665,7 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
         </div>
         {/* Horizontal scroll */}
         <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
-          {hot.map(p=><HotCard key={p.id} p={p} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
+          {hot.map(p=><HotCard key={p.id} p={p} href={hrefOf("property",{},p.id)} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
         </div>
       </div>
     </section>
@@ -677,7 +680,7 @@ function NewListingsSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-14">
           <SectionTitle tag="Just Listed" h={"New Listings"} dark={false}/>
-          <button onClick={()=>go("new-listings")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All New <ArrowRight size={14}/></button>
+          <a href={hrefOf("new-listings")} onClick={follow(()=>go("new-listings"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All New <ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
           {news.slice(0,3).map(p=><PropertyCard key={p.id} p={p} go={go} setId={setId} light/>)}
@@ -712,7 +715,7 @@ function LocationStripsSection({ go }: { go:Go }) {
       {/* Full-bleed horizontal image strip (Image 3 style) */}
       <div className="flex overflow-x-auto" style={{scrollbarWidth:"none"}}>
         {locs.map(l=>(
-          <button key={l.name} onClick={()=>go("buy",{district:l.name})} className="relative shrink-0 overflow-hidden group"
+          <a key={l.name} href={hrefOf("buy",{district:l.name})} onClick={follow(()=>go("buy",{district:l.name}))} className="relative shrink-0 overflow-hidden group"
             style={{width:`${share}%`,minWidth:"280px",height:tileH}}>
             <img src={l.img} alt={l.name} className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
             <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.94) 0%, rgba(10,9,8,0.58) 36%, rgba(10,9,8,0.06) 76%)"}}/>
@@ -721,7 +724,7 @@ function LocationStripsSection({ go }: { go:Go }) {
               <p className="leading-[1.04]" style={{color:WHITE,...serif,fontSize:"clamp(1.8rem,2.6vw,2.6rem)"}}>{l.name}</p>
               <div className="mt-5 h-px w-10 transition-all duration-500 ease-out group-hover:w-24" style={{background:GOLD}}/>
             </div>
-          </button>
+          </a>
         ))}
       </div>
     </section>
@@ -1153,10 +1156,10 @@ function BlogSection({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-14">
           <SectionTitle tag="Insights & News" h={"Property Journal"} dark={false}/>
-          <button onClick={()=>go("blog")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All Articles<ArrowRight size={14}/></button>
+          <a href={hrefOf("blog")} onClick={follow(()=>go("blog"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>All Articles<ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
-          <button onClick={()=>go("blog-post",{blog:feat.id})} className="lg:col-span-3 flex flex-col group text-left">
+          <a href={hrefOf("blog-post",{blog:feat.id})} onClick={follow(()=>go("blog-post",{blog:feat.id}))} className="lg:col-span-3 flex flex-col group text-left">
             <div className="relative overflow-hidden mb-4" style={{aspectRatio:"16/9"}}>
               <img src={feat.image} alt={feat.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
               <div className="absolute top-4 left-4"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{feat.cat}</span></div>
@@ -1167,17 +1170,17 @@ function BlogSection({ go }: { go:Go }) {
             </p>
             <h3 className="text-xl leading-snug mb-2 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{feat.title}</h3>
             <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>{feat.excerpt}</p>
-          </button>
+          </a>
           <div className="lg:col-span-2 flex flex-col gap-8">
             {rest.map(a=>(
-              <button key={a.id} onClick={()=>go("blog-post",{blog:a.id})} className="flex gap-4 group text-left">
+              <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex gap-4 group text-left">
                 <div className="w-36 h-28 overflow-hidden shrink-0"><img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
                 <div>
                   <span className="text-[10px] tracking-[0.26em] uppercase" style={{color:GOLD,...sans}}>{a.cat}</span>
                   <p className="text-[15px] leading-snug mt-1 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</p>
                   <p className="text-[11px] mt-1" style={{color:MUTED_L,...sans}}>{a.date}</p>
                 </div>
-              </button>
+              </a>
             ))}
           </div>
         </div>
@@ -1193,7 +1196,7 @@ function ServicesSectionHome({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20">
         <div className="flex items-end justify-between gap-8 mb-16">
           <SectionTitle tag="What We Do" h={"Our Services"}/>
-          <button onClick={()=>go("services")} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></button>
+          <a href={hrefOf("services")} onClick={follow(()=>go("services"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_D}}>
           {SERVICES.map(s=>(
@@ -1430,7 +1433,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                     {/* Phones: price under the title. Wider: price on the right. */}
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-4 mb-1.5">
                       <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag nbId={p.nbId}/></div>
-                        <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}>{p.title}</h3></div>
+                        <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}><a href={hrefOf("property",{},p.id)} onClick={leaveToCard}>{p.title}</a></h3></div>
                       <div className="sm:text-right shrink-0">
                         <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{p.price}</p>
                         {p.listing==="For Rent"&&<p className="text-[11px]" style={{color:MUTED_L,...sans}}>per month</p>}
@@ -1604,9 +1607,9 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       {/* Breadcrumb */}
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <a href={"/"} onClick={follow(()=>go("home"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</a>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go(p.listing==="For Sale"?"buy":"rent")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</button>
+        <a href={hrefOf(p.listing==="For Sale"?"buy":"rent")} onClick={follow(()=>go(p.listing==="For Sale"?"buy":"rent"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>{p.listing==="For Sale"?"Buy":"Rent"}</a>
         <span style={{color:MUTED_L}}>/</span>
         <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{p.title}</span>
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
@@ -1965,9 +1968,9 @@ function AboutPage({ go }: { go:Go }) {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12">
           <h2 className="text-3xl" style={{color:FG_LIGHT,...serif}}>Our Team</h2>
           {TEAM.length>ABOUT_TEAM_LIMIT&&(
-            <button onClick={()=>go("team")} className="self-start sm:self-auto flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>
+            <a href={hrefOf("team")} onClick={follow(()=>go("team"))} className="self-start sm:self-auto flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-[#1a1611]" style={{color:MUTED_L,borderColor:BORDER_L,...sans}}>
               Meet the Full Team ({TEAM.length})<ArrowRight size={14}/>
-            </button>
+            </a>
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
@@ -2068,7 +2071,7 @@ function BlogPage({ go }: { go:Go }) {
         {BLOGS.length===0&&<p className="text-[15px]" style={{color:MUTED_L,...sans}}>No articles yet. Please check back soon.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 md:gap-14">
           {BLOGS.map(a=>(
-            <button key={a.id} onClick={()=>go("blog-post",{blog:a.id})} className="flex flex-col group text-left">
+            <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
                 <img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
@@ -2079,7 +2082,7 @@ function BlogPage({ go }: { go:Go }) {
                 <span className="text-[11px]" style={{color:MUTED_L,...sans}}>{a.date} &middot; {a.read}</span>
                 <span className="text-[11px] tracking-[0.2em] uppercase" style={{color:MAROON,...sans}}>Read &rarr;</span>
               </div>
-            </button>
+            </a>
           ))}
         </div>
       </div>
@@ -2101,9 +2104,9 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-4 border-b flex items-center gap-2 text-[12px]" style={{borderColor:BORDER_L,background:WHITE}}>
-        <button onClick={()=>go("home")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</button>
+        <a href={"/"} onClick={follow(()=>go("home"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Home</a>
         <span style={{color:MUTED_L}}>/</span>
-        <button onClick={()=>go("blog")} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</button>
+        <a href={hrefOf("blog")} onClick={follow(()=>go("blog"))} className="shrink-0 text-[12px] transition-colors hover:text-[#8a2030]" style={{color:MUTED_L,...sans}}>Journal</a>
         <span style={{color:MUTED_L}}>/</span>
         <span className="truncate min-w-0" style={{color:FG_LIGHT,...sans}}>{a.cat}</span>
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
@@ -2142,7 +2145,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
         <p className="text-[11px] tracking-[0.32em] uppercase mb-8" style={{color:GOLD,...sans}}>More From The Journal</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {more.map(b=>(
-            <button key={b.id} onClick={()=>go("blog-post",{blog:b.id})} className="flex flex-col group text-left">
+            <a key={b.id} href={hrefOf("blog-post",{blog:b.id})} onClick={follow(()=>go("blog-post",{blog:b.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
                 <img src={b.image} alt={b.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
@@ -2152,7 +2155,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
                 <span className="flex items-center gap-1.5"><Calendar size={12} style={{color:GOLD}}/>{b.date}</span>
                 <span className="flex items-center gap-1.5"><Clock size={12} style={{color:GOLD}}/>{b.read}</span>
               </span>
-            </button>
+            </a>
           ))}
         </div>
       </div>
@@ -2175,7 +2178,7 @@ function ServicesPage({ go }: { go:Go }) {
             <div className="w-14 h-14 flex items-center justify-center border mb-6" style={{borderColor:BORDER_L,color:MAROON}}><ServiceIcon name={s.icon}/></div>
             <h3 className="text-xl mb-3" style={{color:FG_LIGHT,...serif}}>{s.title}</h3>
             <p className="text-[15px] leading-[1.75]" style={{color:MUTED_L,...sans}}>{s.desc}</p>
-            <button onClick={()=>go("contact")} className="mt-6 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase group/btn" style={{color:MAROON,...sans}}>Learn More <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-1"/></button>
+            <a href={hrefOf("contact")} onClick={follow(()=>go("contact"))} className="mt-6 flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase group/btn" style={{color:MAROON,...sans}}>Learn More <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-1"/></a>
           </div>
         ))}
       </div>
@@ -2898,8 +2901,21 @@ function visitName(v:Visit):string {
 /** "Back to …" text for a page, e.g. "Back to Properties for Sale" or a property's title. */
 const visitLabel=(v:Visit):string=>`Back to ${visitName(v)}`;
 
-/** The browser tab's title: the page's name, or just the company on the home page. */
-const visitTitle=(v:Visit):string=>v.page==="home"||v.page==="videos" ? "Nepal Bhoomi Estate Agents" : `${visitName(v)} · Nepal Bhoomi`;
+/**
+ * What search engines and link previews see for a page (src/seo/meta.ts): title, description,
+ * canonical address, preview picture and structured data.
+ */
+function visitMeta(v:Visit):PageMeta {
+  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); }
+  // Area pages show the same properties as Buy for that district.
+  const path=v.page==="area" ? "/buy" : PAGE_PATHS[v.page] ?? "/";
+  const m=staticPageMeta(SITE_URL, path, v.nav.district);
+  // Still loading, or removed: the page's own name, and no stray canonical to the home page.
+  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), jsonLd:[] };
+  if(v.page==="reset-password") return { ...m, noindex:true };
+  return m;
+}
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
 // Every page has its own URL, so reloading, the browser's Back/Forward and shared links work.
@@ -2913,17 +2929,22 @@ const PAGE_PATHS: Partial<Record<Page,string>> = {
 };
 /** The filters that belong in the address bar. scrollTo and blog are one-off instructions. */
 const QUERY_KEYS=["type","district","view","preset","q"] as const;
-const slugOf=(s:string)=>s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60);
 
 /** e.g. /property/12-sauraha-riverside-retreat, /blog/3-vastu-shastra…, /buy?district=Lalitpur */
 function urlOf(v:Visit):string {
   let path=PAGE_PATHS[v.page] ?? "/";
-  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); path=`/property/${v.selId}${p?`-${slugOf(p.title)}`:""}`; }
-  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); const s=b?(b.slug&&!/^article(-\d+)?$/.test(b.slug)?b.slug:slugOf(b.title)):""; path=`/blog/${v.blogId}${s?`-${s}`:""}`; }
+  // Same addresses as the pre-rendered pages and the sitemap (src/seo/meta.ts).
+  if(v.page==="property") path=propertyPath(ALL_PROPS.find(x=>x.id===v.selId) ?? { id:v.selId });
+  if(v.page==="blog-post") path=articlePath(BLOGS.find(x=>x.id===v.blogId) ?? { id:v.blogId });
   const q=new URLSearchParams();
   for(const k of QUERY_KEYS){ const val=v.nav[k]; if(val) q.set(k,String(val)); }
   const s=q.toString();
   return s ? `${path}?${s}` : path;
+}
+
+/** The address of a page, for a real link (links.ts): hrefOf("buy",{district:"Lalitpur"}), hrefOf("property",{},12). */
+function hrefOf(page:Page, o:NavOpts={}, id=0):string {
+  return urlOf({ page, nav:o, selId:id, blogId:o.blog ?? 0, scrollY:0 });
 }
 
 /** The page an address points to. The id before the dash is what counts; unknown paths open Home. */
@@ -3116,7 +3137,7 @@ export default function App() {
   const backLabel=visitLabel(backTarget());
   // The tab title follows the page. No dependency list: a property's or article's title is only
   // known once the data has loaded, which re-renders App without changing the page.
-  useEffect(()=>{ document.title=visitTitle({ page, nav, selId, blogId, scrollY:0 }); });
+  useEffect(()=>{ applyHead(visitMeta({ page, nav, selId, blogId, scrollY:0 }), CONTACT); });
 
   /**
    * After signing in from another page: back to it, with Back skipping the login page. Returns

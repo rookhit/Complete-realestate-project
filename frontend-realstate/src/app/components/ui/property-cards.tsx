@@ -6,6 +6,7 @@ import { FG_DARK, FG_LIGHT, GOLD, MAROON, MUTED_D, MUTED_L, WHITE, sans, serif }
 import { StatusBadge } from "./status-badge";
 import { coverStyle, frameOf } from "./cover-frame";
 import { RefTag } from "./property-ref";
+import { leaveToCard } from "@/app/links";
 
 /**
  * The two property card designs the site uses. They live here, rather than in App.tsx,
@@ -17,8 +18,8 @@ import { RefTag } from "./property-ref";
  * Hovering the photo reveals beds, baths and area; `showDetails` keeps them visible
  * (the admin preview uses it so the editor can see them without hovering).
  */
-export function ListingCard({ p, onOpen, light = false, showDetails = false }: {
-  p: Prop; onOpen?: () => void; light?: boolean; showDetails?: boolean;
+export function ListingCard({ p, onOpen, href, light = false, showDetails = false }: {
+  p: Prop; onOpen?: () => void; href?: string; light?: boolean; showDetails?: boolean;
 }) {
   const [hov, setHov] = useState(false);
   const on = hov || showDetails;
@@ -44,7 +45,7 @@ export function ListingCard({ p, onOpen, light = false, showDetails = false }: {
           <span className="text-[10px] tracking-[0.24em] uppercase truncate" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.type}</span>
           <RefTag nbId={p.nbId} dark={!light} />
         </div>
-        <h3 className="leading-[1.22] text-[1.3rem] mb-2.5" style={{ color: light ? FG_LIGHT : FG_DARK, ...serif }}>{p.title}</h3>
+        <h3 className="leading-[1.22] text-[1.3rem] mb-2.5" style={{ color: light ? FG_LIGHT : FG_DARK, ...serif }}>{href ? <a href={href} onClick={leaveToCard}>{p.title}</a> : p.title}</h3>
         <div className="flex items-center gap-1.5 min-w-0 mb-4">
           <MapPin size={12} style={{ color: GOLD, flexShrink: 0 }} />
           <span className="text-[13px] truncate" style={{ color: light ? MUTED_L : MUTED_D, ...sans }}>{p.location}</span>
@@ -70,7 +71,7 @@ function LandArea({ p, color }: { p: Prop; color: string }) {
 }
 
 /** The Hot Properties card on the home page: video-style photo with a play mark. */
-export function HotCard({ p, onOpen }: { p: Prop; onOpen?: () => void }) {
+export function HotCard({ p, onOpen, href }: { p: Prop; onOpen?: () => void; href?: string }) {
   return (
     <div className={`shrink-0 flex flex-col gap-5 group ${onOpen ? "cursor-pointer" : ""}`} style={{ width: "clamp(300px,30vw,380px)", maxWidth: "100%" }} onClick={onOpen}>
       {/* Video thumbnail style */}
@@ -92,7 +93,7 @@ export function HotCard({ p, onOpen }: { p: Prop; onOpen?: () => void }) {
           <p className="text-[11px] tracking-[0.25em] uppercase truncate" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
           <RefTag nbId={p.nbId} />
         </div>
-        <p className="text-[19px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
+        <h3 className="text-[19px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{href ? <a href={href} onClick={leaveToCard}>{p.title}</a> : p.title}</h3>
         <p className="flex items-center gap-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location}</p>
         <div className="flex items-baseline justify-between gap-3 mt-1">
           <p className="text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
