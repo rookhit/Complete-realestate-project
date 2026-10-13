@@ -439,7 +439,7 @@ function Footer({ go }: { go:Go }) {
             <img src={logoImg} alt="NB" className="h-9 w-9 object-contain"/>
             <div><div className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</div><div className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</div></div>
           </div>
-          <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's premier luxury real estate advisory, representing the country's most exceptional residential and investment properties.</p>
+          <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's trusted real estate advisory, representing the country's most exceptional residential and investment properties.</p>
           <div className="flex gap-3">{([[Instagram,"Instagram",CONTACT.instagram],[Facebook,"Facebook",CONTACT.facebook],[Youtube,"YouTube",CONTACT.youtube],[Linkedin,"LinkedIn",CONTACT.linkedin]] as const).filter(([,,url])=>url.trim()).map(([I,name,url])=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={name} className="transition-opacity hover:opacity-70" style={{color:MUTED_D}}><I size={15}/></a>)}</div>
         </div>
         {[
@@ -1245,7 +1245,7 @@ function CallbackSection() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BUY / RENT PAGE (LuxuryEstate Image 2 style)
+// BUY / RENT PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
   const [view,setView]=useState<"list"|"grid"|"map">(nav.view??"list");
@@ -1932,13 +1932,13 @@ function AboutPage({ go }: { go:Go }) {
         <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(14,13,11,1) 0%, rgba(14,13,11,0.25) 100%)"}}/>
         <div className="absolute bottom-10 left-6 md:left-12 lg:left-20 right-6">
           <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag>Our Story</Tag></div>
-          <h1 className="leading-[0.9] max-w-3xl" style={{color:FG_DARK,...serif,fontSize:"clamp(2.6rem,5.4vw,5rem)"}}>Nepal's Most Trusted Luxury Real Estate Advisory</h1>
+          <h1 className="leading-[0.9] max-w-3xl" style={{color:FG_DARK,...serif,fontSize:"clamp(2.6rem,5.4vw,5rem)"}}>Nepal's Most Trusted Real Estate Advisory</h1>
         </div>
       </div>
       {/* Mission + Vision */}
       <div className="grid grid-cols-1 lg:grid-cols-2 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
         {[{title:"Our Mission",text:"To connect Nepal's most discerning buyers, sellers and investors with exceptional properties — delivered with honesty, expertise and unwavering client focus."},
-          {title:"Our Vision",text:"To be the benchmark of luxury real estate advisory in Nepal, recognised internationally for the quality of our portfolio, the expertise of our team and the integrity of our practice."}].map(s=>(
+          {title:"Our Vision",text:"To be the benchmark of real estate advisory in Nepal, recognised internationally for the quality of our portfolio, the expertise of our team and the integrity of our practice."}].map(s=>(
           <div key={s.title} className="border-r last:border-0 px-10 py-16" style={{borderColor:BORDER_L}}>
             <div className="flex items-center gap-3 mb-5"><GoldLine/><Tag c={GOLD}>Nepal Bhoomi</Tag></div>
             <h2 className="text-2xl mb-4" style={{color:FG_LIGHT,...serif}}>{s.title}</h2>
@@ -2116,12 +2116,19 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
       <article className="px-6 md:px-12 lg:px-20 py-16">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center gap-3 mb-5"><GoldLine/><Tag c={GOLD}>{a.date} &middot; {a.read} read</Tag></div>
-          <h1 className="leading-[0.95]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4.5vw,3.4rem)"}}>{a.title}</h1>
+          {/* Devanagari has tall vowel signs above and below the line, so a Nepali title needs more room. */}
+          <h1 className={/[ऀ-ॿ]/.test(a.title)?"leading-[1.3]":"leading-[0.95]"} style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4.5vw,3.4rem)"}}>{a.title}</h1>
           <p className="mt-8 pt-8 border-t leading-[1.75]" style={{borderColor:BORDER_L,color:MUTED_L,...sans,fontSize:"1.05rem"}}>{a.excerpt}</p>
-          {/* The full article, written in the admin. Paragraphs are separated by a blank line. */}
-          {a.body&&a.body.split(/\n\s*\n/).map(t=>t.trim()).filter(Boolean).map((para,i)=>(
-            <p key={i} className="mt-6 leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}>{para}</p>
-          ))}
+          {/* The full article, written in the admin. Paragraphs are separated by a blank line. A short
+              line with no closing punctuation is a subheading; a line starting with "•" is a bullet. */}
+          {a.body&&a.body.split(/\n\s*\n/).map(t=>t.trim()).filter(Boolean).map((para,i)=>
+            !para.includes("\n")&&para.length<=70&&!/[।.!:;,"”']$/.test(para)&&!para.startsWith("•") ? (
+              <h2 key={i} className="mt-10 leading-[1.3]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.35rem,2.4vw,1.7rem)"}}>{para}</h2>
+            ) : para.startsWith("•") ? (
+              <p key={i} className="mt-3 pl-6 relative leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}><span aria-hidden="true" className="absolute left-1" style={{color:GOLD}}>•</span>{para.replace(/^•\s*/,"")}</p>
+            ) : (
+              <p key={i} className="mt-6 leading-[1.85] whitespace-pre-line" style={{color:FG_LIGHT,...sans,fontSize:"1.05rem"}}>{para}</p>
+            ))}
           <div className="flex items-center gap-3 mt-10 pt-6 border-t" style={{borderColor:BORDER_L}}>
             <div className="w-9 h-9 flex items-center justify-center rounded-full" style={{background:"rgba(176,136,72,0.14)",color:GOLD}}><FileText size={15}/></div>
             <div>
@@ -2912,7 +2919,7 @@ const slugOf=(s:string)=>s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g
 function urlOf(v:Visit):string {
   let path=PAGE_PATHS[v.page] ?? "/";
   if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); path=`/property/${v.selId}${p?`-${slugOf(p.title)}`:""}`; }
-  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); path=`/blog/${v.blogId}${b?`-${slugOf(b.title)}`:""}`; }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); const s=b?(b.slug&&!/^article(-\d+)?$/.test(b.slug)?b.slug:slugOf(b.title)):""; path=`/blog/${v.blogId}${s?`-${s}`:""}`; }
   const q=new URLSearchParams();
   for(const k of QUERY_KEYS){ const val=v.nav[k]; if(val) q.set(k,String(val)); }
   const s=q.toString();
