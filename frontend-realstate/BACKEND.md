@@ -143,6 +143,10 @@ splitting the 2,700-line `App.tsx`.
 
 Newest first, one line each. Append only.
 
+- **2026-10-13 · frontend (owner's request) · `Property.coverFrame`.** New nullable JSONB column (migration
+  `20261013090000_property_cover_frame`, already applied to Supabase), `coverFrame: { src, x 0-100, y 0-100, zoom 1-3 } | null`
+  in the property input, raw in admin `edit`, public only while `src === gallery[0]`. No change to media cleanup. Please
+  review; pull before your next migration (`FRONTEND_CLAUDE.md` §12).
 - **2026-10-06 · saksham · QA audit fixes (B1-B5).** Long `q` cut to 100 (no more 500), stray validation errors → 400,
   free-listing photos must come from `/listings/uploads`, JSON 404 for unknown `/api/v1/*`, seeded admin email-verified,
   API.md refresh/logout body. Frontend to-do F1-F4 and endpoint changes: `FRONTEND_CLAUDE.md` §0.0. Still owed by the

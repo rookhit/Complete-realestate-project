@@ -245,6 +245,10 @@ model Property {
   // The admin's drag-and-drop floor plan: PlanBox[] = { id, name, area (sq.ft), x, y, w, h },
   // x/y/w/h are percentages (0-100) of the plan. NULL = no plan.
   floorPlan      Json?
+  // How the cover photo is framed where it is cropped (cards, home banner, map card):
+  // { src, x, y, zoom }. src = the photo it was set for; x/y = the focal point in % (0-100);
+  // zoom = 1-3. Only applies while gallery[0] is still `src`. NULL = centred, no zoom.
+  coverFrame     Json?
   // Shown count; the admin can edit it. Kept in step with PropertyReaction rows by the API.
   reactionCount  Int         @default(0)
   // Soft delete, so the admin's "Undo" can restore the same id and NB ID.

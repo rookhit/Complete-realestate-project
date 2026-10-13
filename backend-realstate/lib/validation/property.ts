@@ -23,6 +23,15 @@ const planBox = z.object({
   h: z.number().min(0).max(100),
 });
 
+// How the cover photo is framed where it is cropped: the focal point (x, y in %) and a zoom, for
+// the photo `src` it was set for. Display only: it never changes or deletes the photo itself.
+const coverFrame = z.object({
+  src: media,
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  zoom: z.number().min(1).max(3),
+});
+
 // Every field, without defaults. PATCH uses these as-is (only what is sent is changed); POST adds
 // the defaults below.
 const locationFields = {
@@ -62,6 +71,7 @@ const fields = {
   amenities: z.array(text(60).min(1)).max(100),
   highlights: z.array(text(80).min(1)).max(30),
   floorPlan: z.array(planBox).max(40).nullable(),
+  coverFrame: coverFrame.nullable(),
   reactionCount: z.number().int().min(0).max(10_000_000),
 };
 
@@ -88,6 +98,7 @@ export const propertyInputSchema = z.object({
   amenities: fields.amenities.default([]),
   highlights: fields.highlights.default([]),
   floorPlan: fields.floorPlan.default(null),
+  coverFrame: fields.coverFrame.default(null),
   reactionCount: fields.reactionCount.default(0),
   location: z.object({
     ...locationFields,

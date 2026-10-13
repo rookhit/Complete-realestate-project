@@ -27,6 +27,8 @@ const point = (lat: Prisma.Decimal | null | undefined, lng: Prisma.Decimal | nul
   lat != null && lng != null ? { lat: Number(lat), lng: Number(lng) } : null;
 
 export type PlanBox = { id: string; name: string; area: number; x: number; y: number; w: number; h: number };
+/** How the cover photo is framed where it is cropped (see schema.prisma). */
+export type CoverFrame = { src: string; x: number; y: number; zoom: number };
 
 /** What visitors get: the frontend's `Prop` shape, plus the structured values behind its strings. */
 export type PublicProperty = {
@@ -40,6 +42,8 @@ export type PublicProperty = {
   location: string; district: string; mapX: number; mapY: number;
   approx: LatLng | null; locationMode: "exact" | "approximate";
   floorPlan: PlanBox[] | null; reactionCount: number; createdAt: string; updatedAt: string;
+  /** Only while it was set for the current cover (gallery[0]); otherwise null. */
+  coverFrame: CoverFrame | null;
 };
 
 /** The admin also gets the private location and the values exactly as the editor sends them. */
@@ -54,6 +58,10 @@ function planBoxes(value: Prisma.JsonValue): PlanBox[] | null {
   return Array.isArray(value) ? (value as unknown as PlanBox[]) : null;
 }
 
+function coverFrameOf(value: Prisma.JsonValue): CoverFrame | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as unknown as CoverFrame) : null;
+}
+
 export function toPublic(row: PropertyRow): PublicProperty {
   const listing = LISTING_LABEL[row.listing];
   const loc = row.location;
@@ -61,6 +69,8 @@ export function toPublic(row: PropertyRow): PublicProperty {
   const exactMode = loc?.locationMode === "EXACT";
   const approx = exactMode ? point(loc?.latitude, loc?.longitude) : point(loc?.approxLatitude, loc?.approxLongitude);
   const price = row.price === null ? null : Number(row.price);
+  // A frame set for a photo that is no longer the cover would crop the new one wrongly.
+  const frame = coverFrameOf(row.coverFrame);
   return {
     id: row.id,
     nbId: formatNbId(row.listing, row.nbNumber),
@@ -97,6 +107,7 @@ export function toPublic(row: PropertyRow): PublicProperty {
     approx,
     locationMode: exactMode ? "exact" : "approximate",
     floorPlan: planBoxes(row.floorPlan),
+    coverFrame: frame && frame.src === row.gallery[0] ? frame : null,
     reactionCount: row.reactionCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -122,7 +133,8 @@ export function toAdmin(row: PropertyRow): AdminProperty {
       facing: row.facing, roadSurface: row.roadSurface, roadWidthFt: row.roadWidthFt,
       gallery: row.gallery, videoUrl: row.videoUrl,
       amenities: [...row.amenities].sort((a, b) => a.amenity.position - b.amenity.position).map((a) => a.amenity.name),
-      highlights: row.highlights, floorPlan: planBoxes(row.floorPlan), reactionCount: row.reactionCount,
+      highlights: row.highlights, floorPlan: planBoxes(row.floorPlan), coverFrame: coverFrameOf(row.coverFrame),
+      reactionCount: row.reactionCount,
       location: {
         district: loc?.district ?? "", address: loc?.address ?? "", mapUrl: loc?.googleMapsUrl ?? null,
         locationMode: loc?.locationMode === "EXACT" ? "exact" : "approximate",
@@ -238,7 +250,8 @@ function propertyData(v: PropertyInput, r: Resolved) {
     landAreaValue: r.land.value, landAreaUnit: r.land.unit, landAreaRapd: r.land.rapd, landAreaSqft: r.land.sqft,
     facing: v.facing, roadSurface: v.roadSurface, roadWidthFt: v.roadWidthFt,
     gallery: v.gallery, videoUrl: v.videoUrl, highlights: v.highlights,
-    floorPlan: v.floorPlan ?? Prisma.JsonNull, reactionCount: v.reactionCount,
+    floorPlan: v.floorPlan ?? Prisma.JsonNull, coverFrame: v.coverFrame ?? Prisma.JsonNull,
+    reactionCount: v.reactionCount,
   };
 }
 
