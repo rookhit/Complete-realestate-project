@@ -3,7 +3,7 @@
 Things that must be changed or set up before (and when) the site goes live. Add to this list
 whenever something comes up during development; tick items off at deployment.
 
-Last updated: 2026-10-06
+Last updated: 2026-10-13
 
 ## Secrets and accounts
 
@@ -88,6 +88,17 @@ Last updated: 2026-10-06
 - [ ] **The frontend has real page URLs now (F1, merged 2026-10-13)**: the frontend host must serve
       `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
       `/property/13-…` answers 404.
+
+- [ ] **SEO (frontend update, merged 2026-10-13)**: the site is now indexable (`noindex` removed from
+      `index.html`). Set `VITE_SITE_URL` to the real domain at build time (it defaults to
+      `https://www.nepalbhoomi.com` in `frontend-realstate/src/seo/meta.ts`), or canonicals and share
+      links point to the wrong host.
+- [ ] Decide whether to run `npm run prerender` after `npm run build` (not part of the build yet). It
+      writes static HTML per page / property / article, `sitemap.xml` and `robots.txt`, reading the
+      live API at `VITE_API_URL`, so the API must be reachable at build time. Re-run after content changes.
+- [ ] **Take down the Dashain 2083 decorations** after the festival (they switch off by themselves on
+      26 Oct 2026, but the code and three.js stay in the bundle): follow
+      `frontend-realstate/src/app/festive/dashain/README.md`.
 
 ## Database (Supabase)
 
