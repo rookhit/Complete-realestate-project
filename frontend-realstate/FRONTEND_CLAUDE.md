@@ -162,6 +162,7 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 | Properties (admin CRUD, Undo, purge) | Create / get / patch / delete through the API and editor; delete hides at once, Undo within 60 s, row purged after 60 s; 409 on a taken NB ID; Buy / Rent counts match the database | Editor overwriting hearts given while it is open (known limitation) |
 | Property photos / video | Upload on pick with progress (local test store), `blob:` refused, file deleted when removed from a property or the property is purged, shared photos kept | Upload to Cloudflare R2 through the editor in Chrome (R2 set 2026-10-08; the backend's signed upload checked against the bucket by script) |
 | Page URLs, Video Tour, cover frame (F1/F5 + Adjust thumbnail; merged into `feat/full-stack-endpoints` 2026-10-13) | saksham, Chrome against Supabase: `/property/13-…` (NBS007) opens directly with its own tab title; "Video Tour" button jumps to the section and the R2 video loads; in-page Back returns to `/buy`; a district filter goes into the address; `/property/99999-…` says "no longer listed"; no console errors; `npm run typecheck` clean. The frontend developer reports 375 / 768 / 1440px checks | Admin Adjust tool and framed cards (by saksham; needs an admin sign-in); sign-in return-to and drafts; production build |
+| Dashain, search suggestions, SEO (`fix/frontend-audit-issues`; merged into `feat/cover-frame-and-session-fix` 2026-10-13) | saksham, Chrome against Supabase: per-page tab titles; Dashain pop-up once per tab session and the 3D kite on home; Buy search "nbs" lists NBS suggestions with photos; no console errors; typecheck clean after `npm install` (three) | Photo viewer (keys / swipe / counter); `npm run prerender`; `?dashain=off`; phone sizes re-checked by saksham |
 | Dropdown options | Add / remove a property type in the admin, kept after reload, used by a property save; unknown type 400; failed save rolls back with a message | — |
 | Journal | Public list / slug / draft 404; create / edit / reorder / delete; cover upload to `articles/`; validation | Cover upload to R2 |
 | Team | Create without photo (initials on cards and profile); portrait upload to `team/`, removed photo deleted; reorder; delete; validation | Portrait upload to R2 |
@@ -1623,6 +1624,8 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-13 · saksham · Merged `fix/frontend-audit-issues` into `feat/cover-frame-and-session-fix`.** Frontend files only;
+  the one conflict was this log (both entries kept). `npm install` for three.js, typecheck clean. Checked in Chrome (§0.4b).
 - **2026-10-13 · frontend · Dashain 2083 decorations (temporary).** Home page: a greeting pop-up ("Happy Dashain",
   "Bijayadashami Offers", once per visit) with falling ribbons, and a 3D changa kite (three.js) that climbs as you scroll.
   All in `src/app/festive/dashain/` (lazy chunks; switches itself off after 25 Oct, preview with `?dashain=on`). To take
