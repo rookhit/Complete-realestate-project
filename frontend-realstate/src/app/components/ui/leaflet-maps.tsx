@@ -1,4 +1,4 @@
-// The real maps (Leaflet + OpenStreetMap tiles, no API key). This file is only downloaded when a
+// The real maps (Leaflet + Esri Light Gray Base tiles, no API key). This file is only downloaded when a
 // map is about to appear on screen: import the wrappers in ./maps.tsx, never this file directly.
 // Visitors only ever see the approximate area (data/maps.ts → approxFor); the exact point is drawn
 // only for the admin, and as a development-only debug pin.
@@ -12,8 +12,11 @@ import { blobRing, type LatLng, type PublicArea } from "@/app/data/maps";
 import { GOLD, MAROON, WHITE, sans } from "./brand";
 import { coverStyleText, type Framing } from "./cover-frame";
 
-const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+// A plain grey base map with no place names, shop names or icons, so only our pins stand out
+// (decided 2026-10-14). Esri serves it to zoom 16; closer zooms enlarge those tiles.
+const TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const TILES_MAX_ZOOM = 16;
+const ATTRIBUTION = 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
 /** From this zoom level the Buy / Rent map also draws the approximate areas around the pins. */
 const AREA_ZOOM = 14;
 
@@ -33,7 +36,7 @@ function useLeaflet(ref: React.RefObject<HTMLDivElement | null>): React.RefObjec
     const el = ref.current;
     if (!el) return;
     const map = L.map(el, { scrollWheelZoom: true, wheelPxPerZoomLevel: 90, dragging: !L.Browser.mobile, zoomSnap: 0.5 });
-    L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(map);
+    L.tileLayer(TILES, { maxZoom: 19, maxNativeZoom: TILES_MAX_ZOOM, attribution: ATTRIBUTION }).addTo(map);
     map.attributionControl.setPrefix(false);
     // The page transitions animate the container, so Leaflet re-measures when its size changes.
     const ro = new ResizeObserver(() => map.invalidateSize());

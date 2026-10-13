@@ -66,9 +66,10 @@ Last updated: 2026-10-14
 
 - [ ] Open a property page and Buy → Map view on the **production build** and check the map tiles
       load (a blank map means the CSP blocked them: check the browser console).
-- [ ] OpenStreetMap's free tile server has a usage policy (fine for a small site, not heavy traffic):
-      re-read it at operations.osmfoundation.org/policies/tiles before launch. If the site outgrows it,
-      switch `TILES` in `frontend-realstate/src/app/components/ui/leaflet-maps.tsx` to a tile provider.
+- [ ] **Map tiles are Esri "Light Gray Base"** since 2026-10-14 (no place names or icons; loaded keyless from
+      server.arcgisonline.com, Esri credit shown on the map). Before launch, check Esri's terms for a
+      commercial site: it may require a (free-tier) ArcGIS Location Platform account and API key. If so, or
+      if it stops loading, switch `TILES` in `frontend-realstate/src/app/components/ui/leaflet-maps.tsx`.
 - [ ] Privacy: public property API responses must never contain `mapUrl`, and for properties set to
       "Approximate area" must not contain the real lat / lng (only `approx`, the shifted centre).
       Check one response of each kind in the browser's Network tab.

@@ -27,7 +27,7 @@ function contentSecurityPolicy(apiUrl) {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    // Map tiles (components/ui/leaflet-maps.tsx) are images from OpenStreetMap. Property photos and
+    // Map tiles (components/ui/leaflet-maps.tsx) are images from Esri (server.arcgisonline.com). Property photos and
     // videos are served from the Cloudflare R2 public domain; any https: image / video is allowed
     // until that domain is fixed (PRODUCTION_CHECKLIST.md: narrow it).
     "img-src 'self' data: blob: https:",

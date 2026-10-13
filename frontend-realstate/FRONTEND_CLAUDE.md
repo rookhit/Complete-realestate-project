@@ -165,6 +165,7 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 | Dashain, search suggestions, SEO (`fix/frontend-audit-issues`; merged into `feat/cover-frame-and-session-fix` 2026-10-13) | saksham, Chrome against Supabase: per-page tab titles; Dashain pop-up once per tab session and the 3D kite on home; Buy search "nbs" lists NBS suggestions with photos; no console errors; typecheck clean after `npm install` (three) | Photo viewer (keys / swipe / counter); `npm run prerender`; `?dashain=off`; phone sizes re-checked by saksham |
 | Price optional → "Negotiable" (2026-10-14) | saksham, Chrome as admin, new unsaved property: empty price previews "Negotiable", Publish doesn't ask for a price, 8.5 Crore → "NPR 8.5 Cr" | Saving with no price; clearing an existing price |
 | Instant admin toggles (2026-10-14) | saksham, Chrome as admin on NBL006: heart +1 shown at once, Verified toggled, both undone; database matches | A refused toggle being put back; rapid repeated clicks |
+| Map style: no labels (2026-10-14) | saksham, Chrome: Buy → Map view shows Esri grey tiles with the pins and areas, credit shown, no console errors, street-level zoom | Property page and admin editor maps; production build |
 | Dropdown options | Add / remove a property type in the admin, kept after reload, used by a property save; unknown type 400; failed save rolls back with a message | — |
 | Journal | Public list / slug / draft 404; create / edit / reorder / delete; cover upload to `articles/`; validation | Cover upload to R2 |
 | Team | Create without photo (initials on cards and profile); portrait upload to `team/`, removed photo deleted; reorder; delete; validation | Portrait upload to R2 |
@@ -1626,6 +1627,10 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-14 · saksham · Maps without place names or icons.** `leaflet-maps.tsx` `TILES` is now Esri "World Light
+  Gray Base" (keyless; `{z}/{y}/{x}`; native to zoom 16, `maxNativeZoom` enlarges above), replacing OpenStreetMap's
+  labelled tiles; attribution updated; the CSP comment in `vite.config.ts` names the new host (`img-src https:` already
+  allows it). District names along district borders are part of the tiles. Owner's choice over satellite.
 - **2026-10-14 · saksham · Deployment readiness (Vercel, not deployed yet).** Frontend and backend production builds
   pass. For Vercel the frontend needs a `vercel.json` rewrite so every page URL serves `index.html` (real page URLs since
   F1), `VITE_API_URL` / `VITE_SITE_URL` at build time, and the production media host in the CSP (`vite.config.ts`). The
