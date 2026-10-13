@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowDown, ArrowUp, Calendar, Check, Clock, Lightbulb, Pencil, Plus, Sparkles, Star, Trash2, Upload, Youtube } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, Calendar, Check, Clock, Info, Lightbulb, Pencil, Plus, Sparkles, Star, Trash2, Upload, Youtube } from "lucide-react";
 import {
   ARTICLE_AUTHOR, BLOGS, DEPARTMENTS, FEATURED_DISTRICTS, LANGUAGES, MAX_FEATURED_DISTRICTS, SPECIALITIES, STATS, TEAM, TEAM_ROLES, TESTIMONIALS, VIDEO_LIST,
   monthYear, moveById, nextId, readingTime, removeById, saveFeaturedDistricts, saveStats, upsert, youtubeIdFrom, youtubeThumb,
@@ -572,6 +572,11 @@ function TestimonialEditor({ item, open, onClose, notify }: { item: Testimonial 
 
 // ─── Videos ───────────────────────────────────────────────────────────────────
 
+// Saving company videos needs GET /videos and POST/PATCH/DELETE /admin/videos, which the backend
+// hasn't built yet (FRONTEND_CLAUDE.md §0.0, F3). Until then the list is view-only, so nothing
+// looks saved that would vanish on reload. Set to true once those endpoints are wired.
+const VIDEOS_EDITABLE = false;
+
 export function VideosSection({ notify }: { notify: Notify }) {
   useDataVersion();
   // "youtube" / "upload" add a new video; an existing one opens the editor that fits it.
@@ -588,9 +593,15 @@ export function VideosSection({ notify }: { notify: Notify }) {
   return (
     <div>
       <SectionHeading title="Company Videos" subtitle="The “Explore in Video” carousel on the home page. The first video is shown in the centre."
-        actions={adders} />
+        actions={VIDEOS_EDITABLE ? adders : undefined} />
+      {!VIDEOS_EDITABLE && (
+        <p className="mb-5 flex items-start gap-3 border px-4 sm:px-5 py-3 sm:py-3.5 text-[13px] leading-relaxed" style={{ borderColor: "rgba(176,136,72,0.35)", background: "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>
+          <Info size={16} className="shrink-0 mt-0.5" style={{ color: GOLD }} />
+          <span><b>Coming soon:</b> adding, editing and reordering videos. Saving them needs a part of the backend that isn't built yet, so for now this list only shows the videos on the home page.</span>
+        </p>
+      )}
       {VIDEO_LIST.length === 0 ? (
-        <EmptyState title="No videos" text="The video section is hidden on the home page until you add one." action={<div className="flex flex-wrap justify-center gap-3">{adders}</div>} />
+        <EmptyState title="No videos" text="The video section is hidden on the home page until you add one." action={VIDEOS_EDITABLE ? <div className="flex flex-wrap justify-center gap-3">{adders}</div> : undefined} />
       ) : (
         <div className="flex flex-col border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {VIDEO_LIST.map((v, i) => {
@@ -603,9 +614,9 @@ export function VideosSection({ notify }: { notify: Notify }) {
                   <div className="flex gap-1.5 mb-1.5">{i === 0 && <Chip tone="dark">Centre</Chip>}<Chip tone="muted">{v.duration}</Chip>{id ? <Chip>YouTube</Chip> : v.sources?.length ? <Chip>Uploaded</Chip> : null}</div>
                   <p className="text-[16px] leading-snug" style={{ color: FG_LIGHT, ...serif }}>{v.title}</p>
                 </div>
-                <CardTools first={i === 0} last={i === VIDEO_LIST.length - 1}
+                {VIDEOS_EDITABLE && <CardTools first={i === 0} last={i === VIDEO_LIST.length - 1}
                   onUp={() => moveById(VIDEO_LIST, v.id, -1)} onDown={() => moveById(VIDEO_LIST, v.id, 1)}
-                  onEdit={() => setEditing(v)} onDelete={() => askDelete(v)} />
+                  onEdit={() => setEditing(v)} onDelete={() => askDelete(v)} />}
               </div>
             );
           })}

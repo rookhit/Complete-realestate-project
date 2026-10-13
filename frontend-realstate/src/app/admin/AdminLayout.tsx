@@ -30,8 +30,8 @@ const TABS: { page: AdminPage; label: string; lead?: string; Icon: typeof Users 
   { page: "admin-messages", label: "Messages", Icon: Mail },
 ];
 
-// Versioned: the note's wording changed (only Videos is unsaved now), so admins see it once more.
-const NOTE_KEY = "nb-admin-note-hidden-v2";
+// Versioned: the note's wording changed (Videos are view-only now), so admins see it once more.
+const NOTE_KEY = "nb-admin-note-hidden-v3";
 
 /** The red unread count used on the Messages tab and the site's Admin button. */
 export function UnreadBadge({ n, className = "inline-flex" }: { n: number; className?: string }) {
@@ -183,7 +183,7 @@ export function AdminLayout({ nav, current, tag, title, intro, back, previewNote
         <div className="px-4 sm:px-6 md:px-12 lg:px-20 pt-5 sm:pt-8">
           <p className="flex items-start gap-3 border px-4 sm:px-5 py-3 sm:py-3.5 text-[13px] leading-relaxed" style={{ borderColor: "rgba(176,136,72,0.35)", background: "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>
             <Info size={16} className="shrink-0 mt-0.5" style={{ color: GOLD }} />
-            <span className="flex-1">Everything here is saved to the database except <b>Videos</b>: videos added under Dashboard → Videos last only until the page is reloaded, until their backend exists.</span>
+            <span className="flex-1">Everything here is saved to the database. <b>Company videos</b> are view-only for now: adding and editing them is coming soon.</span>
             <button type="button" onClick={hideNote} className="shrink-0 text-[10px] tracking-[0.2em] uppercase underline underline-offset-4 hover:text-[#8a2030]" style={{ color: MUTED_L }}>Got it</button>
           </p>
         </div>

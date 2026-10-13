@@ -72,7 +72,7 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
       act("a-article", "Write an article", <Newspaper size={15} />, () => goTo("journal"), "blog journal post"),
       act("a-team", "Add a team member", <Users size={15} />, () => goTo("team"), "employee staff advisor"),
       act("a-testimonial", "Add a testimonial", <Quote size={15} />, () => goTo("testimonials"), "client quote"),
-      act("a-video", "Add a video", <Clapperboard size={15} />, () => goTo("videos"), "youtube film"),
+      act("a-video", "Company videos", <Clapperboard size={15} />, () => goTo("videos"), "add video youtube film"),
       act("a-home", "Update home page statistics and districts", <Home size={15} />, () => goTo("homepage"), "stats numbers"),
       act("a-options", "Edit dropdown options", <ListChecks size={15} />, () => goTo("options"), "positions roles badges types languages departments specialities list choices"),
       act("a-listings", "Review free listings from sellers", <ClipboardList size={15} />, () => nav.go("admin-listings"), "free listing seller submission publish"),
