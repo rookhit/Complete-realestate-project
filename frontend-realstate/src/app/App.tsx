@@ -226,7 +226,7 @@ function LoadingScreen({ onDone }: { onDone:()=>void }) {
           ))}
           <img src={logoImg} alt="Nepal Bhoomi" className="w-20 h-20 object-contain" />
         </motion.div>
-        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Luxury Real Estate · Nepal</motion.p>
+        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Nepal Bhoomi Real Estate</motion.p>
         <motion.div style={{width:"0.5px",background:GOLD_DIM}} initial={{height:0,opacity:0}} animate={{height:44,opacity:1}} transition={{delay:1.5,duration:0.8}} />
       </div>
     </motion.div>
