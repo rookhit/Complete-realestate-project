@@ -20,6 +20,7 @@ import { HomePageSection, JournalSection, TeamSection, TestimonialsSection, Vide
 import { CompanySection } from "./CompanyEditor";
 import { OptionsSection } from "./OptionsEditor";
 import { onOptionSaveFailed } from "@/app/data/options";
+import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { Chip, EmptyState, SearchBox, SectionHeading, useToast, type Notify } from "./parts";
 
@@ -362,7 +363,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
           {paginate(rows, current, PER_PAGE).map(p => (
             <div key={p.id} className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap md:items-center gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
               <button onClick={() => onEdit(p)} className="w-full md:w-40 shrink-0 overflow-hidden" style={{ aspectRatio: "4/3" }} aria-label={`Edit ${p.title}`}>
-                <img src={p.hero} alt="" className="w-full h-full object-cover" />
+                <img src={p.hero} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap gap-1.5 mb-2">

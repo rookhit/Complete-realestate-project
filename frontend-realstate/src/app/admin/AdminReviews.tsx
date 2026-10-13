@@ -9,6 +9,7 @@ import { Button, Select } from "@/app/components/ui/form-controls";
 import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { StarRow } from "@/app/components/ui/star-row";
+import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { Chip, EmptyState, SearchBox, useToast } from "./parts";
 
@@ -101,7 +102,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
             return (
               <section key={id} className="border" style={{ borderColor: BORDER_L, background: WHITE }}>
                 <header className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 border-b" style={{ borderColor: BORDER_L }}>
-                  {p?.hero && <img src={p.hero} alt="" className="w-24 h-16 object-cover shrink-0" />}
+                  {p?.hero && <span className="w-24 h-16 shrink-0 overflow-hidden"><img src={p.hero} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} /></span>}
                   <div className="flex-1 min-w-0">
                     <p className="text-[18px] truncate" style={{ color: FG_LIGHT, ...serif }}>{info!.title}</p>
                     <p className="flex items-center gap-2 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>

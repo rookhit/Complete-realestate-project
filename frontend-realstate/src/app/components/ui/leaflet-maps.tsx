@@ -10,6 +10,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "./leaflet-maps.css";
 import { blobRing, type LatLng, type PublicArea } from "@/app/data/maps";
 import { GOLD, MAROON, WHITE, sans } from "./brand";
+import { coverStyleText, type Framing } from "./cover-frame";
 
 const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
@@ -122,6 +123,8 @@ export type MapCard = {
   title: string; price: string;
   /** Card photo (the cover) and the lines under the title, e.g. "Jawlakhel, Lalitpur". */
   image: string; location: string; listing: string;
+  /** The admin's framing of that photo (cover-frame.ts); none = centred. */
+  frame?: Framing;
   /** Short facts for the card, e.g. ["4 beds", "3 baths", "4,850 sq.ft"]. */
   facts: string[];
 };
@@ -151,7 +154,7 @@ const pinIcon = (active: boolean) => L.divIcon({
 function cardHtml(it: MapCard, precise: boolean): string {
   const facts = it.facts.map(f => `<span class="nb-map-card__fact">${escapeHtml(f)}</span>`).join("");
   return `<div class="nb-map-card__inner">` +
-    `<div class="nb-map-card__photo"><img src="${escapeHtml(it.image)}" alt="" loading="lazy">` +
+    `<div class="nb-map-card__photo"><img src="${escapeHtml(it.image)}" alt="" loading="lazy" style="${coverStyleText(it.frame)}">` +
     `<span class="nb-map-card__tag">${escapeHtml(it.listing)}</span></div>` +
     `<div class="nb-map-card__body"><p class="nb-map-card__price">${escapeHtml(it.price)}</p>` +
     `<p class="nb-map-card__title">${escapeHtml(it.title)}</p>` +
@@ -179,7 +182,7 @@ export function PropertiesMap({ items, hoveredId, onHover, onOpen }: PropertiesM
   handlers.current = { onHover, onOpen };
   const drawn = useRef(new Map<number, { marker: L.Marker; blob: L.Polygon | null }>());
   const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
-  const itemsKey = items.map(i => `${i.id}:${i.area.centre.lat},${i.area.centre.lng}:${i.area.precise}:${i.price}:${i.image}:${i.facts.join()}:${i.exact?.lat},${i.exact?.lng}`).join("|");
+  const itemsKey = items.map(i => `${i.id}:${i.area.centre.lat},${i.area.centre.lng}:${i.area.precise}:${i.price}:${i.image}:${i.frame ? `${i.frame.x},${i.frame.y},${i.frame.zoom}` : ""}:${i.facts.join()}:${i.exact?.lat},${i.exact?.lng}`).join("|");
 
   useEffect(() => {
     const map = mapRef.current;

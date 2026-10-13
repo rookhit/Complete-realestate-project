@@ -2,7 +2,7 @@
 // Shapes: FRONTEND_CLAUDE.md §0.3. Every call goes through authFetch (base URL, bearer token,
 // refresh on 401, the { error } envelope as ApiError).
 import { authFetch } from "@/app/auth";
-import { rapdOf, type Listing, type LocationMode, type PlanBox, type Prop } from "@/app/data/properties";
+import { rapdOf, type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop } from "@/app/data/properties";
 import { REACTIONS } from "@/app/data/reviews";
 import { AMENITIES } from "@/app/icons/amenities";
 
@@ -20,6 +20,8 @@ export type ApiProperty = {
   location: string; district: string; mapX: number; mapY: number;
   approx: { lat: number; lng: number } | null; locationMode: LocationMode;
   floorPlan: PlanBox[] | null; reactionCount: number; createdAt: string; updatedAt: string;
+  /** Only sent while it was set for the current cover. */
+  coverFrame: CoverFrame | null;
 };
 
 /** The admin also gets the private location. */
@@ -38,6 +40,8 @@ export type PropertyInput = {
   // Links (http/https) only; leaving videoUrl out keeps the saved one.
   gallery: string[]; videoUrl?: string | null; amenities: string[]; highlights: string[];
   floorPlan: PlanBox[] | null; reactionCount: number;
+  // Leaving it out keeps the saved one; null clears it.
+  coverFrame?: CoverFrame | null;
   location: { district: string; address: string; mapUrl: string | null; locationMode: LocationMode };
 };
 
@@ -57,6 +61,7 @@ export function toProp(p: ApiProperty | ApiAdminProperty): Prop {
     approx: p.approx ?? undefined,
     floorPlan: p.floorPlan ?? undefined,
     videoUrl: p.videoUrl ?? undefined,
+    coverFrame: p.coverFrame ?? undefined,
   };
 }
 
@@ -113,7 +118,8 @@ export function propToInput(p: Prop): PropertyInput {
     roadSurface: (road ? road[1].trim() : p.roadAccess) || null, roadWidthFt: road ? Number(road[2]) : null,
     gallery: p.gallery.length ? p.gallery : p.hero ? [p.hero] : [],
     amenities: p.features.filter(f => CANONICAL.has(f)), highlights: p.features.filter(f => !CANONICAL.has(f)),
-    floorPlan: p.floorPlan ?? null, reactionCount: REACTIONS[p.id] ?? 0,
+    // Kept, so a Featured / Verified toggle doesn't reset the cover's framing.
+    floorPlan: p.floorPlan ?? null, coverFrame: p.coverFrame ?? null, reactionCount: REACTIONS[p.id] ?? 0,
     location: { district: p.district, address: p.location, mapUrl: p.mapUrl ?? null, locationMode: p.locationMode ?? "approximate" },
   };
 }

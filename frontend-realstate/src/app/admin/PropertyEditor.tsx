@@ -3,7 +3,7 @@ import { Check, Clock, Eye, Film, Heart, History, Lightbulb, Loader2, Lock, MapP
 import {
   BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
   ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, refTaken, applySaved,
-  type Listing, type LocationMode, type PlanBox, type Prop,
+  type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop,
 } from "@/app/data/properties";
 import { REACTIONS } from "@/app/data/reviews";
 import { approxFor, gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
@@ -21,6 +21,7 @@ import { Chip, Drawer } from "./parts";
 import { describeProperty } from "./suggestions";
 import { HIGHLIGHT_IDEAS, TAGLINE_IDEAS } from "@/app/data/options";
 import { FloorPlanBuilder } from "./FloorPlanBuilder";
+import { CoverFramer } from "./CoverFramer";
 import { listingToProp, type ListingSubmission } from "@/app/data/listings";
 import { timeAgo } from "@/app/data/messages";
 import { createProperty, updateProperty, type PropertyInput } from "@/api/properties";
@@ -43,6 +44,8 @@ type Draft = {
   builtValue: string; builtUnit: string; landValue: string; landUnit: string;
   beds: number; baths: number; floors: number; buildYear: number;
   photos: string[]; videoUrl: string; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
+  // The cover's framing on cards; only counts while photos[0] is still its src (draftFrame).
+  coverFrame: CoverFrame | null;
   reactions: number; mapX: number; mapY: number; mapUrl: string; locationMode: LocationMode;
 };
 
@@ -82,7 +85,7 @@ function toDraft(p?: Prop): Draft {
       priceAmount: "", priceUnit: "Crore",
       builtValue: "", builtUnit: "sq.ft", landValue: "", landUnit: "Ropani",
       beds: 3, baths: 2, floors: 2, buildYear: new Date().getFullYear(),
-      photos: [], videoUrl: "", amenities: [], highlights: [], floorPlan: [],
+      photos: [], videoUrl: "", amenities: [], highlights: [], floorPlan: [], coverFrame: null,
       // Spread new pins over the Buy / Rent map until a Google Maps link gives the real spot.
       reactions: 0, mapX: 30 + (id * 37) % 40, mapY: 25 + (id * 23) % 45, mapUrl: "", locationMode: "approximate",
     };
@@ -105,6 +108,7 @@ function toDraft(p?: Prop): Draft {
     amenities: p.features.filter(f => CANONICAL.has(f)),
     highlights: p.features.filter(f => !CANONICAL.has(f)),
     floorPlan: (p.floorPlan ?? []).map(b => ({ ...b })),
+    coverFrame: p.coverFrame && p.coverFrame.src === p.hero ? { ...p.coverFrame } : null,
     reactions: REACTIONS[p.id] ?? 0, mapX: p.mapX, mapY: p.mapY, mapUrl: p.mapUrl ?? "", locationMode: p.locationMode ?? "approximate",
   };
 }
@@ -135,6 +139,7 @@ function toInput(d: Draft): PropertyInput {
     gallery: [...d.photos], videoUrl: d.videoUrl.trim() || null,
     amenities: d.amenities, highlights: d.highlights.map(h => h.trim()).filter(Boolean),
     floorPlan: d.floorPlan.length ? d.floorPlan.map(b => ({ ...b, name: b.name.trim() })) : null,
+    coverFrame: draftFrame(d) ?? null,
     reactionCount: d.reactions,
     location: { district: d.district, address: d.location.trim(), mapUrl: d.mapUrl.trim() || null, locationMode: d.locationMode },
   };
@@ -160,7 +165,17 @@ function toProp(d: Draft): Prop {
     ...(coords ? gridFromCoords(coords) : { mapX: d.mapX, mapY: d.mapY }),
     mapUrl: d.mapUrl.trim() || undefined, locationMode: d.locationMode,
     floorPlan: d.floorPlan.length ? d.floorPlan.map(b => ({ ...b, name: b.name.trim() })) : undefined,
+    coverFrame: draftFrame(d),
   };
+}
+
+/**
+ * The draft's cover framing, if it still belongs to the cover. Making another photo the cover (or
+ * removing it) drops it, so a framing never crops a different photo. Older autosaved drafts have
+ * no coverFrame at all.
+ */
+function draftFrame(d: Draft): CoverFrame | undefined {
+  return d.coverFrame && d.coverFrame.src === d.photos[0] ? d.coverFrame : undefined;
 }
 
 function problems(d: Draft): string[] {
@@ -472,6 +487,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
   const [tried, setTried] = useState(false);
   const [styleNo, setStyleNo] = useState(0);
   const [restore, setRestore] = useState<Draft | null>(null);
+  const [framing, setFraming] = useState(false);
 
   // A fresh draft each time the drawer opens, for whatever it opened on.
   useEffect(() => {
@@ -660,7 +676,12 @@ export function PropertyEditor({ property, template = null, source = null, open,
         <FormSection id="pe-photos" n={5} title="Photos" subtitle="The first photo is the cover shown on cards and at the top of the page.">
           <PhotoManager photos={d.photos} onChange={v => set("photos", v)}
             upload={(file, progress) => track(uploadMedia("image", file, progress))}
-            onAdd={url => setD(o => ({ ...o, photos: [...o.photos, url] }))} />
+            onAdd={url => setD(o => ({ ...o, photos: [...o.photos, url] }))}
+            coverFrame={draftFrame(d)} onAdjustCover={() => setFraming(true)} />
+          {d.photos[0] && (
+            <CoverFramer open={framing} src={d.photos[0]} frame={draftFrame(d)} prop={previewProp}
+              onApply={f => set("coverFrame", f ? { src: d.photos[0], ...f } : null)} onClose={() => setFraming(false)} />
+          )}
           <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
             <VideoField value={d.videoUrl} onChange={v => set("videoUrl", v)} upload={(file, progress) => track(uploadMedia("video", file, progress))} />
           </div>

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ImagePlus, Loader2, Star, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Crop, ImagePlus, Loader2, Star, Trash2, Upload, X } from "lucide-react";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans } from "./brand";
+import { coverStyle, type Framing } from "./cover-frame";
 
 // Photo pickers for the admin.
 // PhotoManager with `upload` (the property editor) sends each picked file to Cloudflare R2 at once
@@ -120,9 +121,13 @@ let pendingId = 0;
 // With `upload`, picked files are uploaded straight away: each shows its progress, and `onAdd`
 // receives the URL when it is done (onAdd must append to the latest list, as uploads finish in
 // any order).
-export function PhotoManager({ photos, onChange, max = 20, upload, onAdd }: {
+export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverFrame, onAdjustCover }: {
   photos: string[]; onChange: (next: string[]) => void; max?: number;
   upload?: Uploader; onAdd?: (url: string) => void;
+  /** The cover's framing: its tile (4:3, like a card) shows it, so it doubles as the card preview. */
+  coverFrame?: Framing;
+  /** Shows "Adjust" on the cover, which opens the framing tool (admin/CoverFramer.tsx). */
+  onAdjustCover?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -190,7 +195,7 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd }: {
           {photos.map((url, i) => (
             <figure key={`${url}-${i}`} className="border flex flex-col" style={{ borderColor: i === 0 ? GOLD : BORDER_L, background: WHITE }}>
               <div className="relative overflow-hidden" style={{ aspectRatio: "4/3" }}>
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" style={i === 0 ? coverStyle(coverFrame) : undefined} />
                 {upload && !isMediaLink(url) && (
                   <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] leading-snug" style={{ background: MAROON, color: WHITE, ...sans }}>
                     Not uploaded. Remove it and add the photo again.
@@ -208,6 +213,12 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd }: {
                   <button type="button" className={tool} aria-label="Move later" disabled={i === photos.length - 1} onClick={() => move(i, 1)}><ArrowRight size={14} /></button>
                 </div>
                 <div className="flex">
+                  {i === 0 && onAdjustCover && isMediaLink(url) && (
+                    <button type="button" onClick={onAdjustCover} title="Adjust how the cover is framed on cards"
+                      className="h-8 px-2 flex items-center gap-1.5 text-[10px] tracking-[0.18em] uppercase transition-colors hover:text-[#8a2030]" style={{ color: MAROON, ...sans }}>
+                      <Crop size={13} />Adjust
+                    </button>
+                  )}
                   {i !== 0 && <button type="button" className={tool} aria-label="Make cover photo" title="Make cover" onClick={() => makeCover(i)}><Star size={14} /></button>}
                   <button type="button" className={tool} aria-label="Remove photo" title="Remove" onClick={() => remove(i)}><Trash2 size={14} /></button>
                 </div>

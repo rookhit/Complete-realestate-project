@@ -54,6 +54,7 @@ import type { AdminNav } from "@/app/admin/AdminLayout";
 import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
 import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
+import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -583,7 +584,7 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
     <section className="relative h-screen min-h-[600px] overflow-hidden flex flex-col justify-end">
       <AnimatePresence mode="wait">
         <motion.div key={slide} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
-          <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover"/>
+          <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.4) 45%, rgba(10,9,8,0.08) 100%)"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to right, rgba(10,9,8,0.55) 0%, transparent 65%)"}}/>
         </motion.div>
@@ -1416,7 +1417,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
               <div key={p.id} className="flex flex-col sm:flex-row sm:items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
                 style={{borderColor:BORDER_L}} onClick={()=>{setId(p.id);go("property");}}>
                 <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-                  <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]"/>
+                  <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
                     {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
@@ -1468,7 +1469,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
 function mapCardOf(p:Prop) {
   const facts=[p.beds>0?`${p.beds} bed${p.beds===1?"":"s"}`:"", p.baths>0?`${p.baths} bath${p.baths===1?"":"s"}`:"",
     p.builtArea!=="—"?p.builtArea:"", p.landArea!=="—"?p.landArea:""].filter(Boolean);
-  return { title:p.title, price:p.price, image:p.hero, location:p.location, listing:p.listing, facts };
+  return { title:p.title, price:p.price, image:p.hero, frame:frameOf(p), location:p.location, listing:p.listing, facts };
 }
 
 function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=>void }) {
@@ -1486,7 +1487,7 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
             onMouseEnter={()=>{setActiveCard(p.id);setHovPin(p.id);}} onMouseLeave={()=>{setActiveCard(null);setHovPin(null);}}
             onClick={()=>{setId(p.id);go("property");}}>
             <div className="relative overflow-hidden" style={{height:180}}>
-              <img src={p.hero} alt={p.title} className="w-full h-full object-cover"/>
+              <img src={p.hero} alt={p.title} className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
               <div className="absolute bottom-2 left-2"><span className="text-base font-semibold px-1.5 py-0.5 text-[15px]" style={{background:"rgba(255,255,255,0.95)",color:FG_LIGHT,...sans}}>{p.price}</span></div>
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <FavButton id={p.id} light/>

@@ -4,6 +4,7 @@ import { Bath, Bed, CheckCircle2, LandPlot, MapPin, Play, Square } from "lucide-
 import { landSqftNote, type Prop } from "@/app/data/properties";
 import { FG_DARK, FG_LIGHT, GOLD, MAROON, MUTED_D, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StatusBadge } from "./status-badge";
+import { coverStyle, frameOf } from "./cover-frame";
 import { RefTag } from "./property-ref";
 
 /**
@@ -24,7 +25,7 @@ export function ListingCard({ p, onOpen, light = false, showDetails = false }: {
   return (
     <div className={`group flex flex-col ${onOpen ? "cursor-pointer" : ""}`} onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-700" style={{ transform: hov ? "scale(1.05)" : "scale(1)" }} />}
+        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
         <div className="absolute inset-0 transition-opacity duration-400" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)", opacity: on ? 1 : 0.5 }} />
         <div className="absolute top-3 left-3 flex gap-1.5">
           <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span>
@@ -74,7 +75,7 @@ export function HotCard({ p, onOpen }: { p: Prop; onOpen?: () => void }) {
     <div className={`shrink-0 flex flex-col gap-5 group ${onOpen ? "cursor-pointer" : ""}`} style={{ width: "clamp(300px,30vw,380px)", maxWidth: "100%" }} onClick={onOpen}>
       {/* Video thumbnail style */}
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" />}
+        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
         <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.28)" }} />
         {/* Play button */}
         <div className="absolute inset-0 flex items-center justify-center">

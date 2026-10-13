@@ -14,6 +14,12 @@ export type Listing = "For Sale" | "For Rent";
  * Visitors see the name and area when they hover (or, on phones, printed in the box).
  */
 export interface PlanBox { id: string; name: string; area: number; x: number; y: number; w: number; h: number }
+/**
+ * How the admin framed the cover photo where it is cropped (cards, home banner, map card):
+ * the focal point x / y in % and a zoom (1-3), for the photo `src` it was set for. Display only;
+ * the photo itself is never changed. Applied with coverStyle() (components/ui/cover-frame.ts).
+ */
+export interface CoverFrame { src: string; x: number; y: number; zoom: number }
 
 export type LocationMode = "exact" | "approximate";
 
@@ -39,6 +45,8 @@ export interface Prop {
   floorPlan?: PlanBox[];
   /** A video link the admin pasted (Cloudflare uploads will fill it later). */
   videoUrl?: string;
+  /** The cover photo's framing; none = centred, no zoom. */
+  coverFrame?: CoverFrame;
 }
 
 /**

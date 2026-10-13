@@ -101,7 +101,8 @@ All under `/api/v1`, error envelope as in §7.1.
 **Property endpoints, how to call them** (all `{ data, meta }`; errors as §7.1):
 - **Public item** = today's `Prop` (same field names and display strings: `price`, `builtArea`, `landArea` "4-4-0-1 R-A-P-D",
   `roadAccess`, `features`, `hero`, 0 / "—" for not applicable) plus `priceNum` (null = "Negotiable"), `landAreaSqft`,
-  `amenities`, `highlights`, `videoUrl`, `floorPlan`, `reactionCount`, `createdAt`, and the location as `approx` + `locationMode`
+  `amenities`, `highlights`, `videoUrl`, `floorPlan`, `coverFrame` (only while it belongs to the current cover, else null),
+  `reactionCount`, `createdAt`, and the location as `approx` + `locationMode`
   (never `mapUrl`). List query: `listing=for-sale|for-rent&type&district&minPrice&maxPrice&preset=hot|new&q&sort=newest|price_asc|price_desc|reactions&page&limit`
   (`q` = a full NB ID, or text; over 100 characters is cut to 100). `meta` = `{ page, limit, total, totalPages }`.
 - **Admin item** adds `deletedAt`, `mapUrl`, `exact` and `edit`: the values exactly as `POST` / `PATCH` take them, so the
@@ -109,7 +110,9 @@ All under `/api/v1`, error envelope as in §7.1.
   `{ nbId: "NBS005", title, tagline, description, type, badge|null, featured, verified, price|null, bedrooms|null, bathrooms|null,
   floors|null, buildYear|null, builtArea: { value, unit }|null, landArea: { value, unit } | { rapd: "4-4-0-1" } | null, facing|null,
   roadSurface|null, roadWidthFt|null, gallery: string[], videoUrl|null, amenities: string[], highlights: string[],
-  floorPlan: PlanBox[]|null, reactionCount, location: { district, address, mapUrl|null, locationMode: "approximate"|"exact" } }`.
+  floorPlan: PlanBox[]|null, coverFrame: { src, x, y, zoom }|null, reactionCount, location: { district, address, mapUrl|null,
+  locationMode: "approximate"|"exact" } }`. `coverFrame` (added 2026-10-13): how the cover is framed where it is cropped; x / y = focal
+  point 0-100 %, zoom 1-3, `src` = the photo it was set for. Display only, never touches the gallery or media cleanup.
   The listing comes from the NB ID prefix. Photos / video: **http(s) URLs only** since 2026-10-01 (the editor uploads each
   picked file first: `src/api/uploads.ts`).
   `meta.warnings` lists map-link problems (no pin, pin outside Nepal). 409 `REF_TAKEN` = NB ID in use; restore returns `meta.nbIdChanged`.
@@ -1585,6 +1588,7 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 | Date | From | Question / request | Status |
 |---|---|---|---|
+| 2026-10-13 | Frontend | **Please review the `coverFrame` backend addition** (branch `fix/frontend-audit-issues`): `Property.coverFrame Json?`, migration `20261013090000_property_cover_frame` (one nullable JSONB column), validation in `lib/validation/property.ts`, output in `lib/content/properties.ts` (public only while `src === gallery[0]`). Done on the owner's request for the admin's "Adjust thumbnail" tool. **The migration is already applied to the Supabase database** (via the session pooler). Pull this branch **before you create your next migration**; if `prisma migrate dev` reports drift, do **not** accept a reset. | **Needs saksham** |
 | 2026-09-28 | Frontend | **Admin panel is built, frontend only.** Please build §7.8 (properties, uploads, articles, team, testimonials, videos, site settings) and §7.7 (reviews, reactions). Suggested Prisma models are in §7.8. | **Needs saksham** |
 | 2026-09-28 | Frontend | **Property references `#NBS345` / `#NBL345`** (top priority): one number sequence, prefix from `listing`, `q` search must match them. Rules in §0.5. | **Needs saksham** |
 | 2026-09-28 | Frontend | Add **`lastLoginAt`** to `USER_SELECT` in `GET /admin/users`; the Users page column is ready. | **Needs saksham** |
@@ -1618,6 +1622,12 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-13 · frontend (+ backend field) · "Adjust thumbnail" for the property cover.** In the editor (step 5, Photos) the
+  cover has **Adjust**: drag the photo in a 4:3 frame, zoom 1-3×, live previews of the real card and the home banner
+  (desktop and phone), Reset, keyboard arrows / + / −. Saved as `coverFrame` `{ src, x, y, zoom }` and applied with
+  `coverStyle()` (`components/ui/cover-frame.ts`) on listing and Hot cards, Buy/Rent list and map views, the home banner,
+  the map pin card and the admin lists; the property page gallery stays unframed. A frame only applies while its photo is
+  the cover. Backend: new nullable column + validation + output (review request in §12). Checked at 375 / 768 / 1440px.
 - **2026-10-13 · frontend · F5, F3 (frontend part), search limit; checked at 375 / 768 / 1440px.** Property page shows
   the admin's video as a "Video Tour" section (and a banner button that jumps to it) when `videoUrl` is set. Admin →
   Videos is view-only with a "Coming soon" note until `/videos` and `/admin/videos` exist (`VIDEOS_EDITABLE`). Search
