@@ -5,7 +5,7 @@ import {
   Phone, Mail, MessageCircle, Send, Bed, Bath, Square, Share2,
   Play, Grid3X3, List as ListIcon, Map, Calculator, Star,
   Home, Landmark, Layers, CheckCircle2,
-  Instagram, Facebook, Youtube, Linkedin, ZoomIn,
+  Instagram, Facebook, Youtube, Linkedin,
   SlidersHorizontal, RotateCcw, User, FileText, PlusCircle,
   Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
@@ -15,7 +15,7 @@ import {
 import logoImg from "@/imports/image.png";
 import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, matchesRef, propertiesError, propertiesStatus, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
@@ -459,7 +459,7 @@ function Footer({ go }: { go:Go }) {
       </div>
       {/* Extra room at the bottom so the floating Enquiry / WhatsApp buttons never cover these links. */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 pt-8 pb-32 sm:pb-8 sm:pr-32 lg:pr-40">
-        <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© 2025 Nepal Bhoomi Estate Agents. All rights reserved.</p>
+        <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© {new Date().getFullYear()} Nepal Bhoomi Estate Agents. All rights reserved.</p>
         {/* Privacy Policy / Terms of Use links go here once those pages are written (they were dead "#" links). */}
       </div>
     </footer>
@@ -655,8 +655,8 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
           <div className="flex flex-col gap-3">
             <button onClick={()=>go("hot")} className="flex items-center justify-center py-4 text-[12px] tracking-[0.22em] uppercase transition-all hover:brightness-110" style={{background:FG_LIGHT,color:WHITE,...sans}}>See all Hot Properties</button>
             <div className="flex gap-3">
-              <button onClick={()=>scroll(-1)} className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={18}/></button>
-              <button onClick={()=>scroll(1)} className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={18}/></button>
+              <button onClick={()=>scroll(-1)} aria-label="Previous properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={18}/></button>
+              <button onClick={()=>scroll(1)} aria-label="Next properties" className="w-10 h-10 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={18}/></button>
             </div>
           </div>
         </div>
@@ -1118,8 +1118,8 @@ function TestimonialsSection() {
             <h2 className="leading-[0.93]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.2vw,3.4rem)"}}>What Our Clients Say</h2>
           </div>
           <div className="flex gap-2">
-            <button onClick={()=>setIdx(i=>(i-1+TESTIMONIALS.length)%TESTIMONIALS.length)} className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
-            <button onClick={()=>setIdx(i=>(i+1)%TESTIMONIALS.length)} className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
+            <button onClick={()=>setIdx(i=>(i-1+TESTIMONIALS.length)%TESTIMONIALS.length)} aria-label="Previous testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
+            <button onClick={()=>setIdx(i=>(i+1)%TESTIMONIALS.length)} aria-label="Next testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
           </div>
         </div>
         <AnimatePresence mode="wait">
@@ -1271,17 +1271,16 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
   const preset=nav.preset;
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
-  // Match the fields someone would actually type: title, location, district,
-  // type and the reference ("#NBS004", "nbs004" or just "004"). Not the description: a match buried in
-  // a paragraph gives results the user cannot see the reason for.
+  // Match what someone would actually type (searchScore): title, place, district, type and the NB ID,
+  // even in part ("nb", "#nbs00", "004"). Not the description: a match buried in a paragraph gives
+  // results the user cannot see the reason for.
   const q=query.trim().toLowerCase();
-  const matchesQuery=(p:Prop)=>
-    !q ||
-    p.title.toLowerCase().includes(q) ||
-    p.location.toLowerCase().includes(q) ||
-    p.district.toLowerCase().includes(q) ||
-    matchesRef(p.nbId,q) ||
-    p.type.toLowerCase().includes(q);
+  const matchesQuery=(p:Prop)=>searchScore(p,q)>0;
+  // Suggestions under the search box: every listing (sale and rent), best match first; on a tie this
+  // page's own listing (sale on Buy, rent on Rent) comes first.
+  const own=(p:Prop)=>p.listing===listing ? 1 : 0;
+  const suggestions=!q ? [] : ALL_PROPS.map(p=>({p,s:searchScore(p,q)})).filter(x=>x.s>0)
+    .sort((a,b)=>b.s-a.s||own(b.p)-own(a.p)||a.p.nbId.localeCompare(b.p.nbId)).slice(0,6).map(x=>x.p);
   const props=ALL_PROPS.filter(p=>{
     if(p.listing!==listing) return false;
     if(preset==="hot"&&!(p.badge==="Hot"||p.featured)) return false;
@@ -1386,14 +1385,15 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
       </div>
       {/* Category breakdown */}
       <div className="px-6 md:px-12 lg:px-20 py-7 border-b" style={{borderColor:BORDER_L}}>
-        <p className="text-[14px] mb-3" style={{color:MUTED_L,...sans}}>{props.length} {props.length===1?"property":"properties"} found &middot; {heading} in Nepal</p>
+        <h1 className="text-[14px] mb-3" style={{color:MUTED_L,...sans}}>{props.length} {props.length===1?"property":"properties"} found &middot; {heading} in Nepal</h1>
         <div className="flex flex-wrap gap-x-8 gap-y-1">
           {types.slice(1).map(t=>{ const c=ALL_PROPS.filter(x=>x.listing===listing&&x.type===t).length; return c>0&&(<button key={t} onClick={()=>setTypeF(typeF===t?"All Types":t)} className="text-[14px] transition-colors hover:text-[#8a2030]" style={{color:typeF===t?MAROON:MUTED_L,...sans}}>{t} ({c})</button>); })}
         </div>
       </div>
       {/* Results */}
       <div ref={resultsRef} className="px-6 md:px-12 lg:px-20 py-14" style={{scrollMarginTop:"13rem"}}>
-        <ResultsToolbar count={props.length} query={query} onQuery={setQuery} sort={sortBy} onSort={setSortBy}/>
+        <ResultsToolbar count={props.length} query={query} onQuery={setQuery} sort={sortBy} onSort={setSortBy}
+          suggestions={suggestions} onPick={p=>{ setId(p.id); go("property"); window.scrollTo(0,0); }}/>
         {props.length===0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-2xl" style={{color:FG_LIGHT,...serif}}>No properties match these filters</p>
@@ -1450,10 +1450,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                       <img src={logoImg} alt="NB" className="w-6 h-6 object-contain opacity-60"/>
                       <span className="text-[11px]" style={{color:MUTED_L,...sans}}>Nepal Bhoomi</span>
                     </div>
-                    <div className="flex gap-2">
-                      <button aria-label="Enquire" className="p-2 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}} onClick={e=>{e.stopPropagation();setId(p.id);go("property");}}><Mail size={15}/></button>
-                      <ReactionButton id={p.id} size="sm"/>
-                    </div>
+                    <ReactionButton id={p.id} size="sm"/>
                   </div>
                 </div>
               </div>
@@ -1551,17 +1548,35 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setServerErr(""); setShared(false); },[propertyId]);
   // Signed in: start from the account's details (still editable).
   useEffect(()=>{ if(user) setForm(v=>({...v,name:v.name||user.name||"",email:v.email||user.email,phone:v.phone||user.phone||""})); },[user]);
+  // Photos: ← / → step through them on the page and in the full-screen view (not while typing in
+  // a form); Escape closes the full-screen view. The page doesn't scroll behind it.
+  const photos=p.gallery.length;
+  const prevPhoto=useCallback(()=>setGalIdx(i=>(i-1+photos)%photos),[photos]);
+  const nextPhoto=useCallback(()=>setGalIdx(i=>(i+1)%photos),[photos]);
   useEffect(()=>{
-    if(!lightbox) return;
     const k=(e:KeyboardEvent)=>{
-      if(e.key==="Escape") setLightbox(false);
-      if(e.key==="ArrowLeft") setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length);
-      if(e.key==="ArrowRight") setGalIdx(i=>(i+1)%p.gallery.length);
+      const t=e.target as HTMLElement|null;
+      if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if(e.key==="Escape"&&lightbox) setLightbox(false);
+      if(photos<2) return;
+      if(e.key==="ArrowLeft"){ e.preventDefault(); prevPhoto(); }
+      if(e.key==="ArrowRight"){ e.preventDefault(); nextPhoto(); }
     };
     window.addEventListener("keydown",k);
-    document.body.style.overflow="hidden";
+    if(lightbox) document.body.style.overflow="hidden";
     return ()=>{ window.removeEventListener("keydown",k); document.body.style.overflow=""; };
-  },[lightbox,p.gallery.length]);
+  },[lightbox,photos,prevPhoto,nextPhoto]);
+  // Swipe left / right on phones (photo on the page, or the full-screen view).
+  const swipeX=useRef<number|null>(null);
+  const swipe={
+    onTouchStart:(e:React.TouchEvent)=>{ swipeX.current=e.touches[0].clientX; },
+    onTouchEnd:(e:React.TouchEvent)=>{
+      const start=swipeX.current; swipeX.current=null;
+      if(start===null||photos<2) return;
+      const dx=e.changedTouches[0].clientX-start;
+      if(Math.abs(dx)>45){ if(dx<0) nextPhoto(); else prevPhoto(); }
+    },
+  };
   const share=async()=>{
     const url=typeof window!=="undefined"?window.location.href:"";
     try{
@@ -1582,8 +1597,9 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
     {l:"Road Access",v:p.roadAccess,i:<Route size={14}/>},
     {l:"Facing",v:p.facing,i:<Compass size={14}/>},
     {l:"Build Year",v:p.buildYear>0?String(p.buildYear):"—",i:<Calendar size={14}/>},
-    {l:"Verified",v:p.verified?"Yes":"No",i:<CheckCircle2 size={14}/>},
-  ];
+    {l:"Verified",v:p.verified?"Yes":"",i:<CheckCircle2 size={14}/>},
+  // Only rows with something to say: a listing with few details shouldn't show a column of "—".
+  ].filter(d=>typeof d.v!=="string" || (d.v.trim()!=="" && d.v!=="—"));
   return (
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       {/* Breadcrumb */}
@@ -1596,9 +1612,11 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
       </div>
       {/* Hero gallery */}
-      <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}}>
+      <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}} {...swipe}>
         <img src={p.gallery[galIdx]} alt={p.title} className="w-full h-full object-cover"/>
-        <div className="absolute inset-0" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
+        {/* The whole photo opens the full-screen view (the gradient sits on top, so it is the button). */}
+        <button type="button" onClick={()=>setLightbox(true)} aria-label={`View photo ${galIdx+1} of ${photos} full screen`}
+          className="absolute inset-0 w-full h-full cursor-zoom-in" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
         {/* Thumbs */}
         <div className="absolute bottom-5 left-5 md:left-10 flex gap-2 z-10">
           {p.gallery.map((g,i)=>(
@@ -1607,9 +1625,6 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             </button>
           ))}
         </div>
-        <button onClick={()=>setLightbox(true)} className="absolute top-5 right-5 p-2.5 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}>
-          <ZoomIn size={16}/>
-        </button>
         {/* The tour sits below the description; this takes visitors to it from the photos. */}
         {p.videoUrl&&(
           <button onClick={()=>document.getElementById("video-tour")?.scrollIntoView({behavior:"smooth",block:"start"})}
@@ -1618,9 +1633,10 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             <Play size={13} fill="white"/>Video Tour
           </button>
         )}
-        {p.gallery.length>1&&<>
-          <button onClick={()=>setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronLeft size={18}/></button>
-          <button onClick={()=>setGalIdx(i=>(i+1)%p.gallery.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronRight size={18}/></button>
+        {photos>1&&<>
+          <button onClick={prevPhoto} aria-label="Previous photo" className="absolute left-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronLeft size={18}/></button>
+          <button onClick={nextPhoto} aria-label="Next photo" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronRight size={18}/></button>
+          <span className="absolute top-5 right-5 px-2.5 py-1 text-[11px] tracking-[0.15em] tabular-nums pointer-events-none" style={{background:"rgba(0,0,0,0.45)",color:WHITE,...sans}}>{galIdx+1} / {photos}</span>
         </>}
       </div>
       {/* Info bar */}
@@ -1784,13 +1800,28 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       {/* Lightbox */}
       <AnimatePresence>
         {lightbox&&(
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:"rgba(0,0,0,0.95)"}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setLightbox(false)}>
-            <button onClick={()=>setLightbox(false)} aria-label="Close" className="absolute top-5 right-5 p-2.5 border" style={{borderColor:"rgba(255,255,255,0.2)",color:WHITE}}><X size={18}/></button>
-            <div className="relative max-w-5xl w-full px-10" onClick={e=>e.stopPropagation()}>
-              <img src={p.gallery[galIdx]} alt="" className="w-full h-auto max-h-[80vh] object-contain"/>
-              <button onClick={()=>setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length)} className="absolute left-0 top-1/2 -translate-y-1/2 p-3" style={{color:WHITE}}><ChevronLeft size={24}/></button>
-              <button onClick={()=>setGalIdx(i=>(i+1)%p.gallery.length)} className="absolute right-0 top-1/2 -translate-y-1/2 p-3" style={{color:WHITE}}><ChevronRight size={24}/></button>
+          // Above the header (z-50) and the floating buttons; a click on the dark backdrop closes it.
+          <motion.div role="dialog" aria-modal="true" aria-label={`${p.title}: photos`} className="fixed inset-0 z-[95] flex flex-col items-center justify-center gap-4 px-3 sm:px-6 py-16"
+            style={{background:"rgba(0,0,0,0.95)"}} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setLightbox(false)} {...swipe}>
+            <span className="absolute top-6 left-5 text-[12px] tracking-[0.18em] tabular-nums" style={{color:"rgba(255,255,255,0.75)",...sans}}>{galIdx+1} / {photos}</span>
+            <button onClick={()=>setLightbox(false)} aria-label="Close" className="absolute top-5 right-5 p-2.5 border transition-colors hover:bg-white/10" style={{borderColor:"rgba(255,255,255,0.2)",color:WHITE}}><X size={18}/></button>
+            <div className="relative w-full max-w-5xl flex items-center justify-center" onClick={e=>e.stopPropagation()}>
+              <img key={galIdx} src={p.gallery[galIdx]} alt={`${p.title}, photo ${galIdx+1} of ${photos}`} className="max-w-full max-h-[72vh] object-contain select-none" draggable={false}/>
+              {photos>1&&<>
+                <button onClick={prevPhoto} aria-label="Previous photo" className="absolute left-0 sm:-left-14 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors hover:bg-white/10" style={{color:WHITE,background:"rgba(0,0,0,0.35)"}}><ChevronLeft size={24}/></button>
+                <button onClick={nextPhoto} aria-label="Next photo" className="absolute right-0 sm:-right-14 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors hover:bg-white/10" style={{color:WHITE,background:"rgba(0,0,0,0.35)"}}><ChevronRight size={24}/></button>
+              </>}
             </div>
+            {photos>1&&(
+              <div className="flex gap-2 max-w-full overflow-x-auto px-1 pb-1" onClick={e=>e.stopPropagation()}>
+                {p.gallery.map((g,i)=>(
+                  <button key={i} onClick={()=>setGalIdx(i)} aria-label={`Photo ${i+1}`} aria-current={i===galIdx}
+                    className="shrink-0 w-16 h-12 sm:w-20 sm:h-14 overflow-hidden border-2 transition-all" style={{borderColor:i===galIdx?GOLD:"transparent",opacity:i===galIdx?1:0.5}}>
+                    <img src={g} alt="" className="w-full h-full object-cover"/>
+                  </button>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -2422,7 +2453,7 @@ function LoginPage({ go, googleResult=null, returnLabel=null, onReturn }: { go:G
           )
         ) : (
           <>
-            <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Sign In</h2>
+            <h1 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Sign In</h1>
             <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>Access your Nepal Bhoomi account</p>
             <div className="flex flex-col gap-1.5 mb-4">
               <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Email Address</label>
@@ -2515,7 +2546,7 @@ function RegisterPage({ go, returnLabel=null, onReturn }: { go:Go } & SignInRetu
             <VerifyEmailForm email={verifying} onBack={()=>setVerifying(null)} onMfa={()=>go("login")}/>
           </div>
         ):(<>
-          <h2 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Create Account</h2>
+          <h1 className="text-2xl text-center mb-2" style={{color:FG_LIGHT,...serif}}>Create Account</h1>
           <p className="text-[14px] text-center mb-8" style={{color:MUTED_L,...sans}}>Join Nepal Bhoomi to save properties and contact advisors</p>
           <div className="border p-8 flex flex-col gap-4" style={{background:WHITE,borderColor:BORDER_L}}>
             {textFields.map(f=>(
