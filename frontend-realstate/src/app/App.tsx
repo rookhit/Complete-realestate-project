@@ -1606,6 +1606,14 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
         <button onClick={()=>setLightbox(true)} className="absolute top-5 right-5 p-2.5 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}>
           <ZoomIn size={16}/>
         </button>
+        {/* The tour sits below the description; this takes visitors to it from the photos. */}
+        {p.videoUrl&&(
+          <button onClick={()=>document.getElementById("video-tour")?.scrollIntoView({behavior:"smooth",block:"start"})}
+            className="absolute top-5 left-5 flex items-center gap-2 px-3.5 py-2.5 border text-[11px] tracking-[0.2em] uppercase transition-colors hover:bg-black/50"
+            style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)",...sans}}>
+            <Play size={13} fill="white"/>Video Tour
+          </button>
+        )}
         {p.gallery.length>1&&<>
           <button onClick={()=>setGalIdx(i=>(i-1+p.gallery.length)%p.gallery.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronLeft size={18}/></button>
           <button onClick={()=>setGalIdx(i=>(i+1)%p.gallery.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-3 border" style={{borderColor:"rgba(255,255,255,0.3)",color:WHITE,background:"rgba(0,0,0,0.3)"}}><ChevronRight size={18}/></button>
@@ -1659,6 +1667,17 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             <p className="leading-[1.85]" style={{color:MUTED_L,...sans,fontSize:"1.05rem"}}>{p.description}</p>
           </div>
           <div className="h-px" style={{background:BORDER_L}}/>
+          {/* Video tour uploaded by the admin (Cloudflare R2). preload="metadata": tours can be
+              over 100 MB, so only the first frame and length load until Play. No crossOrigin: R2's
+              public URL sends no CORS headers, and a plain <video> doesn't need them. */}
+          {p.videoUrl&&<>
+            <div id="video-tour" className="scroll-mt-28">
+              <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Video Tour</p>
+              <video key={p.videoUrl} src={p.videoUrl} controls playsInline preload="metadata"
+                aria-label={`Video tour of ${p.title}`} className="w-full aspect-video bg-black border" style={{borderColor:BORDER_L}}/>
+            </div>
+            <div className="h-px" style={{background:BORDER_L}}/>
+          </>}
           {/* Features */}
           <div>
             <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Features & Amenities</p>
