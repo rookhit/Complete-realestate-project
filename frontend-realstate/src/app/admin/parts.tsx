@@ -220,7 +220,8 @@ export function SearchBox({ value, onChange, placeholder }: { value: string; onC
   return (
     <div className="relative flex-1 min-w-[14rem]">
       <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: MUTED_L }} />
-      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+      {/* 100: the API cuts a longer search (q) to 100 characters, so typing past it would do nothing. */}
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} maxLength={100}
         className="w-full border pl-11 pr-10 py-3 text-[14px] outline-none transition-colors focus:border-[#8a2030]"
         style={{ borderColor: BORDER_L, background: WHITE, color: FG_LIGHT, ...sans }} />
       {value && (

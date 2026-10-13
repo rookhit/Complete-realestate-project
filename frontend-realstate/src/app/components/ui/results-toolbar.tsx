@@ -22,7 +22,9 @@ export function ResultsToolbar({ count, query, onQuery, sort, onSort }: {
   const q = query.trim();
   return (
     <div className="flex flex-col lg:flex-row lg:items-center gap-5 mb-10 pb-6 border-b" style={{ borderColor: BORDER_L }}>
-      <p className="text-[13px] tracking-[0.18em] uppercase shrink-0" style={{ color: MUTED_L, ...sans }}>
+      {/* Capped and wrapping anywhere: it repeats the search, and one long word (a pasted link)
+          would otherwise stretch the page sideways. */}
+      <p className="text-[13px] tracking-[0.18em] uppercase shrink-0 max-w-full lg:max-w-[50%] [overflow-wrap:anywhere]" style={{ color: MUTED_L, ...sans }}>
         <span style={{ color: FG_LIGHT }}>{count}</span>{" "}
         {count === 1 ? "property" : "properties"}
         {q && <> matching &ldquo;<span style={{ color: FG_LIGHT }}>{q}</span>&rdquo;</>}
@@ -36,6 +38,7 @@ export function ResultsToolbar({ count, query, onQuery, sort, onSort }: {
             onChange={e => onQuery(e.target.value)}
             placeholder="Search by name, area or ref…"
             aria-label="Search properties"
+            maxLength={100} /* the API cuts a longer q to 100 characters */
             className="w-full border pl-11 pr-10 py-3 text-[14px] outline-none transition-all focus:border-[#8a2030]"
             style={{ borderColor: BORDER_L, background: WHITE, color: FG_LIGHT, ...sans }}
           />

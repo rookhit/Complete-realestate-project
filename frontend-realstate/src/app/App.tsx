@@ -1395,7 +1395,9 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
         {props.length===0 ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-2xl" style={{color:FG_LIGHT,...serif}}>No properties match these filters</p>
-            <p className="text-[15px]" style={{color:MUTED_L,...sans}}>
+            {/* overflow-wrap:anywhere: the search is repeated here, and one long word (a pasted
+                link) would otherwise stretch the page sideways. */}
+            <p className="text-[15px] max-w-full [overflow-wrap:anywhere]" style={{color:MUTED_L,...sans}}>
               {q
                 ? <>Nothing matches &ldquo;{query.trim()}&rdquo;. Try a district, a property name, or a reference like #NBS004.</>
                 : <>Try widening your price range or choosing a different district.</>}
