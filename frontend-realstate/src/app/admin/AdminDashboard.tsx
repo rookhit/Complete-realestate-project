@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
   ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Star, Trash2, Users,
 } from "lucide-react";
 import { ApiError, useAuth } from "@/app/auth";
 import { deletePropertyOnServer, restorePropertyOnServer, toProp, updateProperty } from "@/api/properties";
-import { ALL_PROPS, PROPERTY_TYPES, applySaved, deleteProperty, displayRef, matchesRef, restoreProperty, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROPERTY_TYPES, applySaved, deleteProperty, displayRef, matchesRef, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
 import { BLOGS, TEAM, TESTIMONIALS, VIDEO_LIST } from "@/app/data/content";
 import { ADMIN_REVIEWS, REACTIONS, pendingReviewCount } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
@@ -308,17 +308,31 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
   }, [q, listing, type, sort, version]);
 
   const current = Math.min(page, Math.max(1, Math.ceil(rows.length / PER_PAGE)));
-  // Every change goes to the API first; the local list is then updated from what it stored.
+  // Hearts and the Featured / Verified flags change on screen at once; the API call follows, its
+  // answer replaces the local copy, and a refused change is put back. Only the newest answer per
+  // property + field counts, so quick repeated clicks can't be undone by an older reply.
   const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
+  const latest = useRef<Record<string, number>>({});
+  const send = (key: string, call: () => Promise<{ data: Parameters<typeof applySaved>[0] }>, undo: () => void) => {
+    const n = (latest.current[key] ?? 0) + 1;
+    latest.current[key] = n;
+    call().then(res => { if (latest.current[key] === n) applySaved(res.data); }, err => {
+      if (latest.current[key] === n) undo();
+      failed(err);
+    });
+  };
   const nudge = (p: Prop, d: number) => {
-    const next = Math.max(0, (REACTIONS[p.id] ?? 0) + d);
-    updateProperty(p.id, { reactionCount: next }).then(res => { applySaved(res.data); }, failed);
+    const before = REACTIONS[p.id] ?? 0;
+    const next = Math.max(0, before + d);
+    REACTIONS[p.id] = next;
+    saveProperty(p);
+    send(`${p.id}:hearts`, () => updateProperty(p.id, { reactionCount: next }), () => { REACTIONS[p.id] = before; saveProperty(p); });
   };
   const flip = (p: Prop, field: "featured" | "verified") => {
-    updateProperty(p.id, { [field]: !p[field] }).then(res => {
-      applySaved(res.data);
-      notify(`${p.title} ${!p[field] ? "is now" : "is no longer"} ${field}`);
-    }, failed);
+    const on = !p[field];
+    saveProperty({ ...p, [field]: on });
+    notify(`${p.title} ${on ? "is now" : "is no longer"} ${field}`);
+    send(`${p.id}:${field}`, () => updateProperty(p.id, { [field]: on }), () => saveProperty({ ...p, [field]: !on }));
   };
   const remove = (p: Prop) => {
     // The site needs at least one listing.

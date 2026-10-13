@@ -7,6 +7,7 @@ import { formatArea, formatLand, formatPrice, formatRoad, landSqft, normalizeRap
 import { gridFromCoords, inNepal, resolveMapLink, shiftedCentre, type LatLng } from "@/lib/content/geo";
 import { formatNbId, lowestFreeNumber, nbIdHolder, parseNbId } from "@/lib/content/nb-id";
 import type { PropertyInput, PropertyPatch, PropertyQuery } from "@/lib/validation/property";
+import { after } from "next/server";
 import { deleteUnusedMedia } from "@/lib/storage/media";
 
 // Properties: turning rows into the frontend's shape, checking admin input, and the queries behind
@@ -164,12 +165,22 @@ type Resolved = {
   amenityIds: number[];
 };
 
-/** Checks the values that depend on the database: option lists, district, amenities, units. */
-async function resolveInput(v: PropertyInput): Promise<Resolved> {
+type AmenityRow = { id: number; name: string };
+const findAmenities = (names: readonly string[]): Promise<AmenityRow[]> =>
+  names.length ? prisma.amenity.findMany({ where: { name: { in: [...new Set(names)] } }, select: { id: true, name: true } }) : Promise.resolve([]);
+
+/**
+ * Checks the values that depend on the database: option lists, district, amenities, units.
+ * `pre` passes lookups already made (updateProperty runs them at the same time as its other reads).
+ */
+async function resolveInput(
+  v: PropertyInput,
+  pre: { options?: Record<OptionKey, readonly string[]>; amenities?: AmenityRow[] } = {},
+): Promise<Resolved> {
   const nb = parseNbId(v.nbId);
   if (!nb) throw invalid("nbId", "The NB ID must be NBS (for sale) or NBL (for rent) followed by a number, e.g. NBS005");
 
-  const options = await loadOptions();
+  const options = pre.options ?? (await loadOptions());
   const check = (field: string, value: string | null, key: OptionKey, label: string): void => {
     if (value !== null && !options[key].includes(value)) throw invalid(field, `“${value}” is not one of the ${label} (Admin → Dropdown Options)`);
   };
@@ -192,7 +203,7 @@ async function resolveInput(v: PropertyInput): Promise<Resolved> {
   }
 
   const names = [...new Set(v.amenities)];
-  const found = names.length ? await prisma.amenity.findMany({ where: { name: { in: names } }, select: { id: true, name: true } }) : [];
+  const found = pre.amenities ?? (await findAmenities(names));
   const unknown = names.filter((n) => !found.some((a) => a.name === n));
   if (unknown.length) throw invalid("amenities", `Unknown amenities: ${unknown.join(", ")}`);
 
@@ -289,32 +300,93 @@ async function findLive(id: number): Promise<PropertyRow> {
   return row;
 }
 
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  const key = (ids: readonly number[]): string => [...ids].sort((x, y) => x - y).join(",");
+  return key(a) === key(b);
+}
+
+/** Whether the location to store equals the saved one (coordinates compared as stored, 6 decimals). */
+function sameLocation(next: LocationData, saved: PropertyRow["location"]): boolean {
+  if (!saved) return false;
+  const norm = (v: unknown): unknown =>
+    v === null || v === undefined ? null : typeof v === "object" ? Number(Number(v).toFixed(6)) : typeof v === "number" ? Number(v.toFixed(6)) : v;
+  return (Object.keys(next) as (keyof LocationData)[]).every((k) => norm(next[k]) === norm(saved[k]));
+}
+
+/** Runs `job` after the response is sent (next/server after()); outside a request (scripts), right away. */
+async function afterResponse(job: () => Promise<void>): Promise<void> {
+  try {
+    after(job);
+  } catch {
+    await job();
+  }
+}
+
+/** Fields the admin list changes on their own (Featured, Verified, the heart +/−). */
+const QUICK_FIELDS = new Set(["featured", "verified", "reactionCount"]);
+
 /** PATCH: the saved property with the sent fields on top, checked as a whole. */
 export async function updateProperty(id: number, patch: PropertyPatch): Promise<SaveResult> {
-  const saved = await findLive(id);
+  // Only flags or the heart count: nothing else to check, so one UPDATE instead of the full
+  // re-validation below (≈ 1 round trip instead of ≈ 15).
+  const keys = Object.keys(patch);
+  if (keys.length > 0 && keys.every((k) => QUICK_FIELDS.has(k))) {
+    const { featured, verified, reactionCount } = patch;
+    try {
+      const row = await prisma.property.update({
+        where: { id, deletedAt: null },
+        data: { featured, verified, reactionCount },
+        include: INCLUDE,
+      });
+      return { property: toAdmin(row), warnings: [] };
+    } catch (e) {
+      if (typeof e === "object" && e !== null && "code" in e && e.code === "P2025") {
+        throw new HttpError(404, "NOT_FOUND", "Property not found");
+      }
+      throw e;
+    }
+  }
+
+  // Each query is a round trip to the database (~170 ms from Nepal), so the three reads run at
+  // the same time, and the save below only writes what actually changed.
+  const [saved, options, patchAmenities] = await Promise.all([
+    findLive(id),
+    loadOptions(),
+    patch.amenities ? findAmenities(patch.amenities) : null,
+  ]);
   const current = toAdmin(saved).edit;
   const merged: PropertyInput = { ...current, ...patch, location: { ...current.location, ...patch.location } };
-  const r = await resolveInput(merged);
+  const savedAmenities = saved.amenities.map((a) => ({ id: a.amenityId, name: a.amenity.name }));
+  const r = await resolveInput(merged, { options, amenities: patchAmenities ?? savedAmenities });
   const warnings: string[] = [];
   const location = await resolveLocation(merged.location, saved.location, warnings);
+
+  const nbChanged = r.listing !== saved.listing || r.nbNumber !== saved.nbNumber;
+  const amenitiesChanged = patchAmenities !== null && !sameIds(r.amenityIds, savedAmenities.map((a) => a.id));
+  const locationChanged = !sameLocation(location, saved.location);
   try {
     const row = await prisma.$transaction(async (tx) => {
-      const holder = await nbIdHolder(tx, r.listing, r.nbNumber, id);
-      if (holder) throw refTaken(formatNbId(r.listing, r.nbNumber), holder);
-      if (patch.amenities) await tx.propertyAmenity.deleteMany({ where: { propertyId: id } });
+      // An unchanged NB ID is already this property's (the live-unique index guarantees it).
+      if (nbChanged) {
+        const holder = await nbIdHolder(tx, r.listing, r.nbNumber, id);
+        if (holder) throw refTaken(formatNbId(r.listing, r.nbNumber), holder);
+      }
+      if (amenitiesChanged) await tx.propertyAmenity.deleteMany({ where: { propertyId: id } });
       return tx.property.update({
         where: { id },
         data: {
           ...propertyData(merged, r),
-          location: { upsert: { create: location, update: location } },
-          ...(patch.amenities ? { amenities: { create: r.amenityIds.map((amenityId) => ({ amenityId })) } } : {}),
+          ...(locationChanged ? { location: { upsert: { create: location, update: location } } } : {}),
+          ...(amenitiesChanged ? { amenities: { create: r.amenityIds.map((amenityId) => ({ amenityId })) } } : {}),
         },
         include: INCLUDE,
       });
     });
-    // Photos / video taken off this property: delete their files unless another property uses them.
+    // Photos / video taken off this property: delete their files unless another property uses
+    // them. Done after the reply is sent; the admin doesn't wait for storage.
     const kept = new Set([...row.gallery, ...(row.videoUrl ? [row.videoUrl] : [])]);
-    await deleteUnusedMedia([...saved.gallery, ...(saved.videoUrl ? [saved.videoUrl] : [])].filter((u) => !kept.has(u)));
+    const removed = [...saved.gallery, ...(saved.videoUrl ? [saved.videoUrl] : [])].filter((u) => !kept.has(u));
+    if (removed.length) await afterResponse(() => deleteUnusedMedia(removed));
     return { property: toAdmin(row), warnings };
   } catch (e) {
     if (isUniqueViolation(e)) throw refTaken(formatNbId(r.listing, r.nbNumber), { title: "another property" });
