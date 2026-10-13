@@ -3,7 +3,7 @@
 Things that must be changed or set up before (and when) the site goes live. Add to this list
 whenever something comes up during development; tick items off at deployment.
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 ## Secrets and accounts
 
@@ -84,6 +84,9 @@ Last updated: 2026-10-13
 - [ ] Frontend build: set `VITE_API_URL` to the production API origin.
 - [ ] Run the backend with `NODE_ENV=production` (turns on the `Secure` cookie flag and makes missing
       email settings an error instead of printing codes to the console).
+- [ ] **Host the backend in the same region as the database** (Supabase is in `ap-northeast-2`, Seoul):
+      each query is a round trip, ~170 ms from Nepal but ~1-2 ms from the same region, and one admin save
+      makes several. E.g. Vercel functions pinned to `icn1` (Seoul). Measured 2026-10-14.
 - [ ] Deploy behind a proxy that sets `X-Forwarded-For`, so rate limits and lockouts see real client IPs.
 - [ ] **The frontend has real page URLs now (F1, merged 2026-10-13)**: the frontend host must serve
       `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
