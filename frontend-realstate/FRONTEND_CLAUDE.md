@@ -1622,6 +1622,11 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-13 · frontend · Dashain 2083 decorations (temporary).** Home page: a greeting pop-up ("Happy Dashain",
+  "Bijayadashami Offers", once per visit) with falling ribbons, and a 3D changa kite (three.js) that climbs as you scroll.
+  All in `src/app/festive/dashain/` (lazy chunks; switches itself off after 25 Oct, preview with `?dashain=on`). To take
+  it down: that folder's README (delete the folder, the 2 lines marked `Dashain` in `App.tsx`, `npm uninstall three
+  @types/three`). Also: the loading screen says "Nepal Bhoomi Real Estate" instead of "Luxury Real Estate · Nepal".
 - **2026-10-13 · frontend (+ backend field) · "Adjust thumbnail" for the property cover.** In the editor (step 5, Photos) the
   cover has **Adjust**: drag the photo in a 4:3 frame, zoom 1-3×, live previews of the real card and the home banner
   (desktop and phone), Reset, keyboard arrows / + / −. Saved as `coverFrame` `{ src, x, y, zoom }` and applied with

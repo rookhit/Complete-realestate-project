@@ -55,6 +55,7 @@ import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
 import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
+import { DashainFestival } from "@/app/festive/dashain"; // Dashain 2083: remove after the festival (festive/dashain/README.md)
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -3134,6 +3135,7 @@ export default function App() {
         {showLoader&&<LoadingScreen key="loader" onDone={handleDone}/>}
       </AnimatePresence>
       <PropertySync/>
+      <DashainFestival page={page} ready={!showLoader} go={p=>go(p)}/>{/* Dashain 2083: remove after the festival */}
       <motion.div animate={{opacity:showLoader?0:1}} transition={{duration:0.6}} style={{pointerEvents:showLoader?"none":"auto"}}>
         <Navbar page={page} go={go}/>
         <AnimatePresence mode="wait">
