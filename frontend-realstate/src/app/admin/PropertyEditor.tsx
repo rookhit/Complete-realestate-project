@@ -185,7 +185,6 @@ function problems(d: Draft): string[] {
   if (!(Number(d.refNo) > 0)) out.push("Give the property an NB ID number.");
   else if (taken) out.push(`${displayRef(taken.nbId)} is already used by “${taken.title}”.`);
   if (!d.district) out.push("Choose the district.");
-  if (priceNumOf(d) <= 0) out.push("Enter the price.");
   if (d.photos.length === 0) out.push("Add at least one photo.");
   else if (d.photos.some(u => !isMediaLink(u))) out.push("Some photos weren't uploaded (marked in red). Remove them and add them again.");
   if (d.videoUrl.trim() && !isMediaLink(d.videoUrl)) out.push("The video wasn't uploaded. Remove it and add it again.");
@@ -253,7 +252,7 @@ function stepDone(d: Draft, id: StepId): boolean {
   switch (id) {
     case "basics": return d.title.trim().length >= 3;
     case "location": return !!d.district;
-    case "price": return priceNumOf(d) > 0;
+    case "price": return true; // optional: no price is shown as "Negotiable"
     case "size": return d.type === "Land" ? landFilled(d) : Number(d.builtValue) > 0 || landFilled(d);
     case "photos": return d.photos.length > 0 && d.photos.every(isMediaLink);
     case "amenities": return d.amenities.length + d.highlights.length > 0;
@@ -513,7 +512,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
   const issues = [...problems(d), ...(uploading > 0 ? ["Wait for the uploads to finish."] : [])];
   const isLand = d.type === "Land";
   const priceNum = priceNumOf(d);
-  const pricePreview = priceNum > 0 ? formatPrice(priceNum, d.listing) : "—";
+  const pricePreview = formatPrice(priceNum, d.listing);
 
   // What the site would show if saved now, with friendly stand-ins for empty fields.
   const assembled = toProp(d);
@@ -521,7 +520,6 @@ export function PropertyEditor({ property, template = null, source = null, open,
     ...assembled,
     title: assembled.title || "Your property title",
     location: d.location.trim() || d.district || "Location",
-    price: priceNum > 0 ? assembled.price : "Price not set",
   };
   const facts = {
     title: d.title.trim(), type: d.type, listing: d.listing, location: placeLabel(d.location, d.district), district: d.district,
@@ -645,7 +643,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-price" n={3} title="Price" subtitle={d.listing === "For Rent" ? "Monthly rent." : "Asking price."}>
+        <FormSection id="pe-price" n={3} title="Price" subtitle={`${d.listing === "For Rent" ? "Monthly rent." : "Asking price."} Leave it empty to show “Negotiable”.`}>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_12rem_1fr] gap-5 items-start">
             <Field label="Amount"><TextInput value={d.priceAmount} onChange={v => set("priceAmount", v.replace(/[^\d.]/g, ""))} placeholder={d.priceUnit === "Crore" ? "e.g. 8.5" : "e.g. 85000"} /></Field>
             <Field label="In"><Select value={d.priceUnit} onChange={v => set("priceUnit", v as PriceUnit)} options={["Crore", "Lakh", "Rupees"]} /></Field>

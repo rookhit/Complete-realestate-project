@@ -163,6 +163,7 @@ export const planArea = (n: number) => `${n.toLocaleString("en-US")} sq.ft`;
  * 85000000 → "NPR 8.5 Cr", 120000 for rent → "NPR 1.2 L/mo", 85000 for rent → "NPR 85,000/mo".
  */
 export function formatPrice(priceNum: number, listing: Listing): string {
+  if (!(priceNum > 0)) return "Negotiable"; // no price given (the API stores null)
   const CR = 10_000_000, LAKH = 100_000;
   const short = (n: number) => String(Math.round(n * 100) / 100);
   const rent = listing === "For Rent";
