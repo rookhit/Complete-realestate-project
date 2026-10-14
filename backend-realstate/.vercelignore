@@ -1,0 +1,8 @@
+# Never upload secrets or local build output to Vercel (CLI deploys).
+.env
+.env.*
+.uploads
+node_modules
+.next
+generated
+tsconfig.tsbuildinfo

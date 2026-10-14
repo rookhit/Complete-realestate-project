@@ -1,0 +1,5 @@
+# Never upload secrets or local build output to Vercel (CLI deploys).
+.env
+.env.*
+node_modules
+dist
