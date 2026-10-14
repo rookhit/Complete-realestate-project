@@ -2903,16 +2903,17 @@ const visitLabel=(v:Visit):string=>`Back to ${visitName(v)}`;
 
 /**
  * What search engines and link previews see for a page (src/seo/meta.ts): title, description,
- * canonical address, preview picture and structured data.
+ * canonical address, preview picture and structured data. null while a property or article is
+ * still loading (or the API is down): the pre-rendered page already has its tags, so keep them.
  */
-function visitMeta(v:Visit):PageMeta {
-  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); }
-  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); }
+function visitMeta(v:Visit):PageMeta|null {
+  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); if(propertiesStatus!=="ready") return null; }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); if(articlesStatus!=="ready") return null; }
   // Area pages show the same properties as Buy for that district.
   const path=v.page==="area" ? "/buy" : PAGE_PATHS[v.page] ?? "/";
   const m=staticPageMeta(SITE_URL, path, v.nav.district);
-  // Still loading, or removed: the page's own name, and no stray canonical to the home page.
-  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), jsonLd:[] };
+  // Removed (or a mistyped link): the page's own name, kept out of search results.
+  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), noindex:true, jsonLd:[] };
   if(v.page==="reset-password") return { ...m, noindex:true };
   return m;
 }
@@ -3137,7 +3138,7 @@ export default function App() {
   const backLabel=visitLabel(backTarget());
   // The tab title follows the page. No dependency list: a property's or article's title is only
   // known once the data has loaded, which re-renders App without changing the page.
-  useEffect(()=>{ applyHead(visitMeta({ page, nav, selId, blogId, scrollY:0 }), CONTACT); });
+  useEffect(()=>{ const m=visitMeta({ page, nav, selId, blogId, scrollY:0 }); if(m) applyHead(m, CONTACT); });
 
   /**
    * After signing in from another page: back to it, with Back skipping the login page. Returns
