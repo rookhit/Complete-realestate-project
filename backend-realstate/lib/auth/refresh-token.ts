@@ -9,9 +9,10 @@ const REFRESH_TOKEN_BYTES = 32;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Two tabs (or a browser restoring several tabs) can send the same cookie to /refresh at the
-// same moment; the loser sees a token rotated milliseconds ago. Inside this window that is a
-// harmless race, not token theft: the loser gets a 409 and retries, because by then the
-// browser already holds the winner's new cookie.
+// same moment; the loser sees a token rotated milliseconds ago. A reload can also abort a
+// refresh after the server rotated the token but before the browser stored the new cookie,
+// leaving it with the old one. Inside this window neither is token theft: while the old
+// token's successor is still unused it may be exchanged again (see rotateRefreshToken).
 const REUSE_GRACE_MS = 30 * 1000;
 
 function hashToken(token: string): string {
@@ -68,15 +69,28 @@ export async function rotateRefreshToken(
   if (!existing) throw invalidRefreshToken();
 
   if (existing.revokedAt) {
-    const reused = existing.rotatedAt && Date.now() - existing.rotatedAt.getTime() > REUSE_GRACE_MS;
-    if (reused) {
+    // Revoked any other way (logout, password reset, ...): simply invalid.
+    if (!existing.rotatedAt) throw invalidRefreshToken();
+    if (Date.now() - existing.rotatedAt.getTime() > REUSE_GRACE_MS) {
       await revokeAllSessionsForUser(existing.userId);
       await logAuthEvent("refresh_token_reuse", { userId: existing.userId, context });
       throw invalidRefreshToken();
     }
-    // Rotated moments ago by a concurrent request: a race. Revoked any other way (logout,
-    // password reset, ...): simply invalid.
-    throw existing.rotatedAt ? refreshRaceLost() : invalidRefreshToken();
+    // Rotated moments ago. Its successor is the token created at that same instant. Still
+    // unused: either the browser never stored it (a reload aborted the response) or a
+    // concurrent request's cookie is still on its way, so issue another one alongside it.
+    // The successor is not revoked: in a race its cookie may land after this one.
+    const successor = await prisma.refreshToken.findFirst({
+      where: { userId: existing.userId, createdAt: existing.rotatedAt },
+      select: { revokedAt: true, rotatedAt: true },
+    });
+    if (!successor) throw refreshRaceLost(); // rotated before successors were findable
+    if (successor.rotatedAt) throw refreshRaceLost(); // used: the browser holds a newer cookie
+    if (successor.revokedAt) throw invalidRefreshToken(); // logged out since
+    if (!isSameUserAgentFamily(existing.userAgent, context.userAgent)) throw invalidRefreshToken();
+    const issued = await createRefreshToken(existing.userId, context);
+    await logAuthEvent("refresh_token_regrant", { userId: existing.userId, context });
+    return { ...issued, userId: existing.userId, role: existing.user.role };
   }
 
   if (existing.expiresAt < new Date()) throw invalidRefreshToken();
@@ -114,6 +128,8 @@ export async function rotateRefreshToken(
         ipAddress: context.ip,
         userAgent: context.userAgent,
         expiresAt,
+        // Same instant as the old token's rotatedAt: that is how a re-sent old token finds it.
+        createdAt: now,
       },
     });
   });

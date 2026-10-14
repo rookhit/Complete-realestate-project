@@ -1,6 +1,9 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  // One SQL query per read with its relations (JOINs) instead of one per table: each query
+  // is a ~170 ms round trip to Supabase from Nepal, so this cuts a property load from 4 to 1.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
