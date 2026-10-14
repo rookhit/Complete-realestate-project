@@ -20,6 +20,9 @@ export function CoverFramer({ open, src, frame, prop, onApply, onClose }: {
 }) {
   const [f, setF] = useState<Framing>(frame ?? CENTRED);
   const [dragging, setDragging] = useState(false);
+  // The photo's width ÷ height, once loaded: a photo wider than the 4:3 frame can only move up and
+  // down after zooming in (its full height already shows), a taller one only left and right.
+  const [ratio, setRatio] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLImageElement>(null);
   const drag = useRef<{ x: number; y: number; start: Framing } | null>(null);
@@ -116,7 +119,8 @@ export function CoverFramer({ open, src, frame, prop, onApply, onClose }: {
                   onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKey}
                   className="relative overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-[#8a2030]"
                   style={{ aspectRatio: "4/3", background: "#e9e3d8", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}>
-                  <img ref={img} src={src} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" style={coverStyle(f)} />
+                  <img ref={img} src={src} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" style={coverStyle(f)}
+                    onLoad={e => setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} />
                   {/* Rule-of-thirds guide while dragging. */}
                   <div className="absolute inset-0 pointer-events-none transition-opacity duration-200" style={{
                     opacity: dragging ? 1 : 0,
@@ -138,6 +142,13 @@ export function CoverFramer({ open, src, frame, prop, onApply, onClose }: {
                     className="w-9 h-9 flex items-center justify-center border transition-colors hover:border-[#8a2030] disabled:opacity-30" style={{ borderColor: BORDER_L, color: FG_LIGHT }}><Plus size={14} /></button>
                   <span className="w-12 text-right text-[13px] tabular-nums" style={{ color: MUTED_L, ...sans }}>{f.zoom.toFixed(1)}×</span>
                 </div>
+                {f.zoom < 1.05 && ratio > 0 && Math.abs(ratio - 4 / 3) > 0.05 && (
+                  <p className="text-[13px] leading-relaxed -mt-1" style={{ color: MUTED_L, ...sans }}>
+                    {ratio > 4 / 3
+                      ? "This photo is wide, so its full height already shows. Zoom in to move it up or down."
+                      : "This photo is tall, so its full width already shows. Zoom in to move it left or right."}
+                  </p>
+                )}
               </div>
 
               {/* What visitors will see. */}

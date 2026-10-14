@@ -216,7 +216,8 @@ function ImageUpload({ images, onChange, max=12 }: {
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 function LoadingScreen({ onDone }: { onDone:()=>void }) {
-  useEffect(()=>{ const t=setTimeout(onDone,2600); return ()=>clearTimeout(t); },[onDone]);
+  // A short branded moment; App keeps it up longer only while the first data is still loading.
+  useEffect(()=>{ const t=setTimeout(onDone,1400); return ()=>clearTimeout(t); },[onDone]);
   return (
     <motion.div className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden" style={{background:"#0a0908"}}
       exit={{ clipPath:"inset(0 0 100% 0)", transition:{duration:1.05,ease:[0.76,0,0.24,1]} }}>
@@ -588,7 +589,7 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
     <section className="relative h-screen min-h-[600px] overflow-hidden flex flex-col justify-end">
       <AnimatePresence mode="wait">
         <motion.div key={slide} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
-          <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))}/>
+          <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))} {...{fetchpriority:slide===0?"high":"auto"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.4) 45%, rgba(10,9,8,0.08) 100%)"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to right, rgba(10,9,8,0.55) 0%, transparent 65%)"}}/>
         </motion.div>
@@ -717,7 +718,7 @@ function LocationStripsSection({ go }: { go:Go }) {
         {locs.map(l=>(
           <a key={l.name} href={hrefOf("buy",{district:l.name})} onClick={follow(()=>go("buy",{district:l.name}))} className="relative shrink-0 overflow-hidden group"
             style={{width:`${share}%`,minWidth:"280px",height:tileH}}>
-            <img src={l.img} alt={l.name} className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
+            <img src={l.img} alt={l.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
             <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.94) 0%, rgba(10,9,8,0.58) 36%, rgba(10,9,8,0.06) 76%)"}}/>
             <div className="absolute bottom-0 left-0 right-0 p-8 md:p-10 text-left">
               <p className="text-[10px] tracking-[0.28em] uppercase mb-2.5" style={{color:GOLD,...sans}}>{(n=>`${n} ${n===1?"Property":"Properties"}`)(ALL_PROPS.filter(p=>p.district===l.name).length)}</p>
@@ -1061,7 +1062,7 @@ function VideoSection() {
               }}
               transition={{duration:0.75,ease:[0.16,1,0.3,1]}}
            >
-              <img src={v.poster} alt="" className="w-full h-full object-cover"
+              <img src={v.poster} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover"
                 onError={e=>{ if(v.youtubeId && e.currentTarget.src.includes("maxresdefault")) e.currentTarget.src=youtubeThumb(v.youtubeId,"hqdefault"); }}/>
               <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.88) 0%, rgba(10,9,8,0.2) 55%, rgba(10,9,8,0.05) 100%)"}}/>
 
@@ -1133,7 +1134,7 @@ function TestimonialsSection() {
                 <p className="text-[15px] leading-[1.75] mb-6" style={{color:MUTED_L,...sans}}>"{t.text}"</p>
                 <div className="flex items-center gap-3 pt-5 border-t" style={{borderColor:BORDER_L}}>
                   {t.img
-                    ?<img src={t.img} alt={t.name} className="w-10 h-10 object-cover rounded-full"/>
+                    ?<img src={t.img} alt={t.name} loading="lazy" decoding="async" className="w-10 h-10 object-cover rounded-full"/>
                     :<span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{background:"#e9e3d8",color:GOLD,...serif}}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
                   <div><p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{t.name}</p><p className="text-[12px]" style={{color:MUTED_L,...sans}}>{t.role}</p></div>
                 </div>
@@ -1161,7 +1162,7 @@ function BlogSection({ go }: { go:Go }) {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
           <a href={hrefOf("blog-post",{blog:feat.id})} onClick={follow(()=>go("blog-post",{blog:feat.id}))} className="lg:col-span-3 flex flex-col group text-left">
             <div className="relative overflow-hidden mb-4" style={{aspectRatio:"16/9"}}>
-              <img src={feat.image} alt={feat.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
+              <img src={feat.image} alt={feat.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
               <div className="absolute top-4 left-4"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{feat.cat}</span></div>
             </div>
             <p className="flex items-center gap-4 text-[11px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>
@@ -1174,7 +1175,7 @@ function BlogSection({ go }: { go:Go }) {
           <div className="lg:col-span-2 flex flex-col gap-8">
             {rest.map(a=>(
               <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex gap-4 group text-left">
-                <div className="w-36 h-28 overflow-hidden shrink-0"><img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
+                <div className="w-36 h-28 overflow-hidden shrink-0"><img src={a.image} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
                 <div>
                   <span className="text-[10px] tracking-[0.26em] uppercase" style={{color:GOLD,...sans}}>{a.cat}</span>
                   <p className="text-[15px] leading-snug mt-1 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</p>
@@ -1421,7 +1422,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
               <div key={p.id} className="flex flex-col sm:flex-row sm:items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
                 style={{borderColor:BORDER_L}} onClick={()=>{setId(p.id);go("property");}}>
                 <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-                  <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
+                  <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
                     {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
@@ -1488,7 +1489,7 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
             onMouseEnter={()=>{setActiveCard(p.id);setHovPin(p.id);}} onMouseLeave={()=>{setActiveCard(null);setHovPin(null);}}
             onClick={()=>{setId(p.id);go("property");}}>
             <div className="relative overflow-hidden" style={{height:180}}>
-              <img src={p.hero} alt={p.title} className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
+              <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
               <div className="absolute bottom-2 left-2"><span className="text-base font-semibold px-1.5 py-0.5 text-[15px]" style={{background:"rgba(255,255,255,0.95)",color:FG_LIGHT,...sans}}>{p.price}</span></div>
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <FavButton id={p.id} light/>
@@ -1616,7 +1617,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       </div>
       {/* Hero gallery */}
       <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}} {...swipe}>
-        <img src={p.gallery[galIdx]} alt={p.title} className="w-full h-full object-cover"/>
+        <img src={p.gallery[galIdx]} alt={p.title} className="w-full h-full object-cover" {...{fetchpriority:"high"}}/>
         {/* The whole photo opens the full-screen view (the gradient sits on top, so it is the button). */}
         <button type="button" onClick={()=>setLightbox(true)} aria-label={`View photo ${galIdx+1} of ${photos} full screen`}
           className="absolute inset-0 w-full h-full cursor-zoom-in" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
@@ -1624,7 +1625,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
         <div className="absolute bottom-5 left-5 md:left-10 flex gap-2 z-10">
           {p.gallery.map((g,i)=>(
             <button key={i} onClick={()=>setGalIdx(i)} aria-label={`Photo ${i+1}`} className="w-20 h-14 overflow-hidden border-2 transition-all" style={{borderColor:i===galIdx?GOLD:"transparent",opacity:i===galIdx?1:0.55}}>
-              <img src={g} alt="" className="w-full h-full object-cover"/>
+              <img src={g} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover"/>
             </button>
           ))}
         </div>
@@ -1820,7 +1821,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
                 {p.gallery.map((g,i)=>(
                   <button key={i} onClick={()=>setGalIdx(i)} aria-label={`Photo ${i+1}`} aria-current={i===galIdx}
                     className="shrink-0 w-16 h-12 sm:w-20 sm:h-14 overflow-hidden border-2 transition-all" style={{borderColor:i===galIdx?GOLD:"transparent",opacity:i===galIdx?1:0.5}}>
-                    <img src={g} alt="" className="w-full h-full object-cover"/>
+                    <img src={g} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover"/>
                   </button>
                 ))}
               </div>
@@ -2073,7 +2074,7 @@ function BlogPage({ go }: { go:Go }) {
           {BLOGS.map(a=>(
             <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
-                <img src={a.image} alt={a.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
+                <img src={a.image} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
               <span className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{color:GOLD,...sans}}>{a.cat}</span>
               <h3 className="text-[1.05rem] leading-snug mb-2 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</h3>
@@ -2147,7 +2148,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
           {more.map(b=>(
             <a key={b.id} href={hrefOf("blog-post",{blog:b.id})} onClick={follow(()=>go("blog-post",{blog:b.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
-                <img src={b.image} alt={b.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
+                <img src={b.image} alt={b.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
               <span className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{color:GOLD,...sans}}>{b.cat}</span>
               <h3 className="text-[1.05rem] leading-snug group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{b.title}</h3>
@@ -2903,16 +2904,17 @@ const visitLabel=(v:Visit):string=>`Back to ${visitName(v)}`;
 
 /**
  * What search engines and link previews see for a page (src/seo/meta.ts): title, description,
- * canonical address, preview picture and structured data.
+ * canonical address, preview picture and structured data. null while a property or article is
+ * still loading (or the API is down): the pre-rendered page already has its tags, so keep them.
  */
-function visitMeta(v:Visit):PageMeta {
-  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); }
-  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); }
+function visitMeta(v:Visit):PageMeta|null {
+  if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); if(propertiesStatus!=="ready") return null; }
+  if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); if(articlesStatus!=="ready") return null; }
   // Area pages show the same properties as Buy for that district.
   const path=v.page==="area" ? "/buy" : PAGE_PATHS[v.page] ?? "/";
   const m=staticPageMeta(SITE_URL, path, v.nav.district);
-  // Still loading, or removed: the page's own name, and no stray canonical to the home page.
-  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), jsonLd:[] };
+  // Removed (or a mistyped link): the page's own name, kept out of search results.
+  if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), noindex:true, jsonLd:[] };
   if(v.page==="reset-password") return { ...m, noindex:true };
   return m;
 }
@@ -3137,7 +3139,7 @@ export default function App() {
   const backLabel=visitLabel(backTarget());
   // The tab title follows the page. No dependency list: a property's or article's title is only
   // known once the data has loaded, which re-renders App without changing the page.
-  useEffect(()=>{ applyHead(visitMeta({ page, nav, selId, blogId, scrollY:0 }), CONTACT); });
+  useEffect(()=>{ const m=visitMeta({ page, nav, selId, blogId, scrollY:0 }); if(m) applyHead(m, CONTACT); });
 
   /**
    * After signing in from another page: back to it, with Back skipping the login page. Returns

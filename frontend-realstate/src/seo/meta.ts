@@ -207,11 +207,14 @@ export function propertyMeta(siteUrl: string, p: SeoProperty): PageMeta {
     p.landArea && p.landArea !== "—" ? `land ${p.landArea}` : "",
     p.builtArea && p.builtArea !== "—" ? `built-up ${p.builtArea}` : "",
   ].filter(Boolean).join(", ");
+  // The phone number is the call to action, so it stays inside the ~160 characters search shows.
+  const kind = p.type === "House/Bungalow" ? "House" : p.type === "Commercial" ? "Commercial property" : p.type;
+  const price = p.price && !/negotiable/i.test(p.price) ? `Price ${p.price}. ` : "";
   const description = clip([
     sentence(p.tagline),
-    `${p.type} ${sale ? "for sale" : "for rent"} in ${p.location}${facts ? ` (${facts})` : ""}.`,
-    `Price: ${p.price}. Ref ${p.nbId}. Call Nepal Bhoomi on 9818783518.`,
-  ].filter(Boolean).join(" "));
+    `${kind} ${sale ? "for sale" : "for rent"} in ${p.location}${facts ? ` (${facts})` : ""}.`,
+    `${price}Ref ${p.nbId}, call 9818783518.`,
+  ].filter(Boolean).join(" "), 170);
   const path = propertyPath(p);
   const url = absolute(siteUrl, path);
   const images = (p.gallery?.length ? p.gallery : [p.hero]).filter(Boolean).slice(0, 6);

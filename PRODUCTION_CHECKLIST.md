@@ -98,9 +98,14 @@ Last updated: 2026-10-14
       `index.html`). Set `VITE_SITE_URL` to the real domain at build time (it defaults to
       `https://www.nepalbhoomi.com` in `frontend-realstate/src/seo/meta.ts`), or canonicals and share
       links point to the wrong host.
-- [ ] Decide whether to run `npm run prerender` after `npm run build` (not part of the build yet). It
-      writes static HTML per page / property / article, `sitemap.xml` and `robots.txt`, reading the
-      live API at `VITE_API_URL`, so the API must be reachable at build time. Re-run after content changes.
+- [ ] **Pre-rendering is part of `npm run build` now** (`vite build && node scripts/prerender.mjs`). It
+      writes static HTML per page / property / article (as `buy/index.html` and `buy.html`, so any host
+      serves one), `sitemap.xml` and `robots.txt`, reading the live API at `VITE_API_URL`: the API must
+      be reachable at build time, or only the fixed pages are written (the build still succeeds).
+      Rebuild (or `npm run prerender`) after adding properties or articles, so the sitemap lists them.
+- [ ] After going live: verify the domain in Google Search Console and submit `/sitemap.xml`; set up
+      the Google Business Profile (Lazimpat office, 9818783518, Sun–Fri 9:30–6); 301-redirect the old
+      nepalbhoomi.com page addresses to their new pages.
 - [ ] **Take down the Dashain 2083 decorations** after the festival (they switch off by themselves on
       26 Oct 2026, but the code and three.js stay in the bundle): follow
       `frontend-realstate/src/app/festive/dashain/README.md`.
@@ -137,3 +142,35 @@ Last updated: 2026-10-14
       **privacy policy** page is still expected, since the site collects names, phone numbers and emails.
 - [ ] Company videos backend (`/videos`, `/admin/videos`) not built. Admin → Videos is view-only meanwhile
       (`VIDEOS_EDITABLE = false` in `ContentEditors.tsx`); set it to `true` once the endpoints are wired.
+
+## From the full QA, security and speed pass (2026-10-14)
+
+Checked as admin and as a member (register → verify → sign in → like, enquiry, review, callback, contact,
+free listing with photo upload → admin approve / reject / delete → sign out), 17 pages at 375 / 768 / 1440 px
+(no overflow, broken images, console errors or failed requests), and the security basics: admin endpoints
+answer 401 without a valid token (forged and `alg=none` tokens too), cross-site requests are refused, public
+endpoints expose no emails, tokens or exact locations (public map points are ≥ 178 m from the real spot),
+no secrets in git history or the frontend bundle, no source maps, bcrypt, httpOnly cookies, lockouts. Frontend
+`npm audit`: 0. All test data was removed afterwards (test accounts, likes, listings and their files; unused
+R2 files).
+
+- [ ] **Backend dependencies (`npm audit`)**: `next` 16.3.5 has a critical advisory (RCE in `next/og`
+      ImageResponse) and pulls an old `sharp`. The backend uses neither `next/og`, `use cache` nor draft mode,
+      so it isn't reachable today, but upgrade to `next@16.4.0` or later before launch. The `mysql2` /
+      `deepmerge-ts` advisories come from the Prisma CLI only (the site uses Postgres); ignore `npm audit fix
+      --force`, which would downgrade Prisma to 6.
+- [ ] **API root page**: `GET /` on the backend still serves the "Create Next App" starter page
+      (`backend-realstate/app/page.tsx` and `public/*.svg`). Replace it with a 404 or a one-line JSON status,
+      so the API domain doesn't show a template page or advertise the framework.
+- [ ] **Frontend host headers**: the CSP is a `<meta>` tag (vite.config.ts). On the host also send
+      `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+      strict-origin-when-cross-origin` and `frame-ancestors 'self'` (a meta CSP can't set frame-ancestors).
+- [ ] **Smaller photos for cards**: every card and thumbnail downloads the full 1600 px upload (~250–300 KB).
+      Off-screen images now load lazily (home page 3.2 MB → 1.6 MB on desktop), but a thumbnail size (e.g. an
+      800 px copy made at upload, or Cloudflare Image Resizing on a custom R2 domain) would cut it again by
+      about two thirds, mostly on phones.
+- [ ] **API latency from Nepal**: public GETs take 0.2–1.4 s (`/properties` is the slowest, ~1.3 s) because each
+      query is a round trip to the Supabase region. A `Cache-Control: public, max-age=60` on the public GETs
+      behind a CDN, or a closer database region, would make first loads noticeably faster.
+- [ ] **Accounts left in the database**: 8 member accounts that look like real people (friends and family who
+      tried the site) were kept. Delete any that were only for testing in Admin → Users before launch.

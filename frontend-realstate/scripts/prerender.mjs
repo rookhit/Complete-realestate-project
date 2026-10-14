@@ -11,17 +11,22 @@
 // Data comes from the public API (VITE_API_URL). If it can't be reached, only the fixed pages are
 // written and the build still succeeds.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { createServer, loadEnv } from "vite";
+import { pathToFileURL } from "node:url";
+import { loadEnv, transformWithEsbuild } from "vite";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist");
 const env = { ...loadEnv("production", root, "VITE_"), ...process.env };
 
-// meta.ts has no imports, so Vite can load it straight from the source.
-const vite = await createServer({ root, configFile: false, logLevel: "error", appType: "custom", server: { middlewareMode: true, hmr: false } });
-const M = await vite.ssrLoadModule("/src/seo/meta.ts");
-await vite.close();
+// meta.ts has no imports: strip its types and load it as a plain module.
+const metaSrc = path.join(root, "src", "seo", "meta.ts");
+const { code } = await transformWithEsbuild(fs.readFileSync(metaSrc, "utf8"), metaSrc, { loader: "ts", format: "esm" });
+const metaJs = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "nb-seo-")), "meta.mjs");
+fs.writeFileSync(metaJs, code);
+const M = await import(pathToFileURL(metaJs).href);
+fs.rmSync(path.dirname(metaJs), { recursive: true, force: true });
 
 const SITE = (env.VITE_SITE_URL || M.DEFAULT_SITE_URL).replace(/\/+$/, "");
 const API = `${(env.VITE_API_URL || "http://localhost:3000").replace(/\/+$/, "")}/api/v1`;
@@ -59,10 +64,13 @@ try {
 // ─── HTML ─────────────────────────────────────────────────────────────────────
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// The markers stay in every written file, so running this again (npm run prerender) works too.
 const template = fs.readFileSync(path.join(dist, "index.html"), "utf8");
 if (!template.includes("<!-- seo:start") || !template.includes("<!-- prerender:content -->")) {
   throw new Error("prerender: dist/index.html lacks the seo:start / prerender:content markers (see index.html)");
 }
+// Fresh from `vite build` the content marker is empty; after a run it wraps the home page's content.
+const CONTENT = template.includes("<!-- prerender:end -->") ? /<!-- prerender:content -->[\s\S]*?<!-- prerender:end -->/ : /<!-- prerender:content -->/;
 
 // A plain, readable page in the site's colours. Only shown until the app starts.
 const S = {
@@ -146,17 +154,27 @@ function articleContent(a) {
     nepali ? "ne" : undefined);
 }
 
-function page(meta, content, { canonical = true } = {}) {
-  const head = M.headHtml(SITE, meta, contact, { canonical });
+// `preload`: the photo that will be the largest thing on screen (the home hero, a property's first
+// photo). The browser starts downloading it straight away instead of after the app has loaded the
+// property list, which is what makes the first view feel fast on phones.
+function page(meta, content, { canonical = true, preload = "" } = {}) {
+  const head = M.headHtml(SITE, meta, contact, { canonical }) +
+    (preload ? `
+    <link rel="preload" as="image" href="${esc(preload)}" fetchpriority="high" />` : "");
   return template
-    .replace(/<!-- seo:start[\s\S]*?<!-- seo:end -->/, head)
-    .replace("<!-- prerender:content -->", content);
+    .replace(/<!-- seo:start[\s\S]*?<!-- seo:end -->/, () => `<!-- seo:start -->\n    ${head}\n    <!-- seo:end -->`)
+    .replace(CONTENT, () => `<!-- prerender:content -->${content}<!-- prerender:end -->`);
 }
 
+// Written twice, as buy/index.html and buy.html: hosts differ in which one they serve for "/buy"
+// (Netlify, Vercel and Cloudflare Pages use buy.html; Nginx try_files and `vite preview` the folder).
 function write(urlPath, html) {
-  const file = urlPath === "/" ? path.join(dist, "index.html") : path.join(dist, ...urlPath.split("/").filter(Boolean), "index.html");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, html);
+  if (urlPath === "/") { fs.writeFileSync(path.join(dist, "index.html"), html); return; }
+  const parts = urlPath.split("/").filter(Boolean);
+  const dir = path.join(dist, ...parts);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "index.html"), html);
+  fs.writeFileSync(`${dir}.html`, html);
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
@@ -167,9 +185,11 @@ const SHARED = new Set(["/", "/buy", "/rent", "/hot", "/new-listings", "/map"]);
 const FIXED = Object.keys(M.STATIC_PAGES).filter((p) => p !== "/admin");
 for (const p of FIXED) {
   const meta = M.staticPageMeta(SITE, p);
-  write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p) }));
+  // The home hero shows the newest Featured property (App.tsx HeroSection), else the newest one.
+  const preload = p === "/" ? (properties.find((x) => x.featured) ?? properties[0])?.hero ?? "" : "";
+  write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p), preload }));
 }
-for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p)));
+for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p), { preload: p.gallery?.[0] || p.hero }));
 for (const a of articles) write(M.articlePath(a), page(M.articleMeta(SITE, a), articleContent(a)));
 
 // ─── sitemap.xml and robots.txt ───────────────────────────────────────────────

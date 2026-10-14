@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { ArrowLeft, ArrowRight, Crop, ImagePlus, Loader2, Star, Trash2, Upload, X } from "lucide-react";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans } from "./brand";
 import { coverStyle, type Framing } from "./cover-frame";
@@ -9,6 +9,8 @@ import { coverStyle, type Framing } from "./cover-frame";
 // blob: URLs that don't survive a reload, until those editors get uploads too.
 
 const MAX_MB = 8;
+/** The drag type of a photo tile being reordered (PhotoManager), so it is never taken for a file drop. */
+const PHOTO_DRAG = "application/x-nb-photo";
 
 /** The picked files that are images under the size limit, with the same checks as the public Free Listing form. */
 function checkImages(files: FileList | null, room: number): { files: File[]; error: string } {
@@ -170,6 +172,31 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
   const makeCover = (i: number) => onChange([photos[i], ...photos.filter((_, k) => k !== i)]);
   const remove = (i: number) => onChange(photos.filter((_, k) => k !== i));
 
+  // Drag a photo onto another to put it there (mouse; the arrows do the same on touch screens
+  // and from the keyboard). The drag carries its own type, so the upload area ignores it.
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const moveTo = (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...photos];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(next);
+  };
+  const tileDrag = (i: number) => ({
+    draggable: true,
+    onDragStart: (e: DragEvent) => { e.dataTransfer.setData(PHOTO_DRAG, String(i)); e.dataTransfer.effectAllowed = "move"; setDragFrom(i); },
+    onDragOver: (e: DragEvent) => { if (!e.dataTransfer.types.includes(PHOTO_DRAG)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(i); },
+    onDragLeave: () => setDragOver(o => (o === i ? null : o)),
+    onDrop: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes(PHOTO_DRAG)) return;
+      e.preventDefault();
+      moveTo(Number(e.dataTransfer.getData(PHOTO_DRAG)), i);
+      setDragFrom(null); setDragOver(null);
+    },
+    onDragEnd: () => { setDragFrom(null); setDragOver(null); },
+  });
+
   const tool = "w-8 h-8 flex items-center justify-center transition-colors hover:text-[#8a2030] disabled:opacity-30";
 
   return (
@@ -179,7 +206,7 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
         onClick={() => input.current?.click()}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.current?.click(); } }}
         onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); add(e.dataTransfer.files); }}
+        onDrop={e => { e.preventDefault(); setDrag(false); if (!e.dataTransfer.types.includes(PHOTO_DRAG)) add(e.dataTransfer.files); }}
         className="flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-9 cursor-pointer text-center transition-colors"
         style={{ borderColor: drag ? MAROON : "rgba(176,136,72,0.5)", background: drag ? "rgba(138,32,48,0.04)" : "#fbf9f5" }}
       >
@@ -190,12 +217,20 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
       <input ref={input} type="file" accept="image/*" multiple hidden onChange={e => { add(e.target.files); e.target.value = ""; }} />
       {error && <p className="text-[13px]" style={{ color: MAROON, ...sans }}>{error}</p>}
 
+      {photos.length > 1 && (
+        <p className="text-[12px] -mb-1" style={{ color: MUTED_L, ...sans }}>Drag a photo onto another to reorder, or use the arrows. The first photo is the cover.</p>
+      )}
       {photos.length + pending.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {photos.map((url, i) => (
-            <figure key={`${url}-${i}`} className="border flex flex-col" style={{ borderColor: i === 0 ? GOLD : BORDER_L, background: WHITE }}>
+            <figure key={`${url}-${i}`} {...tileDrag(i)} className="border flex flex-col cursor-grab active:cursor-grabbing transition-opacity"
+              style={{
+                borderColor: dragOver === i && dragFrom !== i ? MAROON : i === 0 ? GOLD : BORDER_L, background: WHITE,
+                outline: dragOver === i && dragFrom !== i ? `2px dashed ${MAROON}` : "none", outlineOffset: 3,
+                opacity: dragFrom === i ? 0.4 : 1,
+              }}>
               <div className="relative overflow-hidden" style={{ aspectRatio: "4/3" }}>
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" style={i === 0 ? coverStyle(coverFrame) : undefined} />
+                <img src={url} alt={`Photo ${i + 1}`} draggable={false} className="w-full h-full object-cover" style={i === 0 ? coverStyle(coverFrame) : undefined} />
                 {upload && !isMediaLink(url) && (
                   <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] leading-snug" style={{ background: MAROON, color: WHITE, ...sans }}>
                     Not uploaded. Remove it and add the photo again.
