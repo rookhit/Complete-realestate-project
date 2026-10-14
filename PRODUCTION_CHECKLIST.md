@@ -96,9 +96,14 @@ Last updated: 2026-10-14
       `index.html`). Set `VITE_SITE_URL` to the real domain at build time (it defaults to
       `https://www.nepalbhoomi.com` in `frontend-realstate/src/seo/meta.ts`), or canonicals and share
       links point to the wrong host.
-- [ ] Decide whether to run `npm run prerender` after `npm run build` (not part of the build yet). It
-      writes static HTML per page / property / article, `sitemap.xml` and `robots.txt`, reading the
-      live API at `VITE_API_URL`, so the API must be reachable at build time. Re-run after content changes.
+- [ ] **Pre-rendering is part of `npm run build` now** (`vite build && node scripts/prerender.mjs`). It
+      writes static HTML per page / property / article (as `buy/index.html` and `buy.html`, so any host
+      serves one), `sitemap.xml` and `robots.txt`, reading the live API at `VITE_API_URL`: the API must
+      be reachable at build time, or only the fixed pages are written (the build still succeeds).
+      Rebuild (or `npm run prerender`) after adding properties or articles, so the sitemap lists them.
+- [ ] After going live: verify the domain in Google Search Console and submit `/sitemap.xml`; set up
+      the Google Business Profile (Lazimpat office, 9818783518, Sun–Fri 9:30–6); 301-redirect the old
+      nepalbhoomi.com page addresses to their new pages.
 - [ ] **Take down the Dashain 2083 decorations** after the festival (they switch off by themselves on
       26 Oct 2026, but the code and three.js stay in the bundle): follow
       `frontend-realstate/src/app/festive/dashain/README.md`.
