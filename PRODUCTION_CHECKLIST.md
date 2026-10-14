@@ -8,8 +8,9 @@ Last updated: 2026-10-14
 ## Secrets and accounts
 
 - [ ] **Rotate every secret that appeared in a chat transcript**: database password (`DATABASE_URL` /
-      `DIRECT_URL`), `GOOGLE_CLIENT_SECRET`, `JWT_ACCESS_SECRET`, `TOTP_ENCRYPTION_KEY`. Changing
-      `TOTP_ENCRYPTION_KEY` breaks existing 2FA secrets, so re-enrol the admin's 2FA afterwards.
+      `DIRECT_URL`; the new Mumbai project's password too, 2026-10-14), `GOOGLE_CLIENT_SECRET`, `JWT_ACCESS_SECRET`,
+      `TOTP_ENCRYPTION_KEY`. Changing `TOTP_ENCRYPTION_KEY` breaks existing 2FA secrets, so re-enrol the admin's 2FA
+      afterwards. After changing the database password, update every teammate's `.env` at the same time.
 - [ ] **Strong admin password**: replace `ADMIN_PASSWORD` (currently short) with a long random one.
 - [ ] **Never commit `.env`** (already git-ignored). Put production values in the hosting
       provider's environment variables, not in files.
@@ -55,7 +56,8 @@ Last updated: 2026-10-14
 
 - [ ] `R2_PUBLIC_URL` is an `r2.dev` address (set 2026-10-08 for development). Cloudflare rate-limits r2.dev and
       doesn't recommend it for production: connect a custom domain (e.g. `media.<site>`), point `R2_PUBLIC_URL` at it,
-      and re-upload or rewrite any stored r2.dev URLs.
+      and re-upload or rewrite any stored r2.dev URLs. Note: r2.dev keeps serving a deleted file for a short while
+      (cache), seen 2026-10-14; the bucket itself no longer has it.
 - [ ] Photos keep their EXIF metadata (phone photos often hold the exact GPS point), which undoes the
       "Approximate area" map for anyone who downloads a listing photo. Strip it before upload (e.g. re-encode in the
       browser) or with an R2-side process.
@@ -84,9 +86,9 @@ Last updated: 2026-10-14
 - [ ] Frontend build: set `VITE_API_URL` to the production API origin.
 - [ ] Run the backend with `NODE_ENV=production` (turns on the `Secure` cookie flag and makes missing
       email settings an error instead of printing codes to the console).
-- [ ] **Host the backend in the same region as the database** (Supabase is in `ap-northeast-2`, Seoul):
-      each query is a round trip, ~170 ms from Nepal but ~1-2 ms from the same region, and one admin save
-      makes several. E.g. Vercel functions pinned to `icn1` (Seoul). Measured 2026-10-14.
+- [ ] **Host the backend in the same region as the database** (Supabase is in `ap-south-1`, Mumbai, since
+      2026-10-14): each query is a round trip (~50 ms from Nepal to Mumbai, ~155 ms to the old Seoul project, ~1-2 ms
+      from the same region), and one admin save makes several. Pin the Vercel functions to `bom1` (Mumbai).
 - [ ] Deploy behind a proxy that sets `X-Forwarded-For`, so rate limits and lockouts see real client IPs.
 - [ ] **The frontend has real page URLs now (F1, merged 2026-10-13)**: the frontend host must serve
       `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
@@ -110,8 +112,19 @@ Last updated: 2026-10-14
       editor links to (the `Amenity` table is empty until then). Safe to re-run.
       The seeded admin is email-verified (2026-10-06), so it can sign in without an emailed code.
 - [ ] For serverless hosting, consider the Supabase transaction pooler (port 6543) for `DATABASE_URL`,
-      and host the backend near the database region (ap-northeast-2).
+      and host the backend near the database region (ap-south-1, Mumbai).
+- [ ] Keep using a **pooler** host (`aws-0-ap-south-1.pooler.supabase.com`), never the direct `db.<ref>.supabase.co`
+      host: the direct host is IPv6-only, and a brief IPv6 / DNS blip gave 500s (`getaddrinfo ENOENT`) on 2026-10-14.
+      `DIRECT_URL` (migrations) uses the session pooler (5432) too.
 - [ ] Supabase free tier pauses when idle and has limited backups: upgrade or set up backups before launch.
+- [ ] **Database moved Seoul → Mumbai (2026-10-14)**: the old Seoul project (`pmxq…`) is kept read-only as a fallback.
+      After about a week without problems (~2026-10-21), pause it, later delete it. Check nobody's `.env` still points
+      at it (an old backend wrote two sessions there after the switch until it was stopped).
+- [ ] Delete the local `.env` backups from the move once happy (`.env.seoul-backup`, `.env.pre-mumbai-switch`,
+      `.env.pre-pooler`; git-ignored but they hold every secret) and remove the `NEW_DATABASE_URL` / `POOLER_URL`
+      lines from `backend-realstate/.env`.
+- [ ] Migration files must stay LF (`.gitattributes`: `*.sql text eol=lf`, added 2026-10-14): Prisma stores a
+      checksum of each file, and a CRLF checkout on Windows made 8 of them differ. Commit `.gitattributes`.
 
 ## From the QA audit (2026-10-05)
 

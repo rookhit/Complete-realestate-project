@@ -1,0 +1,2 @@
+# Prisma records a checksum of each migration file; keep them LF on every OS so it never changes.
+*.sql text eol=lf

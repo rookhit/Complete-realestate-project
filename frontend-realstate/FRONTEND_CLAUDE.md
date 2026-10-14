@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 0. Backend handoff: quick reference (updated 2026-10-06)
+## 0. Backend handoff: quick reference (updated 2026-10-14: database in Mumbai, see §13)
 
 Start here. Everything the backend needs from the frontend is on this page; the numbered
 sections below go into detail. **Older sections say `apps/web` and `apps/api`: in this repo those
@@ -179,6 +179,8 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 | Admin seed | `emailVerifiedAt` set on create and update (code) | `db:seed` on a fresh database |
 | Users page | "Last Sign-in" shows real dates; IP never sent | — |
 | Auth (register, email code, login, 2FA, reset, Google) | Earlier sessions (see the dated entries); admin sign-in with 2FA used throughout | Real Gmail delivery not re-checked; Google sign-in not re-checked this session |
+| Database on Mumbai (2026-10-14, backend) | All data copied from Seoul and checked identical row by row; admin sign-in with 2FA, a teammate's sign-in, a real registration + email code and a review on Mumbai | — |
+| Whole backend end to end (2026-10-14, backend script, dummy data) | 149 API checks covering every endpoint the frontend calls (lists, auth + 2FA, hearts, reviews, forms + inbox, free listings, articles / team / testimonials, site settings, uploads to R2, delete / Undo / purge); test data removed afterwards | The same flows through the frontend UI after the move (only sign-in, admin pages and a review were used live); emails |
 | Whole site | Every public page loads with no console errors and no broken images (after the NBS007 photo was re-uploaded); 2026-10-14: production builds pass (backend `npm run build`, frontend `npm run build` 2026-10-13), and the frontend build in Chrome had no CSP violations (Dashain pop-up + three.js kite load) | Phone-size screens; a real deployment (Vercel) |
 
 **Known limitations (not bugs in what was asked, but worth knowing):** saving a property in the editor writes back the
@@ -333,7 +335,7 @@ authentication only. The remaining work is to replace those frontend constants w
 | Thing | Status |
 |---|---|
 | Backend | **Exists** — `backend-realstate`, Next.js App Router, `/api/v1`. Auth plus every content endpoint except company videos (2026-10-02) |
-| Database | **Exists** — Postgres on Supabase via Prisma: auth tables and every content table |
+| Database | **Exists** — Postgres on Supabase via Prisma: auth tables and every content table. In **Mumbai** (`ap-south-1`) since 2026-10-14; the Seoul project is a frozen fallback |
 | Network calls | `src/app/auth.tsx` plus one client per area in `src/api/` (properties, articles, team, testimonials, site, options, messages, reviews, listings, uploads) |
 | Admin panel | **On the database (2026-10-02)** except Admin → Videos. Messages, Reviews and Free Listings refresh every 30 s |
 | Data | `src/app/data/` arrays are filled from the API at startup (`load…()`); the save functions call the API first. Only `VIDEO_LIST` is still mock |
@@ -1625,6 +1627,14 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-10-14 · saksham · Database moved to Mumbai; whole backend tested end to end.** The backend's database is now
+  the Supabase project in Mumbai (`ap-south-1`, about 3× faster from Nepal than Seoul); no API or frontend change.
+  **Anyone running the backend locally must point `DATABASE_URL` and `DIRECT_URL` at the Mumbai session pooler**
+  (ask saksham privately for the value; never the direct `db.….supabase.co` host, which is IPv6-only and fails at
+  random). An old `.env` still on Seoul writes to the wrong database. Then a script ran 149 checks over every
+  endpoint with dummy data (all removed afterwards). Deploy note: the backend now belongs in Vercel `bom1`, not `icn1`.
+  Also new: `.gitattributes` keeps `*.sql` LF on every OS (Prisma migration checksums).
 
 - **2026-10-14 · saksham · Deployment readiness (Vercel, not deployed yet).** Frontend and backend production builds
   pass. For Vercel the frontend needs a `vercel.json` rewrite so every page URL serves `index.html` (real page URLs since
