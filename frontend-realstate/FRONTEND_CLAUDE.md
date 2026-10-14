@@ -1628,6 +1628,13 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-14 · saksham · QA branch merged; Vercel test deploy prepared.** `fix/frontend-audit-issues` merged into
+  `chore/mumbai-database-move` (no conflicts; typecheck, build and pre-rendering pass; home, Buy and a property page
+  checked in Chrome). New `frontend-realstate/vercel.json`: `/api/*` is forwarded to the backend project, so on
+  `*.vercel.app` set `VITE_API_URL` to the **frontend's own address** (put the backend address in the rewrite);
+  unknown paths fall back to `index.html`, `cleanUrls` serves the pre-rendered `buy.html` files. Note: people signed in
+  before the `nb-signed-in` hint existed are asked to sign in once more after the update (accepted).
+
 - **2026-10-14 · saksham · Database moved to Mumbai; whole backend tested end to end.** The backend's database is now
   the Supabase project in Mumbai (`ap-south-1`, about 3× faster from Nepal than Seoul); no API or frontend change.
   **Anyone running the backend locally must point `DATABASE_URL` and `DIRECT_URL` at the Mumbai session pooler**

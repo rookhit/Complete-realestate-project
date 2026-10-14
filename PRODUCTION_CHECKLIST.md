@@ -77,6 +77,17 @@ Last updated: 2026-10-14
 
 ## URLs, domain and HTTPS
 
+- [ ] **Vercel test deploy (set up 2026-10-14)**: two projects (root directories `backend-realstate` and
+      `frontend-realstate`). `frontend-realstate/vercel.json` forwards `/api/*` to the backend project, so the
+      browser sees one site and the SameSite=Strict login cookie works on `*.vercel.app`: replace
+      `REPLACE-WITH-BACKEND` in it with the backend project's address. Frontend env: `VITE_API_URL` and
+      `VITE_SITE_URL` = the frontend's own address. Backend env: the `.env` values (without `NEW_DATABASE_URL` /
+      `POOLER_URL`), with `FRONTEND_ORIGIN` = the frontend address and `GOOGLE_REDIRECT_URI` =
+      `<frontend>/api/v1/auth/google/callback`. Add the frontend address to the R2 bucket's CORS (and to the Google
+      OAuth client to test Google sign-in). Redeploy the frontend once after the first deploy so pre-rendering can
+      read the live API. It uses the real Mumbai database. For production, keep this proxy or move to a custom
+      domain (`api.` subdomain) and remove the rewrite.
+
 - [ ] Serve everything over **HTTPS**.
 - [ ] **Deploy same-site**: frontend and API on one site (`domain.com` + `/api`, or `api.domain.com`),
       so the `SameSite=Strict` refresh cookie works.

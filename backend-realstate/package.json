@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-samples": "tsx prisma/seed-sample-properties.ts",
     "db:seed-articles": "tsx prisma/seed-sample-articles.ts",
