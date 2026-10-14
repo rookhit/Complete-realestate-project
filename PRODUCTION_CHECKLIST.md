@@ -77,6 +77,13 @@ Last updated: 2026-10-14
 
 ## URLs, domain and HTTPS
 
+- [x] **Vercel test deploy is live (2026-10-14)**: https://nepal-bhoomi-web.vercel.app (frontend, project
+      `nepal-bhoomi-web`) and https://nepal-bhoomi-api.vercel.app (backend, `nepal-bhoomi-api`, region bom1), Vercel
+      account `sakxama72-1518` (Hobby), deployed with the Vercel CLI from the private repo
+      `rookhit/-nepal-bhoomi-realestate` (main). Still to do: add `https://nepal-bhoomi-web.vercel.app` to the R2
+      bucket's CORS (uploads answer 403 until then) and, for Google sign-in, add
+      `https://nepal-bhoomi-web.vercel.app/api/v1/auth/google/callback` + the origin to the Google OAuth client.
+      Redeploy after changes: `npx vercel deploy --prod` in each folder (or connect the Git repo in Vercel).
 - [ ] **Vercel test deploy (set up 2026-10-14)**: two projects (root directories `backend-realstate` and
       `frontend-realstate`). `frontend-realstate/vercel.json` forwards `/api/*` to the backend project, so the
       browser sees one site and the SameSite=Strict login cookie works on `*.vercel.app`: replace
