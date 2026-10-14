@@ -80,7 +80,8 @@ Last updated: 2026-10-14
 - [x] **Live on https://www.nepalbhoomi.com (2026-10-14)**: GoDaddy name servers moved to Vercel
       (`ns1`/`ns2.vercel-dns.com`); Vercel DNS holds the Zoho mail records (MX `mx`/`mx2`/`mx3.zoho.com`, SPF
       `v=spf1 include:zoho.com ~all`, the Zoho and Google site-verification TXT). `nepalbhoomi.com` and
-      `nepal-bhoomi-web.vercel.app` 308-redirect to `www` (`frontend-realstate/vercel.json` "redirects"), HTTPS
+      `nepal-bhoomi-web.vercel.app` 308-redirect to `www` (`frontend-realstate/vercel.json` "redirects"; the homepage `/` needs its own rule, the
+      catch-all `/:path*` alone left it served without redirect, fixed 2026-10-14), HTTPS
       certificate by Vercel. Vercel env: backend `FRONTEND_ORIGIN=https://www.nepalbhoomi.com`,
       `GOOGLE_REDIRECT_URI=https://www.nepalbhoomi.com/api/v1/auth/google/callback`; frontend `VITE_API_URL` =
       `VITE_SITE_URL` = `https://www.nepalbhoomi.com`. Verified: pages, sitemap (46 www addresses), canonicals,

@@ -182,7 +182,7 @@ DELETE until the Undo notice closes. Don't hand out a new id on restore.
 | Database on Mumbai (2026-10-14, backend) | All data copied from Seoul and checked identical row by row; admin sign-in with 2FA, a teammate's sign-in, a real registration + email code and a review on Mumbai | — |
 | Whole backend end to end (2026-10-14, backend script, dummy data) | 149 API checks covering every endpoint the frontend calls (lists, auth + 2FA, hearts, reviews, forms + inbox, free listings, articles / team / testimonials, site settings, uploads to R2, delete / Undo / purge); test data removed afterwards | The same flows through the frontend UI after the move (only sign-in, admin pages and a review were used live); emails |
 | Vercel test deploy (2026-10-14) | https://nepal-bhoomi-web.vercel.app: every route 200 (fallback for app-only pages), pre-rendered pages + sitemap, visitor page in Chrome without errors or CSP blocks, sign-in / reload / logout through `/api` | Photo uploads (R2 CORS), Google sign-in, admin with 2FA, phones |
-| Custom domain (2026-10-14) | https://www.nepalbhoomi.com serves the site with Vercel HTTPS; nepalbhoomi.com and nepal-bhoomi-web.vercel.app 308 to www keeping the path; pre-rendered canonicals, og:image and sitemap (46 addresses) use www; CSP connect-src allows www; sign-in, reload refresh and logout work through www/api | Google sign-in and photo uploads wait on Google Cloud + R2 CORS entries for www |
+| Custom domain (2026-10-14) | https://www.nepalbhoomi.com serves the site with Vercel HTTPS; nepalbhoomi.com and nepal-bhoomi-web.vercel.app 308 to www keeping the path (homepage `/` too, with its own rule: before it, `/` on those hosts answered 200); pre-rendered canonicals, og:image and sitemap (46 addresses) use www; CSP connect-src allows www; sign-in, reload refresh and logout work through www/api | Google sign-in and photo uploads wait on Google Cloud + R2 CORS entries for www |
 | Whole site | Every public page loads with no console errors and no broken images (after the NBS007 photo was re-uploaded); 2026-10-14: production builds pass (backend `npm run build`, frontend `npm run build` 2026-10-13), and the frontend build in Chrome had no CSP violations (Dashain pop-up + three.js kite load) | Phone-size screens; a real deployment (Vercel) |
 
 **Known limitations (not bugs in what was asked, but worth knowing):** saving a property in the editor writes back the
@@ -1630,6 +1630,9 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-10-14 · saksham · Homepage redirect to www fixed.** `nepalbhoomi.com/` and `nepal-bhoomi-web.vercel.app/`
+  answered 200 (the catch-all `/:path*` redirect never matched `/`), so sign-in failed there (wrong origin).
+  `vercel.json` now has an explicit `/` redirect per host, before the catch-all.
 - **2026-10-14 · saksham · Site moved to https://www.nepalbhoomi.com.** Domain DNS now on Vercel; `vercel.json`
   "redirects" send `nepalbhoomi.com` and `nepal-bhoomi-web.vercel.app` to `www` (path kept, 308), because the
   backend accepts only one origin. Vercel env `VITE_API_URL` = `VITE_SITE_URL` = `https://www.nepalbhoomi.com`.

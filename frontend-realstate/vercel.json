@@ -5,6 +5,8 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "redirects": [
+    { "source": "/", "has": [{ "type": "host", "value": "nepalbhoomi.com" }], "destination": "https://www.nepalbhoomi.com/", "permanent": true },
+    { "source": "/", "has": [{ "type": "host", "value": "nepal-bhoomi-web.vercel.app" }], "destination": "https://www.nepalbhoomi.com/", "permanent": true },
     { "source": "/:path*", "has": [{ "type": "host", "value": "nepalbhoomi.com" }], "destination": "https://www.nepalbhoomi.com/:path*", "permanent": true },
     { "source": "/:path*", "has": [{ "type": "host", "value": "nepal-bhoomi-web.vercel.app" }], "destination": "https://www.nepalbhoomi.com/:path*", "permanent": true }
   ],
