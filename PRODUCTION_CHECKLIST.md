@@ -77,12 +77,23 @@ Last updated: 2026-10-14
 
 ## URLs, domain and HTTPS
 
+- [x] **Live on https://www.nepalbhoomi.com (2026-10-14)**: GoDaddy name servers moved to Vercel
+      (`ns1`/`ns2.vercel-dns.com`); Vercel DNS holds the Zoho mail records (MX `mx`/`mx2`/`mx3.zoho.com`, SPF
+      `v=spf1 include:zoho.com ~all`, the Zoho and Google site-verification TXT). `nepalbhoomi.com` and
+      `nepal-bhoomi-web.vercel.app` 308-redirect to `www` (`frontend-realstate/vercel.json` "redirects"), HTTPS
+      certificate by Vercel. Vercel env: backend `FRONTEND_ORIGIN=https://www.nepalbhoomi.com`,
+      `GOOGLE_REDIRECT_URI=https://www.nepalbhoomi.com/api/v1/auth/google/callback`; frontend `VITE_API_URL` =
+      `VITE_SITE_URL` = `https://www.nepalbhoomi.com`. Verified: pages, sitemap (46 www addresses), canonicals,
+      CSP, API, sign-in/refresh/logout/other-origin 403 with a dummy account (deleted), Google start sends the
+      www callback. Still to do (owner): in Google Cloud → Credentials → the OAuth client add JS origin
+      `https://www.nepalbhoomi.com` and redirect `https://www.nepalbhoomi.com/api/v1/auth/google/callback`; in
+      R2 bucket `nepal-bhoomi-media` CORS add `https://www.nepalbhoomi.com` (uploads answer 403 until then).
+- [ ] **DKIM for Zoho mail**: no DKIM record found. Copy it from Zoho Admin → Domains → Email Configuration →
+      DKIM and add it as a TXT record in Vercel DNS (Domains → nepalbhoomi.com).
 - [x] **Vercel test deploy is live (2026-10-14)**: https://nepal-bhoomi-web.vercel.app (frontend, project
       `nepal-bhoomi-web`) and https://nepal-bhoomi-api.vercel.app (backend, `nepal-bhoomi-api`, region bom1), Vercel
       account `sakxama72-1518` (Hobby), deployed with the Vercel CLI from the private repo
-      `rookhit/-nepal-bhoomi-realestate` (main). Still to do: add `https://nepal-bhoomi-web.vercel.app` to the R2
-      bucket's CORS (uploads answer 403 until then) and, for Google sign-in, add
-      `https://nepal-bhoomi-web.vercel.app/api/v1/auth/google/callback` + the origin to the Google OAuth client.
+      `rookhit/-nepal-bhoomi-realestate` (main). Since the domain switch this address redirects to https://www.nepalbhoomi.com (see above).
       Redeploy after changes: `npx vercel deploy --prod` in each folder (or connect the Git repo in Vercel).
 - [ ] **Vercel test deploy (set up 2026-10-14)**: two projects (root directories `backend-realstate` and
       `frontend-realstate`). `frontend-realstate/vercel.json` forwards `/api/*` to the backend project, so the
@@ -112,7 +123,8 @@ Last updated: 2026-10-14
       `index.html` for every path (SPA fallback / rewrite), or a reload or shared link on
       `/property/13-…` answers 404.
 
-- [ ] **SEO (frontend update, merged 2026-10-13)**: the site is now indexable (`noindex` removed from
+- [x] **SEO (frontend update, merged 2026-10-13)**: `VITE_SITE_URL=https://www.nepalbhoomi.com` set on Vercel (2026-10-14).
+      Original note: the site is now indexable (`noindex` removed from
       `index.html`). Set `VITE_SITE_URL` to the real domain at build time (it defaults to
       `https://www.nepalbhoomi.com` in `frontend-realstate/src/seo/meta.ts`), or canonicals and share
       links point to the wrong host.
