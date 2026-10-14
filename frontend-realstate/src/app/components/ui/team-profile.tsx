@@ -26,7 +26,7 @@ export function TeamCard({ m, onOpen }: { m: TeamMember; onOpen: () => void }) {
     <button type="button" onClick={onOpen} className="group text-left" aria-label={`View ${m.name}'s profile`}>
       <div className="relative overflow-hidden mb-4" style={{ aspectRatio: "4/5" }}>
         {m.img
-          ? <img src={m.img} alt={m.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
+          ? <img src={m.img} alt={m.name} loading="lazy" decoding="async" className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
           : <InitialsTile name={m.name} size="clamp(2.5rem,6vw,4rem)" />}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.55) 0%, transparent 45%)" }} />
         <span className="absolute left-4 bottom-4 flex items-center gap-2 text-[10px] tracking-[0.26em] uppercase opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500" style={{ color: WHITE, ...sans }}>
@@ -145,7 +145,7 @@ export function TeamProfile({ members, index, onIndex, onClose }: {
                           className="shrink-0 w-11 h-11 rounded-full overflow-hidden transition-all duration-300 hover:opacity-100"
                           style={{ outline: `1.5px solid ${on ? GOLD : "transparent"}`, outlineOffset: 2, opacity: on ? 1 : 0.55 }}>
                           {p.img
-                            ? <img src={p.img} alt="" className={`w-full h-full object-cover ${on ? "" : "grayscale"}`} />
+                            ? <img src={p.img} alt="" loading="lazy" decoding="async" className={`w-full h-full object-cover ${on ? "" : "grayscale"}`} />
                             : <InitialsTile name={p.name} size="14px" dark />}
                         </button>
                       );

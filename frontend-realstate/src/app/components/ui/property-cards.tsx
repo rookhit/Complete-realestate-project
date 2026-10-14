@@ -26,7 +26,7 @@ export function ListingCard({ p, onOpen, href, light = false, showDetails = fals
   return (
     <div className={`group flex flex-col ${onOpen ? "cursor-pointer" : ""}`} onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
+        {p.hero && <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
         <div className="absolute inset-0 transition-opacity duration-400" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)", opacity: on ? 1 : 0.5 }} />
         <div className="absolute top-3 left-3 flex gap-1.5">
           <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span>
@@ -76,7 +76,7 @@ export function HotCard({ p, onOpen, href }: { p: Prop; onOpen?: () => void; hre
     <div className={`shrink-0 flex flex-col gap-5 group ${onOpen ? "cursor-pointer" : ""}`} style={{ width: "clamp(300px,30vw,380px)", maxWidth: "100%" }} onClick={onOpen}>
       {/* Video thumbnail style */}
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
+        {p.hero && <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
         <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.28)" }} />
         {/* Play button */}
         <div className="absolute inset-0 flex items-center justify-center">

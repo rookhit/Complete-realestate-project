@@ -28,6 +28,20 @@ export class ApiError extends Error {
 }
 
 let accessToken:string|null=null;
+
+// Whether this browser may hold a refresh cookie: "1" after signing in, "0" after signing out or a
+// failed refresh. A plain hint, not a secret (the cookie itself stays httpOnly). Without it every
+// visitor's page load would ask /auth/refresh and log a 401 in the console. If storage is blocked
+// (some private windows) the hint is unknown and the refresh is tried, as before.
+const SESSION_HINT="nb-signed-in";
+function setSessionHint(on:boolean){ try { localStorage.setItem(SESSION_HINT, on ? "1" : "0"); } catch { /* storage blocked */ } }
+function maySignedIn():boolean {
+  try {
+    // Back from Google sign-in: the backend has just set the cookie.
+    if(new URLSearchParams(window.location.search).has("auth")) return true;
+    return localStorage.getItem(SESSION_HINT)==="1";
+  } catch { return true; }
+}
 // One shared refresh at a time: the backend rotates the refresh cookie on every call, so two
 // parallel refreshes would race and the loser would be logged out.
 let refreshing:Promise<string|null>|null=null;
@@ -65,8 +79,8 @@ async function refreshOnce():Promise<string> {
 
 function refreshAccessToken():Promise<string|null> {
   refreshing ??= refreshOnce()
-    .then(t=>{ accessToken=t; return accessToken; })
-    .catch(()=>{ accessToken=null; return null; })
+    .then(t=>{ accessToken=t; setSessionHint(true); return accessToken; })
+    .catch(()=>{ accessToken=null; setSessionHint(false); return null; })
     .finally(()=>{ refreshing=null; });
   return refreshing;
 }
@@ -110,11 +124,12 @@ export function AuthProvider({ children }: { children:ReactNode }) {
   const [status,setStatus]=useState<AuthStatus>("loading");
 
   // On load: the refresh cookie (if any) survives reloads, so trade it for an access token
-  // and fetch the user. This also completes Google sign-in after its redirect.
+  // and fetch the user. This also completes Google sign-in after its redirect. Skipped when this
+  // browser has never signed in (or signed out), so visitors make no failing call.
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
-      const token=await refreshAccessToken();
+      const token=maySignedIn() ? await refreshAccessToken() : null;
       const me=token ? await request<{ user:AuthUser }>("/auth/me").catch(()=>null) : null;
       if(cancelled) return;
       setUser(me?.user ?? null);
@@ -124,7 +139,7 @@ export function AuthProvider({ children }: { children:ReactNode }) {
   },[]);
 
   const signedIn=useCallback((r:{ user:AuthUser; accessToken:string })=>{
-    accessToken=r.accessToken; setUser(r.user); setStatus("authenticated"); return r.user;
+    accessToken=r.accessToken; setSessionHint(true); setUser(r.user); setStatus("authenticated"); return r.user;
   },[]);
 
   const login=useCallback(async(email:string, password:string)=>{
@@ -148,7 +163,7 @@ export function AuthProvider({ children }: { children:ReactNode }) {
   const logout=useCallback(async()=>{
     // Clear local state even if the server call fails; the cookie is revoked server-side when it succeeds.
     await request<void>("/auth/logout",{ method:"POST", body:"{}" }).catch(()=>undefined);
-    accessToken=null; setUser(null); setStatus("anonymous");
+    accessToken=null; setSessionHint(false); setUser(null); setStatus("anonymous");
   },[]);
 
   const value=useMemo(()=>({ user, status, login, verifyMfa, register, verifyEmail, logout }),[user,status,login,verifyMfa,register,verifyEmail,logout]);

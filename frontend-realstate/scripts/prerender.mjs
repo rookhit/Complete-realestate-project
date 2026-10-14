@@ -154,8 +154,13 @@ function articleContent(a) {
     nepali ? "ne" : undefined);
 }
 
-function page(meta, content, { canonical = true } = {}) {
-  const head = M.headHtml(SITE, meta, contact, { canonical });
+// `preload`: the photo that will be the largest thing on screen (the home hero, a property's first
+// photo). The browser starts downloading it straight away instead of after the app has loaded the
+// property list, which is what makes the first view feel fast on phones.
+function page(meta, content, { canonical = true, preload = "" } = {}) {
+  const head = M.headHtml(SITE, meta, contact, { canonical }) +
+    (preload ? `
+    <link rel="preload" as="image" href="${esc(preload)}" fetchpriority="high" />` : "");
   return template
     .replace(/<!-- seo:start[\s\S]*?<!-- seo:end -->/, () => `<!-- seo:start -->\n    ${head}\n    <!-- seo:end -->`)
     .replace(CONTENT, () => `<!-- prerender:content -->${content}<!-- prerender:end -->`);
@@ -180,9 +185,11 @@ const SHARED = new Set(["/", "/buy", "/rent", "/hot", "/new-listings", "/map"]);
 const FIXED = Object.keys(M.STATIC_PAGES).filter((p) => p !== "/admin");
 for (const p of FIXED) {
   const meta = M.staticPageMeta(SITE, p);
-  write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p) }));
+  // The home hero shows the newest Featured property (App.tsx HeroSection), else the newest one.
+  const preload = p === "/" ? (properties.find((x) => x.featured) ?? properties[0])?.hero ?? "" : "";
+  write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p), preload }));
 }
-for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p)));
+for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p), { preload: p.gallery?.[0] || p.hero }));
 for (const a of articles) write(M.articlePath(a), page(M.articleMeta(SITE, a), articleContent(a)));
 
 // ─── sitemap.xml and robots.txt ───────────────────────────────────────────────
