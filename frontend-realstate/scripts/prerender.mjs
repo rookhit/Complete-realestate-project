@@ -20,13 +20,19 @@ const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist");
 const env = { ...loadEnv("production", root, "VITE_"), ...process.env };
 
-// meta.ts has no imports: strip its types and load it as a plain module.
-const metaSrc = path.join(root, "src", "seo", "meta.ts");
-const { code } = await transformWithEsbuild(fs.readFileSync(metaSrc, "utf8"), metaSrc, { loader: "ts", format: "esm" });
-const metaJs = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "nb-seo-")), "meta.mjs");
-fs.writeFileSync(metaJs, code);
-const M = await import(pathToFileURL(metaJs).href);
-fs.rmSync(path.dirname(metaJs), { recursive: true, force: true });
+// meta.ts, legal.ts and faq.ts have no imports: strip their types and load them as plain modules.
+async function loadTs(name) {
+  const src = path.join(root, "src", "seo", name);
+  const { code } = await transformWithEsbuild(fs.readFileSync(src, "utf8"), src, { loader: "ts", format: "esm" });
+  const js = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "nb-seo-")), name.replace(/\.ts$/, ".mjs"));
+  fs.writeFileSync(js, code);
+  const mod = await import(pathToFileURL(js).href);
+  fs.rmSync(path.dirname(js), { recursive: true, force: true });
+  return mod;
+}
+const M = await loadTs("meta.ts");
+const LEGAL = await loadTs("legal.ts");
+const FAQ = await loadTs("faq.ts");
 
 const SITE = (env.VITE_SITE_URL || M.DEFAULT_SITE_URL).replace(/\/+$/, "");
 const API = `${(env.VITE_API_URL || "http://localhost:3000").replace(/\/+$/, "")}/api/v1`;
@@ -72,9 +78,10 @@ if (!template.includes("<!-- seo:start") || !template.includes("<!-- prerender:c
 // Fresh from `vite build` the content marker is empty; after a run it wraps the home page's content.
 const CONTENT = template.includes("<!-- prerender:end -->") ? /<!-- prerender:content -->[\s\S]*?<!-- prerender:end -->/ : /<!-- prerender:content -->/;
 
-// A plain, readable page in the site's colours. Only shown until the app starts.
+// A plain, readable page in the site's colours, for search engines and link previews. Visitors see the
+// loading screen instead (#nb-boot in index.html hides .nb-static) unless JavaScript is off.
 const S = {
-  wrap: "min-height:100vh;background:#0a0908;color:#d9d2c4;font:16px/1.7 Arial,Helvetica,sans-serif;padding:32px 20px;box-sizing:border-box",
+  wrap: "background:#0a0908;color:#d9d2c4;font:16px/1.7 Arial,Helvetica,sans-serif;padding:32px 20px;box-sizing:border-box",
   inner: "max-width:760px;margin:0 auto",
   brand: "color:#b08848;letter-spacing:.3em;text-transform:uppercase;font-size:12px;text-decoration:none",
   nav: "display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 36px;font-size:13px",
@@ -87,7 +94,7 @@ const S = {
 const NAV = [["/buy", "Buy"], ["/rent", "Rent"], ["/blog", "Journal"], ["/services", "Services"], ["/about", "About"], ["/team", "Our Team"], ["/contact", "Contact"]];
 
 function shell(inner, lang) {
-  return `<div style="${S.wrap}"${lang ? ` lang="${lang}"` : ""}><div style="${S.inner}">` +
+  return `<div class="nb-static" style="${S.wrap}"${lang ? ` lang="${lang}"` : ""}><div style="${S.inner}">` +
     `<a href="/" style="${S.brand}">Nepal Bhoomi Real Estate</a>` +
     `<nav style="${S.nav}">${NAV.map(([h, l]) => `<a href="${h}" style="${S.link}">${l}</a>`).join("")}</nav>` +
     inner +
@@ -106,6 +113,19 @@ const paragraphs = (text) => String(text || "").split(/\n\s*\n/).map((t) => t.tr
 const sale = properties.filter((p) => p.listing === "For Sale");
 const rent = properties.filter((p) => p.listing === "For Rent");
 
+/** A Privacy Policy / Terms document (src/seo/legal.ts) as plain HTML. */
+function legalDoc(doc) {
+  const body = (lines) => {
+    let html = "", items = [];
+    const flush = () => { if (items.length) html += `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`; items = []; };
+    for (const l of lines) { if (l.startsWith("• ")) items.push(l.slice(2)); else { flush(); html += `<p>${esc(l)}</p>`; } }
+    flush();
+    return html;
+  };
+  return `<h1 style="${S.h1}">${esc(doc.title)}</h1><p style="${S.muted}">Last updated ${esc(LEGAL.LEGAL_UPDATED)}</p><p>${esc(doc.intro)}</p>` +
+    doc.sections.map((s, i) => `<h2 style="${S.h2}">${i + 1}. ${esc(s.heading)}</h2>${body(s.body)}`).join("");
+}
+
 function staticContent(p, meta) {
   const intro = `<h1 style="${S.h1}">${esc(meta.title.split(" | ")[0])}</h1><p>${esc(meta.description)}</p>`;
   switch (p) {
@@ -119,6 +139,9 @@ function staticContent(p, meta) {
     case "/blog": return shell(intro + `<ul>${articles.map(articleLink).join("")}</ul>`);
     case "/contact": return shell(intro + `<h2 style="${S.h2}">Office</h2><p>${esc(contact.address).replace(/\n/g, "<br>")}</p>` +
       `<h2 style="${S.h2}">Opening hours</h2><p>${esc(contact.hours).replace(/\n/g, "<br>")}</p>`);
+    case "/privacy-policy": return shell(legalDoc(LEGAL.PRIVACY));
+    case "/terms": return shell(legalDoc(LEGAL.TERMS));
+    case "/faq": return shell(intro + FAQ.FAQS.map((f) => `<h2 style="${S.h2}">${esc(f.q)}</h2><p>${esc(f.a)}</p>`).join(""));
     default: return shell(intro);
   }
 }
@@ -157,10 +180,18 @@ function articleContent(a) {
 // `preload`: the photo that will be the largest thing on screen (the home hero, a property's first
 // photo). The browser starts downloading it straight away instead of after the app has loaded the
 // property list, which is what makes the first view feel fast on phones.
+// Same rule as src/app/components/ui/card-photo.ts: our uploaded photos have an 800 px card copy.
+const OUR_PHOTO = /(\/photos\/\d{4}-\d{2}\/[0-9a-f-]{36})\.(jpe?g|png|webp|avif)(?=$|[?#])/i;
+// The preload offers the same choice as the page's <img srcset sizes="100vw">, so a phone fetches
+// only the copy it will show (a plain href preload would fetch the full photo on top of it).
+const preloadTag = (url) => OUR_PHOTO.test(url)
+  ? `<link rel="preload" as="image" href="${esc(url)}" imagesrcset="${esc(url.replace(OUR_PHOTO, "$1.w800.jpg"))} 800w, ${esc(url)} 2000w" imagesizes="100vw" fetchpriority="high" />`
+  : `<link rel="preload" as="image" href="${esc(url)}" fetchpriority="high" />`;
+
 function page(meta, content, { canonical = true, preload = "" } = {}) {
   const head = M.headHtml(SITE, meta, contact, { canonical }) +
     (preload ? `
-    <link rel="preload" as="image" href="${esc(preload)}" fetchpriority="high" />` : "");
+    ${preloadTag(preload)}` : "");
   return template
     .replace(/<!-- seo:start[\s\S]*?<!-- seo:end -->/, () => `<!-- seo:start -->\n    ${head}\n    <!-- seo:end -->`)
     .replace(CONTENT, () => `<!-- prerender:content -->${content}<!-- prerender:end -->`);
@@ -185,6 +216,7 @@ const SHARED = new Set(["/", "/buy", "/rent", "/hot", "/new-listings", "/map"]);
 const FIXED = Object.keys(M.STATIC_PAGES).filter((p) => p !== "/admin");
 for (const p of FIXED) {
   const meta = M.staticPageMeta(SITE, p);
+  if (p === "/faq") meta.jsonLd = [...meta.jsonLd, FAQ.faqLd(FAQ.FAQS)];
   // The home hero shows the newest Featured property (App.tsx HeroSection), else the newest one.
   const preload = p === "/" ? (properties.find((x) => x.featured) ?? properties[0])?.hero ?? "" : "";
   write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p), preload }));
@@ -205,7 +237,8 @@ const urls = [
   ...properties.map((p) => ({ loc: M.propertyPath(p), lastmod: day(p.updatedAt), priority: "0.8" })),
   { loc: "/blog", lastmod: day(newest(articles, "publishedAt")), priority: "0.7" },
   ...articles.map((a) => ({ loc: M.articlePath(a), lastmod: day(a.updatedAt ?? a.publishedAt), priority: "0.6" })),
-  ...["/about", "/team", "/services", "/contact", "/emi-calculator", "/new-listings", "/hot", "/free-listing"].map((loc) => ({ loc, priority: "0.5" })),
+  ...["/about", "/team", "/services", "/contact", "/emi-calculator", "/new-listings", "/hot", "/free-listing", "/faq"].map((loc) => ({ loc, priority: "0.5" })),
+  ...["/privacy-policy", "/terms"].map((loc) => ({ loc, priority: "0.2" })),
 ];
 fs.writeFileSync(path.join(dist, "sitemap.xml"),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +

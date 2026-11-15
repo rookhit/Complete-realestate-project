@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorResponse, jsonResponse } from "@/lib/auth/guards";
+import { errorResponse, publicJsonResponse } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 import { getPublicArticle } from "@/lib/content/articles";
 
@@ -15,7 +15,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request, ctx: RouteContext<"/api/v1/articles/[slug]">): Promise<NextResponse> {
   try {
     const { slug } = await ctx.params;
-    return jsonResponse(request, { data: await getPublicArticle(slug.toLowerCase()) });
+    return publicJsonResponse(request, { data: await getPublicArticle(slug.toLowerCase()) });
   } catch (error) {
     return errorResponse(request, error);
   }

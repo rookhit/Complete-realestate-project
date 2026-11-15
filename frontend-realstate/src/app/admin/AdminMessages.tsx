@@ -8,7 +8,7 @@ import { CONTACT } from "@/app/data/content";
 import { displayRef } from "@/app/data/properties";
 import { useDataVersion } from "@/app/data/store";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
-import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
+import { ListPagination, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { ApiError } from "@/app/auth";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
@@ -41,6 +41,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const { listTop, turn } = usePageTurner(setPage);
   const [openId, setOpenId] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<Message | null>(null);
 
@@ -98,6 +99,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {/* List (hidden on phones while a message is open) */}
           <div className={`${open ? "hidden lg:flex" : "flex"} flex-col lg:border-r`} style={{ borderColor: BORDER_L }}>
+            <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
             {list.length === 0 ? (
               <p className="px-6 py-14 text-center text-[14px]" style={{ color: MUTED_L, ...sans }}>No messages match.</p>
             ) : shown.map(m => {
@@ -120,7 +122,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
                 </button>
               );
             })}
-            {list.length > PER_PAGE && <div className="px-5 py-4"><ListPagination page={page} total={list.length} perPage={PER_PAGE} onPage={setPage} noun="messages" /></div>}
+            {list.length > PER_PAGE && <div className="px-5 py-4"><ListPagination page={page} total={list.length} perPage={PER_PAGE} onPage={turn} noun="messages" /></div>}
           </div>
 
           {/* The open message */}

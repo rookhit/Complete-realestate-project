@@ -95,6 +95,9 @@ All under `/api/v1`, error envelope as in §7.1.
 | GET | `/auth/google` → `/auth/google/callback` | LoginPage redirects to it; callback returns to `?auth=google` / `?auth=google_mfa` / `?auth_error=google` |
 | GET | `/admin/users` | `admin/AdminUsers.tsx`. Returns `lastLoginAt` since 2026-10-02 (the "Last Sign-in" column) |
 | POST | `/auth/2fa/setup`, `/enable`, `/disable` | **No frontend screen yet** (built on the backend only) |
+| GET / PUT | `/site/watermark`, `/admin/site/watermark` | **Added 2026-11-14.** `api/site.ts` `fetchWatermark()` / `saveSiteWatermark()`; Admin → Watermark (`admin/WatermarkEditor.tsx`). `{ enabled, text, logo: data-URL\|null, opacity, size }`; the browser stamps photos before upload (`media/watermark.ts`) |
+| POST | `/admin/uploads`, `/listings/uploads` with `cardSize` | **2026-11-14.** For images the answer also has `card: { uploadUrl, headers }`: `api/uploads.ts` PUTs the 800 px card copy (`<uuid>.w800.jpg`) beside the photo; `components/ui/card-photo.ts` `cardSrc()` points cards at it, `fullPhotoOnError()` falls back to the full photo |
+| POST / GET | `/listings` with `details` | **2026-11-14.** Free listings send and return `details` (`ListingDetails` in `api/listings.ts`: beds, baths, floors, facing, road, address, map link…, by property type: `pages/free-listing/listing-fields.ts`) |
 | GET | `/properties` (and `/admin/properties` for the admin) | **Wired 2026-09-30.** `loadProperties()` in `data/properties.ts` fills `ALL_PROPS` from the API once the sign-in check is done (`PropertySync` in `App.tsx`); pages still filter that list client-side. `/properties/:id` and `/:id/related` exist but aren't called yet |
 | POST / PATCH / DELETE | `/admin/properties[/:id]`, `POST /admin/properties/:id/restore` | **Wired 2026-09-30.** Editor save (`toInput()` → create / update), list delete + Undo, featured / verified toggles, heart counts, free-listing publish (`propToInput()`). Client: `src/api/properties.ts`. `next-ref` exists; the editor still computes the lowest free NB ID locally from `ALL_PROPS` (the server re-checks: 409) |
 
@@ -311,11 +314,17 @@ Details and endpoints: §7.9.
 
 `Page` values (`App.tsx`): home, buy, rent, hot, new-listings, map, area, property, about, team,
 blog, blog-post, services, emi, contact, login, register, reset-password, free-listing, videos,
-admin, admin-users, admin-reviews, admin-listings (Free Listings), admin-messages (Messages). Each has its own URL
-(§5), e.g. `/buy`, `/property/12-…`, `/admin/messages`.
+privacy (`/privacy-policy`), terms (`/terms`), faq (`/faq`),
+admin, admin-users, admin-reviews, admin-listings (Free Listings), admin-listing (one free listing as a full page,
+`/admin/listings/:id`), admin-messages (Messages). Each has its own URL
+(§5), e.g. `/buy`, `/property/12-…`, `/admin/messages`. Buy / Rent / Hot / New keep the results page in the address
+(`?p=2`, `NavOpts.p`), so Back from a property returns to the same page.
 
-The only thing the frontend stores in the browser: admin drafts in `localStorage` under
-`nb-admin-draft:property:<id|new>`, removed when saved or discarded. Tokens are never stored
+What the frontend stores in the browser: admin drafts in `localStorage` under
+`nb-admin-draft:property:<id|new>`, removed when saved or discarded; the half-written Free Listing per member
+(`localStorage` `nb-listing-draft:<userId>` for the fields, IndexedDB `nb-drafts` / `listing-photos` for the picked
+photos; 30 days; `pages/free-listing/listing-draft.ts`), removed on send, "Clear form" and Log Out; the last
+watermark settings (`media/watermark.ts`). Tokens are never stored
 (access token in memory, refresh token in an httpOnly cookie).
 
 ---
@@ -1629,6 +1638,37 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-11-14 · prajjwal (with Claude) · Fixes round from the owner's issue list** (branch `fix/frontend-audit-issues`;
+  backend side in `backend-realstate/CLAUDE.md`, deploy steps in `PRODUCTION_CHECKLIST.md`, top section).
+  - **First paint:** `#nb-boot` splash in `index.html` instead of the pre-rendered text flashing; the SEO text stays in
+    `.nb-static` (hidden by CSS, shown without JS).
+  - **Maps:** Leaflet → **MapLibre GL 6 + OpenFreeMap** (`components/ui/maplibre-maps.tsx`, loaded lazily through `maps.tsx`;
+    `prefetchMapCode()` warms it on property pages). Cooperative gestures: wheel scrolls the page (Ctrl + wheel zooms), one
+    finger scrolls on phones with a "use two fingers" hint. The hover card is a fixed portal above the sticky bars. The map
+    view fits the screen (`MAP_VIEW_H`); on phones the map and the list cards are separate blocks with gaps.
+    CSP: `worker-src`/`child-src blob:` and the tile hosts.
+  - **Photos:** watermark (Admin → Watermark) stamped in the browser on new uploads, admin and free-listing alike; EXIF
+    removed, ≤ 2560 px, 800 px card copies used by every card (`cardSrc`), `srcset` on heroes and galleries.
+  - **Free Listing** moved to `pages/free-listing/`: fields and amenities depend on the type (land / house / apartment…),
+    the member's name / phone / email filled in, draft kept across reloads (see §0.6), lazy-loaded.
+  - **Admin Free Listings:** no publish from the list any more; "Open" shows the listing as a full page (`AdminListingPage.tsx`:
+    gallery, facts, exact map pin, owner's contacts, Download PDF in the site's colours, Back), "Copy to Add Property"
+    opens the property editor pre-filled (`listing-actions.tsx`). `ListingViewer.tsx` removed.
+  - **Filters:** price ranges per listing in `data/properties.ts` `PRICE_RANGES` / `inPriceRange` (Sale: under 3 Cr,
+    3–7 Cr, above 7 Cr; Rent: under 3 lakh, 3 lakh & above).
+  - **Home:** Hot Properties shows exactly 3 cards from 768 px (1 + a peek on phones); Testimonials is a swipe carousel.
+  - **Pagination:** Buy / Rent (12, `?p=`), Team (12), Blog (9), Admin Free Listings (20), Admin Journal (12).
+  - **Legal / SEO:** Privacy Policy, Terms of Use, FAQ pages (`seo/legal.ts`, `seo/faq.ts`, `pages/legal/LegalPage.tsx`),
+    pre-rendered, in the sitemap and footer, FAQPage JSON-LD; consent line on Register and Free Listing.
+  - **Removed:** Dashain decorations (`src/app/festive/`, three.js), Leaflet.
+  - **Videos:** the property editor measures a picked video's bitrate (`media/video-check.ts`) and warns above
+    4 Mbit/s ("Choose a smaller file" / "Upload anyway"): camera originals (~16 Mbit/s) stall on 4G phones.
+  - **Watermark:** "Strength" (the `opacity` field) now fades the whole mark (band, edges, logo, text) together;
+    at 50 % it looks as before. Set to 25 % / band height 8 % on 2026-11-15.
+  - **Speed:** card copies, lazy pages, map prefetch, preconnects. Measured on a phone over 4G: the home page downloads
+    1,059 KB instead of 1,692 KB and is usable in ~2.3 s (live ~3.4 s); the map draws ~2 s after scrolling to it
+    instead of ~3.8 s.
 
 - **2026-10-14 · saksham · Homepage redirect to www fixed.** `nepalbhoomi.com/` and `nepal-bhoomi-web.vercel.app/`
   answered 200 (the catch-all `/:path*` redirect never matched `/`), so sign-in failed there (wrong origin).

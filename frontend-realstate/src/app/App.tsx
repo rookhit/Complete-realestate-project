@@ -7,34 +7,34 @@ import {
   Home, Landmark, Layers, CheckCircle2,
   Instagram, Facebook, Youtube, Linkedin,
   SlidersHorizontal, RotateCcw, User, FileText, PlusCircle,
-  Eye, EyeOff, Upload, Trash2, Pause, Volume2, VolumeX, Maximize2, Minimize2,
+  Eye, EyeOff, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   Settings, Subtitles, Check, Clock, Calendar, Compass, Route,
   Tag as TagIcon,
   ExternalLink, LogOut, Lock,
 } from "lucide-react";
 import logoImg from "@/imports/image.png";
+import { BOOT_SPLASH_SHOWN } from "./boot";
 import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PROPERTY_TYPES, PRICE_RANGES, displayRef, landSqftNote, loadProperties, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
-import { AreaMap, PropertiesMap } from "@/app/components/ui/maps";
+import { AreaMap, PropertiesMap, prefetchMapCode } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
 import { sendCallback, sendContact, sendEnquiry } from "@/api/messages";
 import { clearListings, loadListings, newListingsCount } from "@/app/data/listings";
-import { submitListing } from "@/api/listings";
-import { uploadListingPhoto } from "@/api/uploads";
 import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
 import { useDataVersion } from "@/app/data/store";
 import { useDraft } from "@/app/data/drafts";
 import { follow, leaveToCard } from "@/app/links";
 import { articleMeta, articlePath, propertyMeta, propertyPath, staticPageMeta, type PageMeta } from "@/seo/meta";
 import { SITE_URL, applyHead } from "@/seo/head";
+import { FAQS, faqLd } from "@/seo/faq";
 import {
   BLOGS, articlesStatus, loadArticles, siteStatus, loadSiteSettings, TESTIMONIALS, testimonialsStatus, loadTestimonials, TEAM, teamStatus, loadTeam, STATS, FEATURED_DISTRICTS, ABOUT_TEAM_LIMIT, DEPARTMENTS, CONTACT, SERVICES,
   companyVideos, whatsappLink, youtubeThumb, type CompanyVideo,
 } from "@/app/data/content";
 import { ServiceIcon } from "@/app/components/ui/service-icon";
-import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
+import { amenityIcon } from "@/app/icons/amenities";
 import { API_URL, ApiError, AuthProvider, UNVERIFIED_ACCOUNT_DAYS, forgotPassword, onSignInRequest, requestSignIn, resendVerification, resetPassword, useAuth, verifyResetToken } from "@/app/auth";
 import {
   BG_LIGHT, FG_DARK, FG_LIGHT, CREAM, WHITE, MAROON, GOLD, GOLD_DIM,
@@ -46,32 +46,44 @@ import { FavButton, ReactionButton } from "@/app/components/ui/reaction-button";
 import { FloatingDock } from "@/app/components/ui/floating-dock";
 import { RatingLink, ReviewsSection } from "@/app/components/ui/property-reviews";
 import { ResultsToolbar, type SortKey } from "@/app/components/ui/results-toolbar";
-import { DistrictCombobox } from "@/app/components/ui/district-combobox";
+import { GoldLine, Tag } from "@/app/components/ui/typography";
+import { LegalConsent } from "@/app/components/ui/legal-consent";
+import { sendError } from "@/app/components/ui/send-error";
+const LegalPage = lazy(() => import("@/app/pages/legal/LegalPage").then(m => ({ default: m.LegalPage })));
+const FreeListingPage = lazy(() => import("@/app/pages/free-listing/FreeListingPage").then(m => ({ default: m.FreeListingPage })));
+// Loaded with the app (it's small) so Log Out wipes a saved Free Listing draft even in a visit that
+// never opened that page.
+import "@/app/pages/free-listing/listing-draft";
 // The admin is only downloaded when an admin opens it, so visitors never load it.
 const AdminDashboard = lazy(() => import("@/app/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const AdminUsers = lazy(() => import("@/app/admin/AdminUsers").then(m => ({ default: m.AdminUsers })));
 const AdminReviews = lazy(() => import("@/app/admin/AdminReviews").then(m => ({ default: m.AdminReviews })));
 const AdminMessages = lazy(() => import("@/app/admin/AdminMessages").then(m => ({ default: m.AdminMessages })));
 const AdminListings = lazy(() => import("@/app/admin/AdminListings").then(m => ({ default: m.AdminListings })));
+const AdminListingPage = lazy(() => import("@/app/admin/AdminListingPage").then(m => ({ default: m.AdminListingPage })));
 import type { AdminNav } from "@/app/admin/AdminLayout";
 import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
+import { ListPagination, pageCount, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
-import { DashainFestival } from "@/app/festive/dashain"; // Dashain 2083: remove after the festival (festive/dashain/README.md)
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Page =
   | "home" | "buy" | "rent" | "property" | "hot" | "new-listings"
   | "about" | "blog" | "blog-post" | "services" | "emi" | "contact"
   | "login" | "register" | "free-listing" | "area" | "videos" | "map" | "reset-password" | "team"
-  | "admin" | "admin-users" | "admin-reviews" | "admin-listings" | "admin-messages";                  // the admin area, src/app/admin/
+  | "privacy" | "terms" | "faq"                                                                      // pages/legal/
+  | "admin" | "admin-users" | "admin-reviews" | "admin-listings" | "admin-messages"                    // the admin area, src/app/admin/
+  | "admin-listing";                                                                                 // one free listing (selId = its id)
 
 type NavOpts = {
   type?: string; district?: string; view?: "list"|"grid"|"map";
   preset?: "hot"|"new"; scrollTo?: string; blog?: number;
   q?: string;                             // free-text search on the Buy/Rent page
+  p?: number;                             // results page on Buy/Rent (1 = first, left out of the address)
 };
 type Go = (p: Page, o?: NavOpts) => void;
 
@@ -85,10 +97,6 @@ type Go = (p: Page, o?: NavOpts) => void;
 const AREAS = DISTRICTS;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
-const Tag = ({ c, children }: { c?: string; children: React.ReactNode }) => (
-  <span className="text-[10px] tracking-[0.34em] uppercase" style={{ color: c ?? GOLD, ...sans }}>{children}</span>
-);
-const GoldLine = () => <div style={{ width:"2rem", height:"0.5px", background:GOLD }} />;
 const SectionTitle = ({ tag, h, dark=true }: { tag:string; h:string; dark?:boolean }) => (
   <div className="flex flex-col gap-3">
     <div className="flex items-center gap-3"><GoldLine /><Tag>{tag}</Tag></div>
@@ -130,109 +138,32 @@ function PasswordInput({ value, onChange, placeholder="********", onEnter, autoC
 
 // DistrictCombobox (typeahead over all 77 districts) lives in components/ui/district-combobox.tsx.
 
-/** Multi-image picker with drag-and-drop, previews and removal. */
-type PickedImage = { id:string; file:File; url:string };
-
-function ImageUpload({ images, onChange, max=12 }: {
-  images:PickedImage[]; onChange:(next:PickedImage[])=>void; max?:number;
-}) {
-  const inputRef=useRef<HTMLInputElement>(null);
-  const [dragging,setDragging]=useState(false);
-  const [error,setError]=useState("");
-
-  // Object URLs are leaked unless revoked; do it when the component unmounts.
-  useEffect(()=>()=>{ images.forEach(i=>URL.revokeObjectURL(i.url)); },[]);
-
-  const add=(fileList:FileList|null)=>{
-    if(!fileList) return;
-    const incoming=Array.from(fileList).filter(f=>f.type.startsWith("image/"));
-    if(incoming.length===0){ setError("Those files are not images."); return; }
-    const room=max-images.length;
-    if(room<=0){ setError(`You can upload up to ${max} images.`); return; }
-    const tooBig=incoming.find(f=>f.size>8*1024*1024);
-    if(tooBig){ setError(`"${tooBig.name}" is over 8 MB.`); return; }
-    setError(incoming.length>room ? `Only the first ${room} were added (limit ${max}).` : "");
-    const next=incoming.slice(0,room).map(f=>({
-      id:`${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(36).slice(2,7)}`,
-      file:f,
-      url:URL.createObjectURL(f),
-    }));
-    onChange([...images,...next]);
-  };
-
-  const remove=(id:string)=>{
-    const gone=images.find(i=>i.id===id);
-    if(gone) URL.revokeObjectURL(gone.url);
-    onChange(images.filter(i=>i.id!==id));
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div
-        onDragOver={e=>{ e.preventDefault(); setDragging(true); }}
-        onDragLeave={()=>setDragging(false)}
-        onDrop={e=>{ e.preventDefault(); setDragging(false); add(e.dataTransfer.files); }}
-        onClick={()=>inputRef.current?.click()}
-        className="flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-10 cursor-pointer transition-colors"
-        style={{ borderColor: dragging?MAROON:BORDER_L, background: dragging?"rgba(138,32,48,0.04)":"transparent" }}
-      >
-        <Upload size={22} style={{color:GOLD}}/>
-        <p className="text-[14px]" style={{color:FG_LIGHT,...sans}}>
-          Drag photos here, or <span style={{color:MAROON}}>browse</span>
-        </p>
-        <p className="text-[12px]" style={{color:MUTED_L,...sans}}>
-          JPG or PNG, up to 8&nbsp;MB each. {images.length}/{max} added.
-        </p>
-        <input
-          ref={inputRef} type="file" accept="image/*" multiple hidden
-          onChange={e=>{ add(e.target.files); e.target.value=""; }}
-        />
-      </div>
-
-      {error && <p className="text-[13px]" style={{color:MAROON,...sans}}>{error}</p>}
-
-      {images.length>0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-          {images.map((img,i)=>(
-            <div key={img.id} className="relative group overflow-hidden" style={{aspectRatio:"4/3"}}>
-              <img src={img.url} alt={`Upload ${i+1}`} className="w-full h-full object-cover"/>
-              {i===0 && (
-                <span className="absolute top-1.5 left-1.5 px-2 py-0.5 text-[9px] tracking-[0.2em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>Cover</span>
-              )}
-              <button
-                type="button" onClick={()=>remove(img.id)} aria-label={`Remove image ${i+1}`}
-                className="absolute top-1.5 right-1.5 p-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                style={{background:"rgba(10,9,8,0.72)",color:WHITE}}
-              >
-                <Trash2 size={13}/>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// The Free Listing photo picker lives in components/ui/image-upload.tsx.
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
 function LoadingScreen({ onDone }: { onDone:()=>void }) {
+  // index.html's still copy of this screen was already up: start finished (`initial={false}`) so the
+  // hand-over is invisible, and don't hold the visitor for the entrance they've already waited through.
+  const settled=BOOT_SPLASH_SHOWN;
+  const from=<T,>(start:T):T|false=>settled ? false : start;
   // A short branded moment; App keeps it up longer only while the first data is still loading.
-  useEffect(()=>{ const t=setTimeout(onDone,1400); return ()=>clearTimeout(t); },[onDone]);
+  useEffect(()=>{ const t=setTimeout(onDone,settled?400:1400); return ()=>clearTimeout(t); },[onDone,settled]);
   return (
     <motion.div className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden" style={{background:"#0a0908"}}
       exit={{ clipPath:"inset(0 0 100% 0)", transition:{duration:1.05,ease:[0.76,0,0.24,1]} }}>
       <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)'/%3E%3C/svg%3E")`,backgroundSize:"192px 192px"}} />
-      <motion.div className="absolute left-0 right-0" style={{top:"50%",height:"0.5px",background:"rgba(138,32,48,0.5)",transformOrigin:"left center"}} initial={{scaleX:0}} animate={{scaleX:1}} transition={{duration:1.8,ease:[0.16,1,0.3,1],delay:0.1}} />
-      <motion.div className="absolute top-0 bottom-0" style={{left:"50%",width:"0.5px",background:"rgba(176,136,72,0.28)",transformOrigin:"top center"}} initial={{scaleY:0}} animate={{scaleY:1}} transition={{duration:1.8,ease:[0.16,1,0.3,1],delay:0.3}} />
+      <motion.div className="absolute left-0 right-0" style={{top:"50%",height:"0.5px",background:"rgba(138,32,48,0.5)",transformOrigin:"left center"}} initial={from({scaleX:0})} animate={{scaleX:1}} transition={{duration:1.8,ease:[0.16,1,0.3,1],delay:0.1}} />
+      <motion.div className="absolute top-0 bottom-0" style={{left:"50%",width:"0.5px",background:"rgba(176,136,72,0.28)",transformOrigin:"top center"}} initial={from({scaleY:0})} animate={{scaleY:1}} transition={{duration:1.8,ease:[0.16,1,0.3,1],delay:0.3}} />
       <div className="relative flex flex-col items-center gap-6">
-        <motion.div className="relative" initial={{opacity:0,scale:0.88}} animate={{opacity:1,scale:1}} transition={{duration:1.2,ease:[0.16,1,0.3,1],delay:0.5}}>
-          {["top-0 left-0 border-t border-l","top-0 right-0 border-t border-r","bottom-0 left-0 border-b border-l","bottom-0 right-0 border-b border-r"].map((c,i)=>(
-            <motion.div key={i} className={`absolute -inset-5 ${c} w-4 h-4`} style={{borderColor:GOLD_DIM}} initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.9+i*0.07}} />
+        <motion.div className="relative" initial={from({opacity:0,scale:0.88})} animate={{opacity:1,scale:1}} transition={{duration:1.2,ease:[0.16,1,0.3,1],delay:0.5}}>
+          {/* Corner brackets 20px outside the logo (index.html #nb-boot .c draws the same). */}
+          {["-top-5 -left-5 border-t border-l","-top-5 -right-5 border-t border-r","-bottom-5 -left-5 border-b border-l","-bottom-5 -right-5 border-b border-r"].map((c,i)=>(
+            <motion.div key={i} className={`absolute ${c} w-4 h-4`} style={{borderColor:GOLD_DIM}} initial={from({opacity:0})} animate={{opacity:1}} transition={{delay:0.9+i*0.07}} />
           ))}
           <img src={logoImg} alt="Nepal Bhoomi" className="w-20 h-20 object-contain" />
         </motion.div>
-        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Nepal Bhoomi Real Estate</motion.p>
-        <motion.div style={{width:"0.5px",background:GOLD_DIM}} initial={{height:0,opacity:0}} animate={{height:44,opacity:1}} transition={{delay:1.5,duration:0.8}} />
+        <motion.p className="text-[10px] tracking-[0.38em] uppercase" style={{color:MUTED_D,...sans}} initial={from({opacity:0,y:8})} animate={{opacity:1,y:0}} transition={{delay:1.05}}>Nepal Bhoomi Real Estate</motion.p>
+        <motion.div style={{width:"0.5px",background:GOLD_DIM}} initial={from({height:0,opacity:0})} animate={{height:44,opacity:1}} transition={{delay:1.5,duration:0.8}} />
       </div>
     </motion.div>
   );
@@ -464,7 +395,12 @@ function Footer({ go }: { go:Go }) {
       {/* Extra room at the bottom so the floating Enquiry / WhatsApp buttons never cover these links. */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 md:px-12 lg:px-20 pt-8 pb-32 sm:pb-8 sm:pr-32 lg:pr-40">
         <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© {new Date().getFullYear()} Nepal Bhoomi Estate Agents. All rights reserved.</p>
-        {/* Privacy Policy / Terms of Use links go here once those pages are written (they were dead "#" links). */}
+        <nav aria-label="Legal" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          {([["Privacy Policy","privacy"],["Terms of Use","terms"],["FAQ","faq"],["Sitemap",null]] as const).map(([l,p])=>(
+            p ? <a key={l} href={hrefOf(p)} onClick={follow(()=>go(p))} className="text-[12px] transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
+              : <a key={l} href="/sitemap.xml" className="text-[12px] transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
+          ))}
+        </nav>
       </div>
     </footer>
   );
@@ -487,11 +423,7 @@ function SignInToSend({ action, light=true }: { action:string; light?:boolean })
 }
 
 /** The message to show when a form could not be sent. A lapsed sign-in opens the login page. */
-function sendError(err:unknown): string {
-  if(err instanceof ApiError && err.status===401) { requestSignIn(); return "Please sign in again to send."; }
-  return err instanceof ApiError ? err.message : "Could not send. Please check your connection and try again.";
-}
-
+// sendError() (a form's " could not send\
 // ─── Callback form ────────────────────────────────────────────────────────────
 // The "Let Us Call You" form at the bottom of the home page. The floating Quick Enquiry
 // button scrolls here.
@@ -571,6 +503,7 @@ function PropertyCard({ p, go, setId, light=false }: { p:Prop; go:Go; setId:(id:
 // HOME PAGE SECTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+
 // ─── Hero Section ─────────────────────────────────────────────────────────────
 function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
   const [active,setActive]=useState(0);
@@ -589,7 +522,7 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
     <section className="relative h-screen min-h-[600px] overflow-hidden flex flex-col justify-end">
       <AnimatePresence mode="wait">
         <motion.div key={slide} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
-          <img src={prop.hero} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))} {...{fetchpriority:slide===0?"high":"auto"}}/>
+          <img src={prop.hero} srcSet={`${cardSrc(prop.hero)} 800w, ${prop.hero} 2000w`} sizes="100vw" onError={fullPhotoOnError(prop.hero)} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))} {...{fetchpriority:slide===0?"high":"auto"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.4) 45%, rgba(10,9,8,0.08) 100%)"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to right, rgba(10,9,8,0.55) 0%, transparent 65%)"}}/>
         </motion.div>
@@ -646,12 +579,14 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
 function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
   const scrollRef=useRef<HTMLDivElement>(null);
   const hot=ALL_PROPS.filter(p=>p.badge==="Hot"||p.featured);
-  const scroll=(dir:number)=>{ scrollRef.current?.scrollBy({left:dir*400,behavior:"smooth"}); };
+  // One "page" at a time: the three cards in view (one on a phone) move out, the next ones in.
+  const scroll=(dir:number)=>{ const el=scrollRef.current; if(el) el.scrollBy({left:dir*(el.clientWidth+24),behavior:"smooth"}); };
   return (
     <section className="py-28 md:py-36" style={{background:WHITE}}>
-      <div className="px-6 md:px-12 lg:px-20 flex flex-col lg:flex-row gap-10 lg:gap-16">
+      {/* Text beside the cards only from 1280px: below that the 320px panel would squeeze three cards. */}
+      <div className="px-6 md:px-12 lg:px-20 flex flex-col xl:flex-row gap-10 xl:gap-16">
         {/* Left text panel */}
-        <div className="lg:w-80 shrink-0 flex flex-col justify-between gap-10">
+        <div className="xl:w-80 shrink-0 flex flex-col justify-between gap-10">
           <div>
             <h2 className="leading-[0.9] mb-4" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.4rem,4.4vw,4rem)"}}>Hot Properties</h2>
             <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>Discover the homes capturing attention right now. This curated selection showcases Nepal's most sought-after properties.</p>
@@ -664,9 +599,10 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
             </div>
           </div>
         </div>
-        {/* Horizontal scroll */}
-        <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
-          {hot.map(p=><HotCard key={p.id} p={p} href={hrefOf("property",{},p.id)} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
+        {/* Horizontal scroll: exactly three cards in view from 640px up (gap-6 = 1.5rem, two gaps
+            = 3rem); on phones one card with the next peeking in, snapping card by card. */}
+        <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-2 flex-1 min-w-0 snap-x snap-mandatory" style={{scrollbarWidth:"none",msOverflowStyle:"none",scrollBehavior:"smooth"}}>
+          {hot.map(p=><HotCard key={p.id} p={p} className="snap-start basis-[82%] sm:basis-[calc((100%-3rem)/3)]" href={hrefOf("property",{},p.id)} onOpen={()=>{setId(p.id);go("property");window.scrollTo(0,0);}}/>)}
         </div>
       </div>
     </section>
@@ -718,7 +654,7 @@ function LocationStripsSection({ go }: { go:Go }) {
         {locs.map(l=>(
           <a key={l.name} href={hrefOf("buy",{district:l.name})} onClick={follow(()=>go("buy",{district:l.name}))} className="relative shrink-0 overflow-hidden group"
             style={{width:`${share}%`,minWidth:"280px",height:tileH}}>
-            <img src={l.img} alt={l.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
+            <img src={cardSrc(l.img)} onError={fullPhotoOnError(l.img)} alt={l.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-[900ms] group-hover:scale-[1.05]"/>
             <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.94) 0%, rgba(10,9,8,0.58) 36%, rgba(10,9,8,0.06) 76%)"}}/>
             <div className="absolute bottom-0 left-0 right-0 p-8 md:p-10 text-left">
               <p className="text-[10px] tracking-[0.28em] uppercase mb-2.5" style={{color:GOLD,...sans}}>{(n=>`${n} ${n===1?"Property":"Properties"}`)(ALL_PROPS.filter(p=>p.district===l.name).length)}</p>
@@ -1109,39 +1045,88 @@ function VideoSection() {
 }
 
 // ─── Testimonials ─────────────────────────────────────────────────────────────
+/**
+ * A swipeable row of testimonials (scroll-snap, no auto-play): one at a time on phones with the next
+ * peeking in, two on tablets, three on laptops. Arrows and dots move it and show where you are; the
+ * arrows hide when every testimonial already fits.
+ */
 function TestimonialsSection() {
-  const [idx,setIdx]=useState(0);
+  const track=useRef<HTMLDivElement>(null);
+  const [active,setActive]=useState(0);
+  const [fits,setFits]=useState(true);
+  const n=TESTIMONIALS.length;
+  // The card nearest the start of the row is the current one (the centre one on phones, via snap).
+  useEffect(()=>{
+    const el=track.current;
+    if(!el) return;
+    const update=()=>{
+      const cards=[...el.children] as HTMLElement[];
+      if(!cards.length) return;
+      // Card positions are measured from the row itself (it is `relative`).
+      const centre=el.scrollLeft+(el.clientWidth<640 ? el.clientWidth/2 : 0);
+      const at=(c:HTMLElement)=>el.clientWidth<640 ? c.offsetLeft+c.offsetWidth/2 : c.offsetLeft;
+      let best=0;
+      cards.forEach((c,i)=>{ if(Math.abs(at(c)-centre)<Math.abs(at(cards[best])-centre)) best=i; });
+      // At the very end of the row the last card counts, even if it can't reach the start.
+      if(el.scrollLeft+el.clientWidth>=el.scrollWidth-2) best=Math.max(best,cards.length-Math.max(1,Math.round(el.clientWidth/cards[0].offsetWidth)));
+      setActive(best);
+      setFits(el.scrollWidth<=el.clientWidth+2);
+    };
+    update();
+    el.addEventListener("scroll",update,{passive:true});
+    window.addEventListener("resize",update);
+    return ()=>{ el.removeEventListener("scroll",update); window.removeEventListener("resize",update); };
+  },[n]);
+  const goTo=(i:number)=>{
+    const el=track.current, card=el?.children[Math.max(0,Math.min(n-1,i))] as HTMLElement|undefined;
+    if(!el||!card) return;
+    const left=el.clientWidth<640 ? card.offsetLeft-(el.clientWidth-card.offsetWidth)/2 : card.offsetLeft;
+    el.scrollTo({left,behavior:"smooth"});
+  };
   // The admin can remove every testimonial; the section then simply isn't shown.
-  if(TESTIMONIALS.length===0) return null;
+  if(n===0) return null;
+  const arrow="w-10 h-10 flex items-center justify-center border transition-all hover:border-current disabled:opacity-30 disabled:cursor-default";
   return (
-    <section className="py-28 md:py-36 border-t" style={{background:WHITE,borderColor:BORDER_L}}>
+    <section className="py-28 md:py-36 border-t overflow-hidden" style={{background:WHITE,borderColor:BORDER_L}} aria-roledescription="carousel" aria-label="What our clients say">
       <div className="px-6 md:px-12 lg:px-20">
-        <div className="flex items-end justify-between gap-8 mb-16">
+        <div className="flex items-end justify-between gap-8 mb-12 md:mb-16">
           <div>
-            <div className="flex items-center gap-3 mb-3"><div style={{width:"2rem",height:"0.5px",background:GOLD}}/><Tag c={GOLD}>Client Stories</Tag></div>
+            <div className="flex items-center gap-3 mb-3"><GoldLine/><Tag c={GOLD}>Client Stories</Tag></div>
             <h2 className="leading-[0.93]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2.2rem,4.2vw,3.4rem)"}}>What Our Clients Say</h2>
           </div>
-          <div className="flex gap-2">
-            <button onClick={()=>setIdx(i=>(i-1+TESTIMONIALS.length)%TESTIMONIALS.length)} aria-label="Previous testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
-            <button onClick={()=>setIdx(i=>(i+1)%TESTIMONIALS.length)} aria-label="Next testimonial" className="w-9 h-9 flex items-center justify-center border transition-all hover:border-current" style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
-          </div>
+          {!fits&&(
+            <div className="flex gap-2 shrink-0">
+              <button onClick={()=>goTo(active-1)} disabled={active===0} aria-label="Previous testimonial" className={arrow} style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronLeft size={16}/></button>
+              <button onClick={()=>goTo(active+1)} disabled={active>=n-1} aria-label="Next testimonial" className={arrow} style={{borderColor:BORDER_L,color:FG_LIGHT}}><ChevronRight size={16}/></button>
+            </div>
+          )}
         </div>
-        <AnimatePresence mode="wait">
-          <motion.div key={idx} className="grid grid-cols-1 lg:grid-cols-3 gap-8" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}} transition={{duration:0.4}}>
+        {/* -mx/px on phones: the row runs to the screen edges so the next card visibly peeks in. */}
+        <div ref={track} className="relative flex gap-4 md:gap-6 lg:gap-8 overflow-x-auto snap-x snap-mandatory -mx-6 px-6 md:mx-0 md:px-0 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{scrollBehavior:"smooth",scrollPaddingInline:"1.5rem"}}>
+          {TESTIMONIALS.map((t,i)=>(
+            <figure key={t.id} aria-roledescription="slide" aria-label={`${i+1} of ${n}`}
+              className={`m-0 shrink-0 snap-center md:snap-start basis-[84%] md:basis-[calc((100%-1.5rem)/2)] lg:basis-[calc((100%-4rem)/3)] flex flex-col p-7 md:p-9 border transition-opacity duration-300 ${i!==active?"max-md:opacity-50":""}`}
+              style={{background:CREAM,borderColor:BORDER_L}}>
+              <div className="flex gap-0.5 mb-5" aria-label={`${t.rating} out of 5 stars`}>{Array.from({length:t.rating}).map((_,j)=><Star key={j} size={15} fill={GOLD} style={{color:GOLD}}/>)}</div>
+              <blockquote className="m-0 flex-1 text-[15px] leading-[1.75] mb-6" style={{color:MUTED_L,...sans}}>“{t.text}”</blockquote>
+              <figcaption className="flex items-center gap-3 pt-5 border-t" style={{borderColor:BORDER_L}}>
+                {t.img
+                  ?<img src={cardSrc(t.img)} onError={fullPhotoOnError(t.img)} alt={t.name} loading="lazy" decoding="async" className="w-10 h-10 object-cover rounded-full"/>
+                  :<span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{background:"#e9e3d8",color:GOLD,...serif}}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
+                <div><p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{t.name}</p><p className="text-[12px]" style={{color:MUTED_L,...sans}}>{t.role}</p></div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        {!fits&&(
+          <div className="mt-8 flex items-center justify-center gap-2" role="group" aria-label="Choose a testimonial">
             {TESTIMONIALS.map((t,i)=>(
-              <div key={t.id} className={`p-9 border transition-all duration-300 ${i===idx?"":"opacity-60"}`} style={{background:i===idx?CREAM:WHITE,borderColor:BORDER_L}}>
-                <div className="flex gap-0.5 mb-5">{Array.from({length:t.rating}).map((_,j)=><Star key={j} size={15} fill={GOLD} style={{color:GOLD}}/>)}</div>
-                <p className="text-[15px] leading-[1.75] mb-6" style={{color:MUTED_L,...sans}}>"{t.text}"</p>
-                <div className="flex items-center gap-3 pt-5 border-t" style={{borderColor:BORDER_L}}>
-                  {t.img
-                    ?<img src={t.img} alt={t.name} loading="lazy" decoding="async" className="w-10 h-10 object-cover rounded-full"/>
-                    :<span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{background:"#e9e3d8",color:GOLD,...serif}}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
-                  <div><p className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{t.name}</p><p className="text-[12px]" style={{color:MUTED_L,...sans}}>{t.role}</p></div>
-                </div>
-              </div>
+              <button key={t.id} type="button" onClick={()=>goTo(i)} aria-label={`Show testimonial ${i+1}`} aria-current={i===active?"true":undefined}
+                className="h-2 rounded-full transition-all duration-300" style={{width:i===active?28:8,background:i===active?GOLD:"rgba(26,22,17,0.18)"}}/>
             ))}
-          </motion.div>
-        </AnimatePresence>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1162,7 +1147,7 @@ function BlogSection({ go }: { go:Go }) {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
           <a href={hrefOf("blog-post",{blog:feat.id})} onClick={follow(()=>go("blog-post",{blog:feat.id}))} className="lg:col-span-3 flex flex-col group text-left">
             <div className="relative overflow-hidden mb-4" style={{aspectRatio:"16/9"}}>
-              <img src={feat.image} alt={feat.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
+              <img src={cardSrc(feat.image)} onError={fullPhotoOnError(feat.image)} alt={feat.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"/>
               <div className="absolute top-4 left-4"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{feat.cat}</span></div>
             </div>
             <p className="flex items-center gap-4 text-[11px] tracking-[0.28em] uppercase mb-2" style={{color:MUTED_L,...sans}}>
@@ -1175,7 +1160,7 @@ function BlogSection({ go }: { go:Go }) {
           <div className="lg:col-span-2 flex flex-col gap-8">
             {rest.map(a=>(
               <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex gap-4 group text-left">
-                <div className="w-36 h-28 overflow-hidden shrink-0"><img src={a.image} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
+                <div className="w-36 h-28 overflow-hidden shrink-0"><img src={cardSrc(a.image)} onError={fullPhotoOnError(a.image)} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/></div>
                 <div>
                   <span className="text-[10px] tracking-[0.26em] uppercase" style={{color:GOLD,...sans}}>{a.cat}</span>
                   <p className="text-[15px] leading-snug mt-1 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</p>
@@ -1251,6 +1236,9 @@ function CallbackSection() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUY / RENT PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
+/** Buy / Rent list and grid views: 12 properties a page (four rows of three in the grid). */
+const RESULTS_PER_PAGE=12;
+
 function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
   const [view,setView]=useState<"list"|"grid"|"map">(nav.view??"list");
   const [typeF,setTypeF]=useState(nav.type??"All Types");
@@ -1260,6 +1248,12 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
   // Free-text search and sort (see components/ui/results-toolbar.tsx).
   const [query,setQuery]=useState(nav.q??"");
   const [sortBy,setSortBy]=useState<SortKey>("newest");
+  // Results page (list and grid; the map shows every pin). Back to page 1 whenever what is listed
+  // changes, but not on the first render, where it may come from the address (?p=3).
+  const [pageNo,setPageNo]=useState(nav.p??1);
+  const listKey=[typeF,distF,priceF,query.trim(),sortBy].join("|");
+  const shownKey=useRef(listKey);
+  useEffect(()=>{ if(shownKey.current!==listKey){ shownKey.current=listKey; setPageNo(1); } },[listKey]);
   const resultsRef=useRef<HTMLDivElement>(null);
   // Mirror the filters in the address (keepFilters), so reload, Back and a shared link keep them.
   // Debounced: browsers limit how often the address can change, and search updates per keystroke.
@@ -1269,9 +1263,10 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
       district:distF!=="All" ? distF : undefined,
       q:query.trim() || undefined,
       view:view!=="list" ? view : undefined,
+      p:pageNo>1 ? pageNo : undefined,
     }),300);
     return ()=>window.clearTimeout(t);
-  },[page,typeF,distF,query,view]);
+  },[page,typeF,distF,query,view,pageNo]);
   const preset=nav.preset;
   const ranges=PRICE_RANGES[listing];
   const range=ranges.find(r=>r.label===priceF);
@@ -1291,7 +1286,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
     if(preset==="new"&&!(p.badge==="New"||p.badge==="Prime")) return false;
     if(typeF!=="All Types"&&p.type!==typeF) return false;
     if(distF!=="All"&&p.district!==distF) return false;
-    if(range&&(p.priceNum<range.min||p.priceNum>range.max)) return false;
+    if(!inPriceRange(p.priceNum,range)) return false;
     if(!matchesQuery(p)) return false;
     return true;
   }).sort((a,b)=>{
@@ -1302,6 +1297,10 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
     const rank=(p:Prop)=>p.badge==="New"?0:p.badge==="Prime"?1:p.featured?2:3;
     return rank(a)-rank(b) || b.id-a.id;
   });
+  // This page of the results (a page number from an old link that is now too high shows the last page).
+  const current=Math.min(pageNo,pageCount(props.length,RESULTS_PER_PAGE));
+  const onPage=paginate(props,current,RESULTS_PER_PAGE);
+  const turnPage=(n:number)=>{ setPageNo(n); resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}); };
   const types=PROP_TYPES;
   const dists=["All",...AREAS.filter(a=>ALL_PROPS.some(x=>x.district===a&&x.listing===listing))];
   const dirty=typeF!=="All Types"||distF!=="All"||priceF!=="Any Price"||q!=="";
@@ -1414,15 +1413,15 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
           <MapView props={props} go={go} setId={setId}/>
         ) : view==="grid" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10">
-            {props.map(p=><PropertyCard key={p.id} p={p} go={go} setId={setId} light/>)}
+            {onPage.map(p=><PropertyCard key={p.id} p={p} go={go} setId={setId} light/>)}
           </div>
         ) : (
           <div className="flex flex-col gap-0 border-t" style={{borderColor:BORDER_L}}>
-            {props.map(p=>(
+            {onPage.map(p=>(
               <div key={p.id} className="flex flex-col sm:flex-row sm:items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
                 style={{borderColor:BORDER_L}} onClick={()=>{setId(p.id);go("property");}}>
                 <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-                  <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
+                  <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
                     {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
@@ -1461,6 +1460,9 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
             ))}
           </div>
         )}
+        {view!=="map"&&props.length>RESULTS_PER_PAGE&&(
+          <div className="mt-8"><ListPagination page={current} total={props.length} perPage={RESULTS_PER_PAGE} onPage={turnPage} noun="properties"/></div>
+        )}
       </div>
     </div>
   );
@@ -1474,22 +1476,29 @@ function mapCardOf(p:Prop) {
   return { title:p.title, price:p.price, image:p.hero, frame:frameOf(p), location:p.location, listing:p.listing, facts };
 }
 
+/** Map view height from md up: the screen minus the navbar (80px) and the sticky filter bar (~120px). */
+const MAP_VIEW_H="md:h-[clamp(440px,calc(100svh_-_216px),720px)]";
+
 function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=>void }) {
   const [hovPin,setHovPin]=useState<number|null>(null);
   const [activeCard,setActiveCard]=useState<number|null>(null);
   const mapItems=useMemo(()=>props.flatMap(p=>{ const area=approxFor(p); return area?[{ id:p.id, area, ...mapCardOf(p), exact:import.meta.env.DEV ? exactFor(p) : null }]:[]; }),[props]);
   const unmapped=props.length-mapItems.length;
+  // Desktop: list beside the map, both as tall as the screen below the navbar and the sticky filter
+  // bar (MAP_VIEW_H), so the whole map fits on screen. Phones: the map on top, the list under it.
   return (
-    <div className="flex gap-0 border h-[760px] overflow-hidden" style={{borderColor:BORDER_L}}>
+    // Phones: the map and the list are separate blocks with room between them, and the list is cards
+    // with gaps. From md up: one bordered panel, list beside the map.
+    <div className={`flex flex-col md:flex-row gap-6 md:gap-0 md:border md:overflow-hidden ${MAP_VIEW_H}`} style={{borderColor:BORDER_L}}>
       {/* Sidebar list */}
-      <div className="w-96 shrink-0 overflow-y-auto border-r" style={{borderColor:BORDER_L}}>
+      <div className="order-2 md:order-1 w-full md:w-96 shrink-0 flex flex-col gap-4 md:gap-0 md:block md:overflow-y-auto md:border-r" style={{borderColor:BORDER_L}}>
         {props.map(p=>(
-          <div key={p.id} className={`flex flex-col cursor-pointer border-b transition-all ${activeCard===p.id?"bg-[#f0ebe0]":""}`}
+          <div key={p.id} className={`flex flex-col cursor-pointer border md:border-0 md:border-b transition-all ${activeCard===p.id?"bg-[#f0ebe0]":"bg-white md:bg-transparent"}`}
             style={{borderColor:BORDER_L}}
             onMouseEnter={()=>{setActiveCard(p.id);setHovPin(p.id);}} onMouseLeave={()=>{setActiveCard(null);setHovPin(null);}}
             onClick={()=>{setId(p.id);go("property");}}>
             <div className="relative overflow-hidden" style={{height:180}}>
-              <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
+              <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
               <div className="absolute bottom-2 left-2"><span className="text-base font-semibold px-1.5 py-0.5 text-[15px]" style={{background:"rgba(255,255,255,0.95)",color:FG_LIGHT,...sans}}>{p.price}</span></div>
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <FavButton id={p.id} light/>
@@ -1509,11 +1518,12 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
       </div>
       {/* Map: price markers when zoomed out, the approximate areas from street level.
           Never the exact points (data/maps.ts). Hovering a card highlights it on the map. */}
-      <div className="flex-1 relative overflow-hidden" style={{background:"#e8e4df"}}>
+      <div className="order-1 md:order-2 h-[62svh] min-h-[340px] md:h-auto md:min-h-0 flex-none md:flex-1 relative overflow-hidden border md:border-0" style={{background:"#e8e4df",borderColor:BORDER_L}}>
         <PropertiesMap items={mapItems} hoveredId={hovPin} onHover={setHovPin} onOpen={id=>{setId(id);go("property");}}
           fallback={<div className="absolute inset-0 flex items-center justify-center text-[14px]" style={{color:MUTED_L,...sans}}>The map could not be loaded.</div>}/>
         {unmapped>0&&(
-          <div className="absolute bottom-3 left-3 z-10 px-3 py-2 text-[12px] border bg-white/95" style={{borderColor:BORDER_L,color:MUTED_L,...sans}}>
+          // Under the Map / Satellite switch; the bottom corners hold the Mapbox logo and credits.
+          <div className="absolute top-[52px] left-2.5 z-10 px-3 py-2 text-[12px] border bg-white/95" style={{borderColor:BORDER_L,color:MUTED_L,...sans}}>
             {unmapped} listing{unmapped===1?" has":"s have"} no map location yet
           </div>
         )}
@@ -1527,6 +1537,8 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
 // ═══════════════════════════════════════════════════════════════════════════════
 function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { propertyId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
   const p=ALL_PROPS.find(x=>x.id===propertyId)||ALL_PROPS[0];
+  // The location map is further down: get its code ready while the visitor looks at the photos.
+  useEffect(()=>{ prefetchMapCode(); },[]);
   // Visitors get only what the admin chose to show; "Open in Google Maps" goes to that point, never the admin's link.
   const area=approxFor(p);
   const mapOpen=area ? googleMapsAt(area.centre) : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${placeLabel(p.location,p.district)}, Nepal`)}`;
@@ -1617,7 +1629,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       </div>
       {/* Hero gallery */}
       <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}} {...swipe}>
-        <img src={p.gallery[galIdx]} alt={p.title} className="w-full h-full object-cover" {...{fetchpriority:"high"}}/>
+        <img src={p.gallery[galIdx]} srcSet={`${cardSrc(p.gallery[galIdx])} 800w, ${p.gallery[galIdx]} 2000w`} sizes="100vw" onError={fullPhotoOnError(p.gallery[galIdx])} alt={p.title} className="w-full h-full object-cover" {...{fetchpriority:"high"}}/>
         {/* The whole photo opens the full-screen view (the gradient sits on top, so it is the button). */}
         <button type="button" onClick={()=>setLightbox(true)} aria-label={`View photo ${galIdx+1} of ${photos} full screen`}
           className="absolute inset-0 w-full h-full cursor-zoom-in" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
@@ -2004,6 +2016,7 @@ function AboutPage({ go }: { go:Go }) {
 // Everyone, however many there are: department chips and a search instead of a carousel, so
 // a visitor can find the advisor they need (a language, an area, lettings…) rather than
 // waiting for faces to rotate past. Cards open the same profile pop-up as the About page.
+const TEAM_PER_PAGE=12;
 function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) {
   const [dept,setDept]=useState("All");
   const [q,setQ]=useState("");
@@ -2013,6 +2026,13 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
   const shown=TEAM.filter(m=>
     (dept==="All"||m.department===dept) &&
     (!s||[m.name,m.role,m.department??"",...(m.languages??[]),...(m.specialities??[])].some(v=>v.toLowerCase().includes(s))));
+  // 12 a page; a new department or search starts again at page 1. The profile pop-up still steps
+  // through everyone shown (its index is the position in `shown`, not on the page).
+  const [pageNo,setPageNo]=useState(1);
+  const { listTop, turn }=usePageTurner(setPageNo);
+  useEffect(()=>{ setPageNo(1); },[dept,s]);
+  const current=Math.min(pageNo,pageCount(shown.length,TEAM_PER_PAGE));
+  const first=(current-1)*TEAM_PER_PAGE;
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 pt-10 pb-14 md:pb-16 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
@@ -2042,6 +2062,7 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
               className="w-full border pl-11 pr-4 py-3 text-[14px] outline-none transition-colors focus:border-[#8a2030]" style={{borderColor:BORDER_L,background:WHITE,color:FG_LIGHT,...sans}}/>
           </div>
         </div>
+        <div ref={listTop} className="scroll-mt-40" aria-hidden="true"/>
         {shown.length===0 ? (
           <div className="py-20 text-center">
             <p className="text-2xl mb-2" style={{color:FG_LIGHT,...serif}}>No one matches that</p>
@@ -2049,8 +2070,11 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-12">
-            {shown.map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(i)}/>)}
+            {paginate(shown,current,TEAM_PER_PAGE).map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(first+i)}/>)}
           </div>
+        )}
+        {shown.length>TEAM_PER_PAGE&&(
+          <div className="mt-12"><ListPagination page={current} total={shown.length} perPage={TEAM_PER_PAGE} noun="advisors" onPage={turn}/></div>
         )}
       </div>
       <TeamProfile members={shown} index={profile} onIndex={setProfile} onClose={()=>setProfile(null)}/>
@@ -2061,7 +2085,11 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BLOG PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
+/** The Journal page: nine articles a page (three rows of three), newest first as the admin ordered them. */
+const ARTICLES_PER_PAGE=9;
 function BlogPage({ go }: { go:Go }) {
+  const [pageNo,setPageNo]=useState(1);
+  const current=Math.min(pageNo,pageCount(BLOGS.length,ARTICLES_PER_PAGE));
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-16 md:py-20 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
@@ -2071,10 +2099,10 @@ function BlogPage({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20 py-16">
         {BLOGS.length===0&&<p className="text-[15px]" style={{color:MUTED_L,...sans}}>No articles yet. Please check back soon.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 md:gap-14">
-          {BLOGS.map(a=>(
+          {paginate(BLOGS,current,ARTICLES_PER_PAGE).map(a=>(
             <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
-                <img src={a.image} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
+                <img src={cardSrc(a.image)} onError={fullPhotoOnError(a.image)} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
               <span className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{color:GOLD,...sans}}>{a.cat}</span>
               <h3 className="text-[1.05rem] leading-snug mb-2 group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{a.title}</h3>
@@ -2086,6 +2114,10 @@ function BlogPage({ go }: { go:Go }) {
             </a>
           ))}
         </div>
+        {BLOGS.length>ARTICLES_PER_PAGE&&(
+          <div className="mt-14"><ListPagination page={current} total={BLOGS.length} perPage={ARTICLES_PER_PAGE} noun="articles"
+            onPage={n=>{ setPageNo(n); window.scrollTo({top:0,behavior:"smooth"}); }}/></div>
+        )}
       </div>
     </div>
   );
@@ -2113,7 +2145,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
         <div className="ml-auto pl-4 shrink-0 max-w-[45%]"><BackButton label={backLabel} onClick={onBack} compact/></div>
       </div>
       <div className="relative overflow-hidden" style={{height:"52vh",minHeight:320}}>
-        <img src={a.image} alt={a.title} className="w-full h-full object-cover"/>
+        <img src={a.image} srcSet={`${cardSrc(a.image)} 800w, ${a.image} 2000w`} sizes="100vw" onError={fullPhotoOnError(a.image)} alt={a.title} className="w-full h-full object-cover"/>
         <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(14,13,11,0.55) 0%, transparent 60%)"}}/>
         <div className="absolute top-5 left-6 md:left-12 lg:left-20"><span className="px-3 py-1 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{a.cat}</span></div>
       </div>
@@ -2148,7 +2180,7 @@ function BlogPostPage({ id, go, onBack, backLabel }: { id:number; go:Go; onBack:
           {more.map(b=>(
             <a key={b.id} href={hrefOf("blog-post",{blog:b.id})} onClick={follow(()=>go("blog-post",{blog:b.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
-                <img src={b.image} alt={b.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
+                <img src={cardSrc(b.image)} onError={fullPhotoOnError(b.image)} alt={b.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
               </div>
               <span className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{color:GOLD,...sans}}>{b.cat}</span>
               <h3 className="text-[1.05rem] leading-snug group-hover:text-[#8a2030] transition-colors" style={{color:FG_LIGHT,...serif}}>{b.title}</h3>
@@ -2576,6 +2608,7 @@ function RegisterPage({ go, returnLabel=null, onReturn }: { go:Go } & SignInRetu
             </div>
             {err&&<p className="text-[14px]" style={{color:MAROON,...sans}}>{err}</p>}
             <button onClick={submit} disabled={busy} className="py-4 mt-2 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{busy?"Creating Account...":"Create Account"}</button>
+            <LegalConsent action="creating an account"/>
             <p className="text-center text-[14px]" style={{color:MUTED_L,...sans}}>Already registered? <button onClick={()=>go("login")} className="transition-colors hover:text-[#8a2030]" style={{color:FG_LIGHT}}>Sign In</button></p>
           </div>
         </>)}
@@ -2655,194 +2688,7 @@ function ResetPasswordPage({ go, token }: { go:Go; token:string }) {
 
 // The admin area (Dashboard, Users, Reviews) lives in src/app/admin/.
 
-// ─── Free Listing Page ─────────────────────────────────────────────────────────
-// Signed-in users only: the listing is tied to the account that sent it (the API reads it from
-// the token). The contact fields start from the account, and the seller can change them.
-function FreeListingPage({ go }: { go:Go }) {
-  const { user, status } = useAuth();
-  const [vals,setVals]=useState<Record<string,string>>({});
-  useEffect(()=>{
-    if(user) setVals(o=>({ "Contact Name":user.name??"", "Contact Phone":user.phone, "Contact Email":user.email, ...o }));
-  },[user]);
-  const [district,setDistrict]=useState("");
-  const [images,setImages]=useState<PickedImage[]>([]);
-  const [amenities,setAmenities]=useState<string[]>([]);
-  const [err,setErr]=useState("");
-  const [done,setDone]=useState(false);
-  // While sending: which photo is uploading ("Uploading photo 2 of 4…"), then the listing itself.
-  const [sending,setSending]=useState("");
-
-  const textFields=[
-    {l:"Property Title",t:"text",ph:"e.g. Patan 5-Bedroom Villa"},
-    {l:"Contact Name",t:"text",ph:"Your name"},
-    {l:"Contact Phone",t:"tel",ph:"+977 ..."},
-    {l:"Contact Email",t:"email",ph:"your@email.com"},
-    {l:"Price (NPR)",t:"text",ph:"e.g. 5,00,00,000"},
-    {l:"Built Area",t:"text",ph:"e.g. 3,500 sq.ft"},
-    {l:"Land Area",t:"text",ph:"e.g. 8 Ropani or 4-4-0-1"},
-    {l:"Build Year",t:"number",ph:"2020"},
-  ];
-  const set=(k:string,v:string)=>setVals(o=>({...o,[k]:v}));
-  const toggleAmenity=(name:string)=>
-    setAmenities(a=>a.includes(name)?a.filter(x=>x!==name):[...a,name]);
-
-  const submit=async()=>{
-    if(sending) return;
-    const missing=["Property Title","Contact Name","Contact Phone"].find(k=>!(vals[k]||"").trim());
-    if(missing){ setErr(`Please fill in "${missing}".`); return; }
-    if(!district.trim()){ setErr("Please choose a district."); return; }
-    if(images.length===0){ setErr("Please add at least one photo — listings with photos get far more enquiries."); return; }
-    // Lands in Admin → Free Listings for review; the seller's details stay private.
-    const v=(k:string)=>(vals[k]||"").trim();
-    setErr("");
-    try {
-      // The photos go up first (one at a time, in order: the first is the cover), then the listing.
-      const photos:string[]=[];
-      for(const [i,img] of images.entries()){
-        setSending(`Uploading photo ${i+1} of ${images.length}…`);
-        photos.push(await uploadListingPhoto(img.file));
-      }
-      setSending("Sending your listing…");
-      await submitListing({sellerName:v("Contact Name"),sellerPhone:v("Contact Phone"),sellerEmail:v("Contact Email"),
-        title:v("Property Title"),listing:v("Listing Type")==="For Rent"?"For Rent":"For Sale",type:v("Property Type")&&v("Property Type")!=="All Types"?v("Property Type"):"House/Bungalow",
-        district,price:v("Price (NPR)"),builtArea:v("Built Area"),landArea:v("Land Area"),buildYear:v("Build Year"),description:v("desc"),
-        amenities,photos});
-      setDone(true);
-    } catch(e) {
-      setErr(sendError(e));
-    } finally {
-      setSending("");
-    }
-  };
-
-  return (
-    <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
-      <div className="px-6 md:px-12 lg:px-20 py-16 md:py-20 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
-        <div className="flex items-center gap-3 mb-4"><GoldLine/><Tag c={GOLD}>List Your Property</Tag></div>
-        <h1 className="leading-[0.92]" style={{color:FG_LIGHT,...serif,fontSize:"clamp(2rem,4vw,3.5rem)"}}>Free Property Listing</h1>
-        <p className="mt-3 text-[15px]" style={{color:MUTED_L,...sans}}>Reach Nepal&apos;s most discerning buyers and renters. List your property with Nepal Bhoomi at no charge.</p>
-      </div>
-
-      <div className="px-6 md:px-12 lg:px-20 py-16 grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <div className="lg:col-span-2 border p-8" style={{background:WHITE,borderColor:BORDER_L}}>
-          {!user?(
-            <div className="flex flex-col items-center text-center gap-4 py-16">
-              <Lock size={32} style={{color:GOLD}}/>
-              <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>{status==="loading"?"Checking your account…":"Log in to list your property"}</h2>
-              {status!=="loading"&&<>
-                <p className="text-[15px] leading-relaxed max-w-md" style={{color:MUTED_L,...sans}}>
-                  Free listings are for members, so our team knows who sent each property. It takes a minute to create an account.
-                </p>
-                <div className="flex flex-wrap justify-center gap-3 mt-2">
-                  <button onClick={requestSignIn} className="px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Log In</button>
-                  <button onClick={()=>go("register")} className="px-8 py-4 border text-[11px] tracking-[0.25em] uppercase transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>Create Account</button>
-                </div>
-              </>}
-            </div>
-          ):done?(
-            <div className="flex flex-col items-center text-center gap-4 py-16">
-              <CheckCircle2 size={36} style={{color:GOLD}}/>
-              <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Listing submitted</h2>
-              <p className="text-[15px] leading-relaxed max-w-md" style={{color:MUTED_L,...sans}}>
-                Thank you. Our listings team will review {vals["Property Title"]} in {district} with {images.length} photo{images.length===1?"":"s"} and contact {vals["Contact Name"]} within one working day.
-              </p>
-              <button onClick={()=>{ setDone(false); setVals(user?{ "Contact Name":user.name??"", "Contact Phone":user.phone, "Contact Email":user.email }:{}); setDistrict(""); setImages([]); setAmenities([]); }} className="mt-2 px-8 py-4 text-[11px] tracking-[0.25em] uppercase transition-all hover:brightness-110" style={{background:MAROON,color:WHITE,...sans}}>Submit Another</button>
-            </div>
-          ):(<>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {textFields.map(f=>(
-                <div key={f.l} className="flex flex-col gap-1.5">
-                  <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>{f.l}</label>
-                  <input type={f.t} placeholder={f.ph} value={vals[f.l]||""} onChange={e=>set(f.l,e.target.value)} className="border px-3 py-3 text-[15px] outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
-                </div>
-              ))}
-
-              {[{l:"Property Type",opts:PROPERTY_TYPES},{l:"Listing Type",opts:["For Sale","For Rent"]}].map(s=>(
-                <div key={s.l} className="flex flex-col gap-1.5">
-                  <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>{s.l}</label>
-                  <div className="relative">
-                    <select value={vals[s.l]||""} onChange={e=>set(s.l,e.target.value)} className="w-full border px-3 py-3 text-[15px] outline-none appearance-none cursor-pointer" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}>
-                      {s.opts.map(t=><option key={t}>{t}</option>)}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:MUTED_L}}/>
-                  </div>
-                </div>
-              ))}
-
-              {/* Typeahead over all 77 districts, replacing the long dropdown. */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>District</label>
-                <DistrictCombobox value={district} onChange={setDistrict} placeholder="Type to search all 77 districts"/>
-              </div>
-
-              <div className="sm:col-span-2 flex flex-col gap-1.5">
-                <label className="text-[10px] tracking-[0.28em] uppercase" style={{color:MUTED_L,...sans}}>Property Description</label>
-                <textarea rows={4} value={vals["desc"]||""} onChange={e=>set("desc",e.target.value)} className="border px-3 py-3 text-[15px] outline-none resize-none transition-all focus:border-[#8a2030]" placeholder="Describe your property..." style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
-              </div>
-            </div>
-
-            {/* Photos */}
-            <div className="mt-8 pt-8 border-t" style={{borderColor:BORDER_L}}>
-              <div className="flex items-baseline justify-between gap-3 mb-4">
-                <p className="text-[11px] tracking-[0.3em] uppercase" style={{color:GOLD,...sans}}>Photos</p>
-                <span className="text-[12px]" style={{color:MUTED_L,...sans}}>First photo becomes the cover</span>
-              </div>
-              <ImageUpload images={images} onChange={setImages}/>
-            </div>
-
-            {/* Amenities */}
-            <div className="mt-8 pt-8 border-t" style={{borderColor:BORDER_L}}>
-              <div className="flex items-baseline justify-between gap-3 mb-5">
-                <p className="text-[11px] tracking-[0.3em] uppercase" style={{color:GOLD,...sans}}>Amenities</p>
-                <span className="text-[12px]" style={{color:MUTED_L,...sans}}>{amenities.length} selected</span>
-              </div>
-              {AMENITY_GROUPS.map(group=>(
-                <div key={group} className="mb-6 last:mb-0">
-                  <p className="text-[10px] tracking-[0.24em] uppercase mb-3" style={{color:MUTED_L,...sans}}>{group}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {AMENITIES.filter(a=>a.group===group).map(({name,Icon})=>{
-                      const on=amenities.includes(name);
-                      return (
-                        <button
-                          key={name} type="button" onClick={()=>toggleAmenity(name)}
-                          aria-pressed={on}
-                          className="flex items-center gap-2 px-3.5 py-2.5 border text-[13px] transition-all"
-                          style={{
-                            borderColor: on?MAROON:BORDER_L,
-                            background: on?"rgba(138,32,48,0.06)":"transparent",
-                            color: on?MAROON:MUTED_L, ...sans,
-                          }}
-                        >
-                          <Icon size={17}/>{name}
-                          {on && <Check size={13}/>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {err && <p className="mt-6 text-[14px]" style={{color:MAROON,...sans}}>{err}</p>}
-            <button onClick={()=>void submit()} disabled={!!sending} className="mt-6 w-full py-4 text-[12px] tracking-[0.25em] uppercase transition-all hover:brightness-110 disabled:opacity-60" style={{background:MAROON,color:WHITE,...sans}}>{sending||"Submit Free Listing"}</button>
-          </>)}
-        </div>
-
-        <div className="flex flex-col gap-5">
-          <div className="border p-6" style={{background:CREAM,borderColor:BORDER_L}}>
-            <p className="text-[11px] tracking-[0.3em] uppercase mb-4" style={{color:GOLD,...sans}}>Why List With Us?</p>
-            {["Free to list","Reach premium buyers","Professional presentation","Verified listing badge","Agent follow-up support"].map(b=>(
-              <div key={b} className="flex items-center gap-3 py-3 border-b" style={{borderColor:BORDER_L}}>
-                <div className="w-5 h-5 flex items-center justify-center shrink-0" style={{background:"rgba(138,32,48,0.1)",color:MAROON}}><CheckCircle2 size={15}/></div>
-                <span className="text-[14px]" style={{color:MUTED_L,...sans}}>{b}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// The Free Listing page lives in pages/free-listing/FreeListingPage.tsx.
 
 // ─── Homepage ─────────────────────────────────────────────────────────────────
 function HomePage({ go, setId, scrollTo }: { go:Go; setId:(id:number)=>void; scrollTo?:string }) {
@@ -2894,7 +2740,12 @@ function visitName(v:Visit):string {
       case "register": return "Register";
       case "free-listing": return "Free Listing";
       case "reset-password": return "Reset Password";
-      case "admin": case "admin-users": case "admin-reviews": case "admin-listings": case "admin-messages": return "Admin";
+      case "privacy": return "Privacy Policy";
+      case "terms": return "Terms of Use";
+      case "faq": return "FAQ";
+      case "admin": case "admin-users": case "admin-reviews": case "admin-messages": return "Admin";
+      case "admin-listings": return "Free Listings";
+      case "admin-listing": return "Free Listing";
     }
   })();
 }
@@ -2911,11 +2762,13 @@ function visitMeta(v:Visit):PageMeta|null {
   if(v.page==="property"){ const p=ALL_PROPS.find(x=>x.id===v.selId); if(p) return propertyMeta(SITE_URL,p); if(propertiesStatus!=="ready") return null; }
   if(v.page==="blog-post"){ const b=BLOGS.find(x=>x.id===v.blogId); if(b) return articleMeta(SITE_URL,{ ...b, publishedAt:b.publishedAt??null }); if(articlesStatus!=="ready") return null; }
   // Area pages show the same properties as Buy for that district.
-  const path=v.page==="area" ? "/buy" : PAGE_PATHS[v.page] ?? "/";
+  const path=v.page==="area" ? "/buy" : v.page==="admin-listing" ? "/admin" : PAGE_PATHS[v.page] ?? "/";
   const m=staticPageMeta(SITE_URL, path, v.nav.district);
   // Removed (or a mistyped link): the page's own name, kept out of search results.
   if(v.page==="property"||v.page==="blog-post") return { ...m, title:`${visitName(v)} | Nepal Bhoomi`, path:urlOf(v), noindex:true, jsonLd:[] };
   if(v.page==="reset-password") return { ...m, noindex:true };
+  // The FAQ's questions as structured data, so search results can show them.
+  if(v.page==="faq") return { ...m, jsonLd:[...m.jsonLd, faqLd(FAQS)] };
   return m;
 }
 
@@ -2926,11 +2779,12 @@ const PAGE_PATHS: Partial<Record<Page,string>> = {
   home:"/", buy:"/buy", rent:"/rent", hot:"/hot", "new-listings":"/new-listings", map:"/map", area:"/area",
   about:"/about", team:"/team", blog:"/blog", services:"/services", emi:"/emi-calculator", contact:"/contact",
   login:"/login", register:"/register", "free-listing":"/free-listing", videos:"/videos",
+  privacy:"/privacy-policy", terms:"/terms", faq:"/faq",
   admin:"/admin", "admin-users":"/admin/users", "admin-reviews":"/admin/reviews", "admin-listings":"/admin/listings", "admin-messages":"/admin/messages",
   // reset-password has none: the emailed token is single-use, so a reload there opens the home page.
 };
 /** The filters that belong in the address bar. scrollTo and blog are one-off instructions. */
-const QUERY_KEYS=["type","district","view","preset","q"] as const;
+const QUERY_KEYS=["type","district","view","preset","q","p"] as const;
 
 /** e.g. /property/12-sauraha-riverside-retreat, /blog/3-vastu-shastra…, /buy?district=Lalitpur */
 function urlOf(v:Visit):string {
@@ -2938,6 +2792,7 @@ function urlOf(v:Visit):string {
   // Same addresses as the pre-rendered pages and the sitemap (src/seo/meta.ts).
   if(v.page==="property") path=propertyPath(ALL_PROPS.find(x=>x.id===v.selId) ?? { id:v.selId });
   if(v.page==="blog-post") path=articlePath(BLOGS.find(x=>x.id===v.blogId) ?? { id:v.blogId });
+  if(v.page==="admin-listing") path=`/admin/listings/${v.selId}`;
   const q=new URLSearchParams();
   for(const k of QUERY_KEYS){ const val=v.nav[k]; if(val) q.set(k,String(val)); }
   const s=q.toString();
@@ -2955,6 +2810,7 @@ function visitFromUrl(pathname:string, search:string):Visit {
   const path=pathname.replace(/\/+$/,"")||"/";
   const prop=path.match(/^\/property\/(\d+)/); if(prop) return { ...home, page:"property", selId:Number(prop[1]) };
   const post=path.match(/^\/blog\/(\d+)/); if(post) return { ...home, page:"blog-post", blogId:Number(post[1]) };
+  const listing=path.match(/^\/admin\/listings\/(\d+)$/); if(listing) return { ...home, page:"admin-listing", selId:Number(listing[1]) };
   const page=(Object.keys(PAGE_PATHS) as Page[]).find(p=>PAGE_PATHS[p]===path);
   if(!page) return home;
   const q=new URLSearchParams(search); const nav:NavOpts={};
@@ -2964,6 +2820,8 @@ function visitFromUrl(pathname:string, search:string):Visit {
   if(view==="list"||view==="grid"||view==="map") nav.view=view;
   if(preset==="hot"||preset==="new") nav.preset=preset;
   if(q.get("q")) nav.q=q.get("q")!;
+  const pageNo=Number(q.get("p"));
+  if(Number.isInteger(pageNo)&&pageNo>1) nav.p=pageNo;
   return { ...home, page, nav };
 }
 
@@ -2976,7 +2834,7 @@ const historyEntry=():HistoryEntry|null=>{ const s=window.history.state as Histo
  * so reload, Back and a copied link keep them. Replaces the entry instead of adding one, and
  * doesn't touch App's nav, which would re-mount the page mid-typing.
  */
-function keepFilters(page:Page, filters:Pick<NavOpts,"type"|"district"|"q"|"view">) {
+function keepFilters(page:Page, filters:Pick<NavOpts,"type"|"district"|"q"|"view"|"p">) {
   const h=historyEntry();
   // The visitor may already have moved on (the call is debounced): leave other pages' entries alone.
   if(!h||h.v.page!==page) return;
@@ -3081,7 +2939,7 @@ export default function App() {
     const toSel=nextSelId.current ?? from.selId;
     nextSelId.current=null;
     const same=from.page===p && JSON.stringify(from.nav)===JSON.stringify(o)
-      && (o.blog===undefined || o.blog===from.blogId) && (p!=="property" || toSel===from.selId);
+      && (o.blog===undefined || o.blog===from.blogId) && ((p!=="property"&&p!=="admin-listing") || toSel===from.selId);
     if(!same){
       const cur=historyEntry(); const i=cur?.i ?? 0;
       // The entry's nav, not App's: Buy/Rent keep their own filter changes there (keepFilters).
@@ -3188,7 +3046,11 @@ export default function App() {
     else go("home",{scrollTo:"enquiry"});
   },[page,go]);
   // What the admin pages need: page changes, and opening one listing on the public site.
-  const adminNav=useMemo<AdminNav>(()=>({ go:p=>go(p), openProperty:id=>{ setSelIdFromLink(id); go("property"); } }),[go,setSelIdFromLink]);
+  const adminNav=useMemo<AdminNav>(()=>({
+    go:p=>go(p),
+    openProperty:id=>{ setSelIdFromLink(id); go("property"); },
+    openListing:id=>{ setSelIdFromLink(id); go("admin-listing"); },
+  }),[go,setSelIdFromLink]);
   return (
     <AuthProvider>
     <div className="min-h-screen bg-background">
@@ -3196,7 +3058,6 @@ export default function App() {
         {showLoader&&<LoadingScreen key="loader" onDone={handleDone}/>}
       </AnimatePresence>
       <PropertySync/>
-      <DashainFestival page={page} ready={!showLoader} go={p=>go(p)}/>{/* Dashain 2083: remove after the festival */}
       <motion.div animate={{opacity:showLoader?0:1}} transition={{duration:0.6}} style={{pointerEvents:showLoader?"none":"auto"}}>
         <Navbar page={page} go={go}/>
         <AnimatePresence mode="wait">
@@ -3226,7 +3087,12 @@ export default function App() {
             {page==="contact"&&<ContactPage/>}
             {page==="login"&&<LoginPage go={go} googleResult={googleResult} returnLabel={returnLabel} onReturn={returnAfterSignIn}/>}
             {page==="register"&&<RegisterPage go={go} returnLabel={returnLabel} onReturn={returnAfterSignIn}/>}
-            {page==="free-listing"&&<FreeListingPage go={go}/>}
+            {page==="free-listing"&&(
+              // Its own download (the form, the draft store), fetched only when someone opens the page.
+              <Suspense fallback={<div className="min-h-screen pt-20" style={{background:BG_LIGHT}}/>}>
+                <FreeListingPage onCreateAccount={()=>go("register")}/>
+              </Suspense>
+            )}
             {page.startsWith("admin")&&(
               <Suspense fallback={<div className="min-h-screen pt-20 flex items-center justify-center" style={{background:BG_LIGHT}}><p className="text-[15px]" style={{color:MUTED_L,...sans}}>Loading the admin…</p></div>}>
                 {page==="admin"&&<AdminDashboard nav={adminNav}/>}
@@ -3234,6 +3100,12 @@ export default function App() {
                 {page==="admin-reviews"&&<AdminReviews nav={adminNav}/>}
                 {page==="admin-messages"&&<AdminMessages nav={adminNav}/>}
                 {page==="admin-listings"&&<AdminListings nav={adminNav}/>}
+                {page==="admin-listing"&&<AdminListingPage id={selId} nav={adminNav}/>}
+              </Suspense>
+            )}
+            {(page==="privacy"||page==="terms"||page==="faq")&&(
+              <Suspense fallback={<div className="min-h-screen pt-20" style={{background:BG_LIGHT}}/>}>
+                <LegalPage kind={page}/>
               </Suspense>
             )}
             {page==="reset-password"&&<ResetPasswordPage go={go} token={resetToken??""}/>}

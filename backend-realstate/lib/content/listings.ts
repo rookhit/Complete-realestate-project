@@ -2,7 +2,7 @@ import { Prisma, type ListingStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/auth/guards";
 import { isDistrict } from "@/lib/content/districts";
-import type { ListingInput, ListingPatch } from "@/lib/validation/listing";
+import { listingDetailsSchema, NO_DETAILS, type ListingDetails, type ListingInput, type ListingPatch } from "@/lib/validation/listing";
 
 // Free listings (ListingSubmission): properties signed-in sellers send from the Free Listing page.
 // The admin reviews each one (Admin → Free Listings), fills the gaps and publishes it as a normal
@@ -17,6 +17,8 @@ export type ListingOut = {
   seller: { name: string; phone: string; email?: string };
   title: string; listing: "For Sale" | "For Rent"; type: string; district: string;
   price: string; builtArea: string; landArea: string; buildYear: string; description: string;
+  /** Type-dependent details; empty values for listings sent before they existed. */
+  details: ListingDetails;
   amenities: string[]; photos: string[];
   draft?: Record<string, unknown>; propertyId?: number; statusBeforeReject?: ListingOut["status"];
   account: { name: string | null; email: string } | null;
@@ -31,6 +33,7 @@ function toListing(l: ListingRow): ListingOut {
     seller: { name: l.sellerName, phone: l.sellerPhone, ...(l.sellerEmail ? { email: l.sellerEmail } : {}) },
     title: l.title, listing: l.listing === "FOR_RENT" ? "For Rent" : "For Sale", type: l.type, district: l.district,
     price: l.price, builtArea: l.builtArea, landArea: l.landArea, buildYear: l.buildYear, description: l.description,
+    details: listingDetailsSchema.safeParse(l.details ?? {}).data ?? NO_DETAILS,
     amenities: l.amenities, photos: l.photos,
     ...(l.draft && typeof l.draft === "object" && !Array.isArray(l.draft) ? { draft: l.draft as Record<string, unknown> } : {}),
     ...(l.propertyId ? { propertyId: l.propertyId } : {}),
@@ -51,6 +54,7 @@ export async function createListing(userId: string, v: ListingInput): Promise<Li
       userId, sellerName: v.sellerName, sellerPhone: v.sellerPhone, sellerEmail: v.sellerEmail,
       title: v.title, listing: v.listing === "For Rent" ? "FOR_RENT" : "FOR_SALE", type: v.type, district: v.district,
       price: v.price, builtArea: v.builtArea, landArea: v.landArea, buildYear: v.buildYear, description: v.description,
+      details: v.details,
       amenities: [...new Set(v.amenities.filter((a) => known.has(a)))], photos: v.photos,
     },
     include: INCLUDE,

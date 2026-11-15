@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorResponse, jsonResponse } from "@/lib/auth/guards";
+import { errorResponse, publicJsonResponse } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 import { listTeam } from "@/lib/content/team";
 
@@ -10,7 +10,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    return jsonResponse(request, { data: await listTeam() });
+    return publicJsonResponse(request, { data: await listTeam() });
   } catch (error) {
     return errorResponse(request, error);
   }

@@ -133,6 +133,26 @@ export function jsonResponse(request: Request, data: unknown, status = 200): Nex
   return NextResponse.json(data, { status, headers: corsHeaders(request) });
 }
 
+/**
+ * A public GET answer that is the same for everyone (properties, articles, team, site settings…):
+ * Vercel's CDN may keep it for 30 s, then serve it while fetching a fresh copy for up to 5 minutes,
+ * so visitors rarely wait for the database or a cold start, and an admin's change shows within about
+ * 30 s. Vercel-CDN-Cache-Control only speaks to Vercel's CDN: browsers still get next.config's
+ * `Cache-Control: no-store` and never keep API data themselves. Never use it for anything that
+ * depends on who is asking (auth, /me, admin).
+ */
+export function publicJsonResponse(request: Request, data: unknown): NextResponse {
+  return NextResponse.json(data, {
+    status: 200,
+    headers: {
+      ...corsHeaders(request),
+      "Vercel-CDN-Cache-Control": "max-age=30, stale-while-revalidate=300",
+      // The CORS headers above depend on the Origin, so a cached copy must too.
+      Vary: "Origin",
+    },
+  });
+}
+
 export function noContentResponse(request: Request): NextResponse {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }

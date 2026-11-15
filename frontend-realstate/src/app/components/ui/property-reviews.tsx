@@ -137,15 +137,26 @@ export function RatingLink({ propertyId }: { propertyId: number }) {
 }
 
 /** One review card. */
+/**
+ * The reviewer's account photo (Google sign-in), or their initials. Google's photo host refuses
+ * requests that carry a Referer, and an old photo can be gone: the initials show then too.
+ */
+export function ReviewerPhoto({ name, src, size }: { name: string; src?: string; size: "sm" | "md" }) {
+  const [failed, setFailed] = useState(false);
+  const box = size === "md" ? "w-11 h-11 text-[15px]" : "w-10 h-10 text-[14px]";
+  if (src && !failed) return <img src={src} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} className={`${box} rounded-full object-cover shrink-0`} />;
+  return (
+    <span aria-hidden className={`${box} rounded-full shrink-0 flex items-center justify-center`} style={{ background: "#e9e3d8", color: GOLD, ...serif }}>
+      {name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}
+    </span>
+  );
+}
+
 export function ReviewCard({ r }: { r: Review }) {
   return (
     <div className="p-7 md:p-8 border" style={{ background: WHITE, borderColor: BORDER_L }}>
       <div className="flex items-start gap-4">
-        {r.avatar
-          ? <img src={r.avatar} alt="" className="w-11 h-11 rounded-full object-cover shrink-0" />
-          : <span aria-hidden className="w-11 h-11 rounded-full shrink-0 flex items-center justify-center text-[15px]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>
-              {r.author.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}
-            </span>}
+        <ReviewerPhoto name={r.author} src={r.avatar} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <p className="text-[16px]" style={{ color: FG_LIGHT, ...serif }}>{r.author}</p>

@@ -164,6 +164,7 @@ export function AuthProvider({ children }: { children:ReactNode }) {
     // Clear local state even if the server call fails; the cookie is revoked server-side when it succeeds.
     await request<void>("/auth/logout",{ method:"POST", body:"{}" }).catch(()=>undefined);
     accessToken=null; setSessionHint(false); setUser(null); setStatus("anonymous");
+    signedOutListeners.forEach(f=>f());
   },[]);
 
   const value=useMemo(()=>({ user, status, login, verifyMfa, register, verifyEmail, logout }),[user,status,login,verifyMfa,register,verifyEmail,logout]);
@@ -177,6 +178,14 @@ export function requestSignIn():void { signInListeners.forEach(f=>f()); }
 export function onSignInRequest(f:()=>void):()=>void {
   signInListeners.add(f);
   return ()=>{ signInListeners.delete(f); };
+}
+
+// Someone pressed Log Out (not a session that lapsed): things kept on this device for them, like a
+// half-written Free Listing, are wiped so the next person at a shared computer doesn't see them.
+const signedOutListeners=new Set<()=>void>();
+export function onSignedOut(f:()=>void):()=>void {
+  signedOutListeners.add(f);
+  return ()=>{ signedOutListeners.delete(f); };
 }
 
 export function useAuth():AuthContextValue {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorResponse, jsonResponse, requireAuth } from "@/lib/auth/guards";
+import { errorResponse, jsonResponse, requireAuth, publicJsonResponse } from "@/lib/auth/guards";
 import { enforceRateLimit } from "@/lib/auth/rate-limit";
 import { preflightResponse } from "@/lib/http/cors";
 import { readJsonBody } from "@/lib/http/body";
@@ -22,7 +22,7 @@ type Ctx = RouteContext<"/api/v1/properties/[id]/reviews">;
 export async function GET(request: Request, ctx: Ctx): Promise<NextResponse> {
   try {
     const { id } = await ctx.params;
-    return jsonResponse(request, await listPublicReviews(idParam(id)));
+    return publicJsonResponse(request, await listPublicReviews(idParam(id)));
   } catch (error) {
     return errorResponse(request, error);
   }

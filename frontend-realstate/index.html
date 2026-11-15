@@ -6,6 +6,11 @@
     <meta name="theme-color" content="#0a0908" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Open the connections early: the maps' tiles and fonts (OpenFreeMap), and property photos
+         (Cloudflare R2's public address; update it if the photos move to their own domain). -->
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
+    <link rel="preconnect" href="https://pub-7b09d262d61f48d7a78cb5ada3aaefa2.r2.dev" />
+    <link rel="dns-prefetch" href="https://tiles.openfreemap.org" />
     <!-- seo:start · each page's own tags; scripts/prerender.mjs replaces this block, src/seo/head.ts keeps it current -->
     <title>Nepal Bhoomi Real Estate | Houses, Land &amp; Property for Sale and Rent in Kathmandu</title>
     <meta name="description" content="Nepal Bhoomi Real Estate in Lazimpat, Kathmandu: houses, land, apartments and commercial space for sale and rent in Kathmandu, Lalitpur and Bhaktapur. Call 9818783518." />
@@ -18,10 +23,37 @@
     <meta name="twitter:card" content="summary_large_image" />
     <!-- seo:end -->
     <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+    <!-- First paint, before the app's script has loaded. #nb-boot is a still copy of the app's
+         loading screen (App.tsx LoadingScreen), which takes over seamlessly. The pre-rendered page
+         (.nb-static, scripts/prerender.mjs) is for search engines and link previews: visitors don't
+         see it, unless JavaScript is off (noscript below) or the app hasn't started after 15 s. Plain
+         CSS only: the production Content-Security-Policy blocks inline scripts. -->
+    <style>
+      /* The gutter keeps the centre still when the app's scrollbar appears under its loading screen. */
+      html { scrollbar-gutter: stable; }
+      body { background: #0a0908; }
+      #nb-boot { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #0a0908; animation: nb-boot-off 0s 15s forwards; }
+      #nb-boot .h { position: absolute; left: 0; right: 0; top: 50%; height: 0.5px; background: rgba(138,32,48,0.5); }
+      #nb-boot .v { position: absolute; top: 0; bottom: 0; left: 50%; width: 0.5px; background: rgba(176,136,72,0.28); }
+      #nb-boot .col { position: relative; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+      #nb-boot .logo { position: relative; }
+      #nb-boot .logo img { display: block; width: 80px; height: 80px; object-fit: contain; }
+      #nb-boot .c { position: absolute; width: 16px; height: 16px; border: 0 solid rgba(176,136,72,0.45); }
+      #nb-boot .tl { top: -20px; left: -20px; border-top-width: 1px; border-left-width: 1px; }
+      #nb-boot .tr { top: -20px; right: -20px; border-top-width: 1px; border-right-width: 1px; }
+      #nb-boot .bl { bottom: -20px; left: -20px; border-bottom-width: 1px; border-left-width: 1px; }
+      #nb-boot .br { bottom: -20px; right: -20px; border-bottom-width: 1px; border-right-width: 1px; }
+      #nb-boot p { margin: 0; font: 10px/1.5 Jost, Arial, Helvetica, sans-serif; letter-spacing: 0.38em; text-transform: uppercase; color: #7a7060; }
+      #nb-boot .stem { width: 0.5px; height: 44px; background: rgba(176,136,72,0.45); }
+      .nb-static { visibility: hidden; height: 0; overflow: hidden; animation: nb-static-on 0s 15s forwards; }
+      @keyframes nb-boot-off { to { visibility: hidden; } }
+      @keyframes nb-static-on { to { visibility: visible; height: auto; min-height: 100vh; overflow: visible; } }
+    </style>
+    <noscript><style>#nb-boot { display: none; } .nb-static { visibility: visible; height: auto; min-height: 100vh; overflow: visible; animation: none; }</style></noscript>
   </head>
 
   <body>
-    <div id="root"><!-- prerender:content --></div>
+    <div id="root"><div id="nb-boot" aria-hidden="true"><div class="h"></div><div class="v"></div><div class="col"><div class="logo"><span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span><img src="/src/imports/image.png" alt="" /></div><p>Nepal Bhoomi Real Estate</p><div class="stem"></div></div></div><!-- prerender:content --></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

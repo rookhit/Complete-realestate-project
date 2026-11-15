@@ -17,9 +17,9 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     await requireAuth(request);
-    const { contentType, size } = await readJsonBody(request, listingUploadSchema);
+    const { contentType, size, cardSize } = await readJsonBody(request, listingUploadSchema);
     await enforceRateLimit("listing-upload", getRequestContext(request).ip);
-    return jsonResponse(request, { data: await createUpload("image", contentType, size, "listings", new URL(request.url).origin) }, 201);
+    return jsonResponse(request, { data: await createUpload("image", contentType, size, "listings", new URL(request.url).origin, cardSize) }, 201);
   } catch (error) {
     return errorResponse(request, error);
   }

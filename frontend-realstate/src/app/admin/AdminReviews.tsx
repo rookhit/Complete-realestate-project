@@ -6,13 +6,15 @@ import { useDataVersion } from "@/app/data/store";
 import { ApiError } from "@/app/auth";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { Button, Select } from "@/app/components/ui/form-controls";
-import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
+import { ListPagination, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { StarRow } from "@/app/components/ui/star-row";
+import { ReviewerPhoto } from "@/app/components/ui/property-reviews";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { Chip, EmptyState, SearchBox, useToast } from "./parts";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 const GROUPS_PER_PAGE = 3;
 
 const STATUS_LABEL: Record<AdminReview["status"], string> = { pending: "Waiting for approval", published: "Approved", rejected: "Rejected" };
@@ -32,6 +34,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
   const [stars, setStars] = useState("all");
   const [status, setStatus] = useState<"all" | AdminReview["status"]>("all");
   const [page, setPage] = useState(1);
+  const { listTop, turn } = usePageTurner(setPage);
   const [busy, setBusy] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<AdminReview | null>(null);
   const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
@@ -92,6 +95,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
         <span style={{ color: FG_LIGHT }}>{total}</span> review{total === 1 ? "" : "s"} across <span style={{ color: FG_LIGHT }}>{groups.length}</span> propert{groups.length === 1 ? "y" : "ies"}
       </p>
 
+      <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
       {groups.length === 0 ? (
         <EmptyState title={ADMIN_REVIEWS.length ? "No reviews match" : "No reviews yet"}
           text={ADMIN_REVIEWS.length ? "Try a different search, status, property or rating." : "When signed-in visitors review a property, their reviews wait here for your approval."} />
@@ -102,7 +106,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
             return (
               <section key={id} className="border" style={{ borderColor: BORDER_L, background: WHITE }}>
                 <header className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 border-b" style={{ borderColor: BORDER_L }}>
-                  {p?.hero && <span className="w-24 h-16 shrink-0 overflow-hidden"><img src={p.hero} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} /></span>}
+                  {p?.hero && <span className="w-24 h-16 shrink-0 overflow-hidden"><img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} /></span>}
                   <div className="flex-1 min-w-0">
                     <p className="text-[18px] truncate" style={{ color: FG_LIGHT, ...serif }}>{info!.title}</p>
                     <p className="flex items-center gap-2 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
@@ -116,9 +120,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
                   {reviews.map(r => (
                     <article key={r.id} className="border p-5 flex flex-col gap-3" style={{ borderColor: r.status === "pending" ? "rgba(138,32,48,0.45)" : BORDER_L, background: WHITE, opacity: r.status === "rejected" ? 0.7 : 1 }}>
                       <div className="flex items-start gap-3">
-                        {r.avatar
-                          ? <img src={r.avatar} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
-                          : <span aria-hidden className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center text-[14px]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>{r.author.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
+                        <ReviewerPhoto name={r.author} src={r.avatar} size="sm" />
                         <div className="min-w-0 flex-1">
                           <p className="text-[15px] truncate" style={{ color: FG_LIGHT, ...serif }}>{r.author}</p>
                           <div className="flex items-center gap-2 mt-1"><StarRow value={r.rating} size={12} /><span className="text-[10px] tracking-[0.18em] uppercase" style={{ color: MUTED_L, ...sans }}>{r.date}</span></div>
@@ -166,7 +168,7 @@ export function AdminReviews({ nav }: { nav: AdminNav }) {
           })}
         </div>
       )}
-      <ListPagination page={current} total={groups.length} perPage={GROUPS_PER_PAGE} onPage={setPage} noun="properties" />
+      <ListPagination page={current} total={groups.length} perPage={GROUPS_PER_PAGE} onPage={turn} noun="properties" />
 
       <ConfirmDialog open={toDelete !== null} title="Delete this review?"
         message={toDelete ? `${toDelete.author}’s review will be removed. You can undo this for a few seconds afterwards.` : ""}

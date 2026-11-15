@@ -3,7 +3,43 @@
 Things that must be changed or set up before (and when) the site goes live. Add to this list
 whenever something comes up during development; tick items off at deployment.
 
-Last updated: 2026-10-14
+Last updated: 2026-11-15
+
+## Before deploying the 2026-11-14 fixes round (branch `fix/frontend-audit-issues`)
+
+- [x] Database migration `20261114120000_listing_details` (adds `ListingSubmission.details`) is already applied
+      to the live database (`prisma migrate deploy`, 2026-11-14). Nothing to run.
+- [ ] **Deploy the backend first, then the frontend.** The new frontend calls `GET /api/v1/site/watermark`, sends
+      `details` with free listings and `cardSize` with photo uploads; the old backend ignores or 404s those. No
+      environment variable changes on either side (the maps need no key or token).
+- [ ] **R2 CORS for the live site (fixes "Upload failed, check your connection" on Free Listing and Admin)**:
+      Cloudflare → R2 → bucket `nepal-bhoomi-media` → Settings → CORS policy → Edit, and paste:
+      `[{"AllowedOrigins":["https://www.nepalbhoomi.com","http://localhost:5173"],"AllowedMethods":["PUT"],"AllowedHeaders":["Content-Type"],"MaxAgeSeconds":3600}]`.
+      Checked 2026-11-14: the bucket answers 403 to `https://www.nepalbhoomi.com` and allows `localhost:5173`.
+- [ ] **Google sign-in on the live site**: Google Cloud Console → APIs & Services → Credentials → the OAuth 2.0
+      client → add Authorised JavaScript origin `https://www.nepalbhoomi.com` and Authorised redirect URI
+      `https://www.nepalbhoomi.com/api/v1/auth/google/callback`, then Save (takes a few minutes).
+- [ ] **Schedule the daily cleanup (`CRON_SECRET`, section below) before launch**: the new Privacy Policy
+      (`/privacy-policy`) promises that unverified accounts go after 7 days and security logs after 180 days;
+      that is only true once `GET /api/cron/cleanup-tokens` runs daily.
+- [ ] **Have someone qualified read the legal pages** (`frontend-realstate/src/seo/legal.ts`, `faq.ts`): written
+      in plain English for Nepal's Privacy Act, 2075, but not reviewed by a lawyer. Update `LEGAL_UPDATED` whenever the
+      wording changes.
+- [ ] `frontend-realstate/index.html` preconnects to the R2 public host (`pub-7b09….r2.dev`) by name. When
+      `R2_PUBLIC_URL` moves to a custom domain, change that line too (it only speeds up the first photo; nothing
+      breaks if it's stale).
+- [ ] Backend dev dependencies: `npm audit` shows one moderate advisory (`minimatch`, via `@typescript-eslint`,
+      lint only, not in the deployed server; `npm audit --omit=dev` = 0). `npm audit fix` resolves it.
+- [ ] **Video tours must be web-sized.** The only tour on the site (property 39, NBL007) is the phone's original:
+      1080×1920 at 16 Mbit/s, 211 MB. On a ~6 Mbit/s 4G phone only 9 s of the first 30 s played (5 stops). A 720p
+      copy at ~1.7 Mbit/s (22 MB, looks the same on a phone) played 29 of 30 s. Replace the tour with the small copy
+      (Admin → the property → Property Video → Replace). New uploads above 4 Mbit/s now get a warning in the editor
+      (`frontend-realstate/src/app/media/video-check.ts`). To make a copy: HandBrake "Fast 720p30", or
+      `ffmpeg -i in.mp4 -vf scale=720:-2 -c:v libx264 -crf 25 -maxrate 2500k -bufsize 5000k -c:a aac -b:a 128k -movflags +faststart out.mp4`.
+- [ ] Watermark: Admin → Watermark is on (the Nepal Bhoomi logo + "Nepal Bhoomi", strength 25 %, band height 8 %:
+      thin and faint, by the owner's request 2026-11-15; already in the live database). "Strength" fades the whole
+      mark (band, logo and text) together. Check you like it, change it there if not. It stamps only
+      photos uploaded from now on; photos already on the site are unchanged.
 
 ## Secrets and accounts
 
@@ -58,9 +94,10 @@ Last updated: 2026-10-14
       doesn't recommend it for production: connect a custom domain (e.g. `media.<site>`), point `R2_PUBLIC_URL` at it,
       and re-upload or rewrite any stored r2.dev URLs. Note: r2.dev keeps serving a deleted file for a short while
       (cache), seen 2026-10-14; the bucket itself no longer has it.
-- [ ] Photos keep their EXIF metadata (phone photos often hold the exact GPS point), which undoes the
-      "Approximate area" map for anyone who downloads a listing photo. Strip it before upload (e.g. re-encode in the
-      browser) or with an R2-side process.
+- [x] ~~Photos keep their EXIF metadata~~ Fixed 2026-11-14: every property and free-listing photo is re-drawn in the
+      browser before upload (`frontend-realstate/src/app/media/watermark.ts`), which drops EXIF (GPS included),
+      resizes to ≤ 2560 px, adds the watermark and makes an 800 px card copy (`<uuid>.w800.jpg`). Photos uploaded
+      before that date keep their EXIF; re-upload any where it matters.
 - [ ] Free-listing uploads are limited per IP only (120/h × 8 MB). Consider a per-account limit too, plus the
       lifecycle rule above, so one account can't fill the bucket.
 
@@ -68,9 +105,11 @@ Last updated: 2026-10-14
 
 - [ ] Open a property page and Buy → Map view on the **production build** and check the map tiles
       load (a blank map means the CSP blocked them: check the browser console).
-- [ ] OpenStreetMap's free tile server has a usage policy (fine for a small site, not heavy traffic):
-      re-read it at operations.osmfoundation.org/policies/tiles before launch. If the site outgrows it,
-      switch `TILES` in `frontend-realstate/src/app/components/ui/leaflet-maps.tsx` to a tile provider.
+- [x] Maps moved from Leaflet + OpenStreetMap tiles to **MapLibre GL + OpenFreeMap** (2026-11-14): vector map,
+      free, no key, no request limit (openfreemap.org). If OpenFreeMap is unreachable the map falls back to OSM's
+      raster tiles by itself (`FALLBACK_STYLE` in `frontend-realstate/src/app/components/ui/maplibre-maps.tsx`; its
+      usage policy, operations.osmfoundation.org/policies/tiles, is fine for a fallback). The CSP allows both tile
+      hosts in `connect-src` and `blob:` workers (vite.config.ts).
 - [ ] Privacy: public property API responses must never contain `mapUrl`, and for properties set to
       "Approximate area" must not contain the real lat / lng (only `approx`, the shifted centre).
       Check one response of each kind in the browser's Network tab.
@@ -137,9 +176,9 @@ Last updated: 2026-10-14
 - [ ] After going live: verify the domain in Google Search Console and submit `/sitemap.xml`; set up
       the Google Business Profile (Lazimpat office, 9818783518, Sun–Fri 9:30–6); 301-redirect the old
       nepalbhoomi.com page addresses to their new pages.
-- [ ] **Take down the Dashain 2083 decorations** after the festival (they switch off by themselves on
-      26 Oct 2026, but the code and three.js stay in the bundle): follow
-      `frontend-realstate/src/app/festive/dashain/README.md`.
+- [x] **Dashain 2083 decorations removed** (2026-11-14): `src/app/festive/` and three.js are gone.
+- [x] **Privacy Policy, Terms of Use and FAQ pages added** (2026-11-14): `/privacy-policy`, `/terms`, `/faq`,
+      pre-rendered, in the sitemap and footer; the FAQ page carries FAQPage structured data.
 
 ## Database (Supabase)
 
@@ -169,8 +208,7 @@ Last updated: 2026-10-14
       admin's login email (git history keeps the old one).
 - [ ] **Free listings saved before 2026-10-06** may hold outside photo URLs (the upload-only check is new):
       look over Admin → Free Listings and reject any whose photos are not from the site's own uploads.
-- [x] Frontend findings F1, F2, F4, F5 fixed (merged 2026-10-13). The dead footer links were removed, but a
-      **privacy policy** page is still expected, since the site collects names, phone numbers and emails.
+- [x] Frontend findings F1, F2, F4, F5 fixed (merged 2026-10-13). The privacy policy page was added 2026-11-14.
 - [ ] Company videos backend (`/videos`, `/admin/videos`) not built. Admin → Videos is view-only meanwhile
       (`VIDEOS_EDITABLE = false` in `ContentEditors.tsx`); set it to `true` once the endpoints are wired.
 
@@ -185,7 +223,8 @@ no secrets in git history or the frontend bundle, no source maps, bcrypt, httpOn
 `npm audit`: 0. All test data was removed afterwards (test accounts, likes, listings and their files; unused
 R2 files).
 
-- [ ] **Backend dependencies (`npm audit`)**: `next` 16.3.5 has a critical advisory (RCE in `next/og`
+- [x] **Upgraded 2026-11-14** to `next@16.4.6` (also Prisma 7.10.1, zod 4.6.7, nodemailer 10.5.0); production
+      dependencies now audit clean. Original note: **Backend dependencies (`npm audit`)**: `next` 16.3.5 has a critical advisory (RCE in `next/og`
       ImageResponse) and pulls an old `sharp`. The backend uses neither `next/og`, `use cache` nor draft mode,
       so it isn't reachable today, but upgrade to `next@16.4.0` or later before launch. The `mysql2` /
       `deepmerge-ts` advisories come from the Prisma CLI only (the site uses Postgres); ignore `npm audit fix
@@ -196,11 +235,16 @@ R2 files).
 - [ ] **Frontend host headers**: the CSP is a `<meta>` tag (vite.config.ts). On the host also send
       `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
       strict-origin-when-cross-origin` and `frame-ancestors 'self'` (a meta CSP can't set frame-ancestors).
-- [ ] **Smaller photos for cards**: every card and thumbnail downloads the full 1600 px upload (~250–300 KB).
+- [x] **Done 2026-11-14**: cards, lists and map pop-ups load the 800 px card copy (made at upload; the 71 photos
+      already on R2 got theirs from a one-off back-fill), heroes and galleries pick it on phones through `srcset`.
+      Home page on a phone: images 1,425 KB → 799 KB. Original note: **Smaller photos for cards**: every card and thumbnail downloads the full 1600 px upload (~250–300 KB).
       Off-screen images now load lazily (home page 3.2 MB → 1.6 MB on desktop), but a thumbnail size (e.g. an
       800 px copy made at upload, or Cloudflare Image Resizing on a custom R2 domain) would cut it again by
       about two thirds, mostly on phones.
-- [ ] **API latency from Nepal**: public GETs take 0.2–1.4 s (`/properties` is the slowest, ~1.3 s) because each
+- [x] **Partly done 2026-11-14**: the 11 public GET endpoints send `Vercel-CDN-Cache-Control: max-age=30,
+      stale-while-revalidate=300` (Vercel's edge keeps the answer, browsers don't; `lib/auth/guards.ts`
+      `publicJsonResponse`), so an admin change shows on the site within ~30 s. Check after deploying: a second
+      request shows `x-vercel-cache: HIT`. Original note: **API latency from Nepal**: public GETs take 0.2–1.4 s (`/properties` is the slowest, ~1.3 s) because each
       query is a round trip to the Supabase region. A `Cache-Control: public, max-age=60` on the public GETs
       behind a CDN, or a closer database region, would make first loads noticeably faster.
 - [ ] **Accounts left in the database**: 8 member accounts that look like real people (friends and family who

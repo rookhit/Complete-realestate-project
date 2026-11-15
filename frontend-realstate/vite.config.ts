@@ -27,14 +27,18 @@ function contentSecurityPolicy(apiUrl) {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    // Map tiles (components/ui/leaflet-maps.tsx) are images from OpenStreetMap. Property photos and
-    // videos are served from the Cloudflare R2 public domain; any https: image / video is allowed
-    // until that domain is fixed (PRODUCTION_CHECKLIST.md: narrow it).
+    // Property photos and videos are served from the Cloudflare R2 public domain; any https: image /
+    // video is allowed until that domain is fixed (PRODUCTION_CHECKLIST.md: narrow it). The map's
+    // pins are data: images.
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
     "frame-src https://www.youtube-nocookie.com",
-    // The admin's uploads go straight to Cloudflare R2 (src/api/uploads.ts).
-    `connect-src 'self' ${apiOrigin} https://*.r2.cloudflarestorage.com`,
+    // MapLibre GL (components/ui/maplibre-maps.tsx) draws in a web worker it starts from a blob: URL.
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
+    // The admin's uploads go straight to Cloudflare R2 (src/api/uploads.ts). Maps: OpenFreeMap's
+    // style, tiles and fonts; OpenStreetMap's tiles only if OpenFreeMap is down (the map's fallback).
+    `connect-src 'self' ${apiOrigin} https://*.r2.cloudflarestorage.com https://tiles.openfreemap.org https://tile.openstreetmap.org`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

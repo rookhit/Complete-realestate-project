@@ -10,6 +10,7 @@ import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@
 import { DistrictCombobox } from "@/app/components/ui/district-combobox";
 import { ImageField } from "@/app/components/ui/photo-picker";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { ListPagination, pageCount, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { Button, Field, Select, Stepper, TextArea, TextInput } from "@/app/components/ui/form-controls";
 import { Chip, Drawer, EmptyState, SectionHeading, type Notify } from "./parts";
 import { ArticlePreview, TeamPreview, TestimonialPreview, VideoPreview } from "./previews";
@@ -23,6 +24,7 @@ import { uploadMedia } from "@/api/uploads";
 import { ApiError } from "@/app/auth";
 
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 
 const OTHER = "__other__";
@@ -106,6 +108,8 @@ function useDeleteConfirm<T>(onConfirm: (item: T) => void, describe: (item: T) =
 
 // ─── Journal ──────────────────────────────────────────────────────────────────
 
+const ARTICLES_PER_PAGE = 12;
+
 export function JournalSection({ notify, openId, onOpened }: { notify: Notify; openId?: number | null; onOpened?: () => void }) {
   useDataVersion();
   const [editing, setEditing] = useState<BlogPost | "new" | null>(null);
@@ -131,15 +135,22 @@ export function JournalSection({ notify, openId, onOpened }: { notify: Notify; o
     reorderArticles(ids).then(res => { BLOGS.splice(0, BLOGS.length, ...res.data.map(toBlog)); emitChange(); }, failed);
   };
 
+  // 12 a page. Positions (Featured, the first / last arrows) are counted across every page.
+  const [pageNo, setPageNo] = useState(1);
+  const { listTop, turn } = usePageTurner(setPageNo);
+  const current = Math.min(pageNo, pageCount(BLOGS.length, ARTICLES_PER_PAGE));
+  const first = (current - 1) * ARTICLES_PER_PAGE;
+
   return (
     <div>
       <SectionHeading title="Property Journal" subtitle="Articles in the order the site shows them. The first one is the large featured story on the home page."
         actions={<Button onClick={() => setEditing("new")}><Plus size={14} />Write an Article</Button>} />
+      <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {BLOGS.map((b, i) => (
+        {paginate(BLOGS, current, ARTICLES_PER_PAGE).map((b, k) => { const i = first + k; return (
           <article key={b.id} className="border flex flex-col" style={{ borderColor: BORDER_L, background: WHITE }}>
             <div className="relative overflow-hidden" style={{ aspectRatio: "16/10" }}>
-              <img src={b.image} alt="" className="w-full h-full object-cover" />
+              <img src={cardSrc(b.image)} onError={fullPhotoOnError(b.image)} alt="" className="w-full h-full object-cover" />
               <div className="absolute top-3 left-3 flex gap-1.5"><Chip tone="maroon">{b.cat}</Chip>{i === 0 && <Chip tone="dark">Featured</Chip>}</div>
             </div>
             <div className="p-5 flex flex-col gap-2 flex-1">
@@ -157,8 +168,9 @@ export function JournalSection({ notify, openId, onOpened }: { notify: Notify; o
               </div>
             </div>
           </article>
-        ))}
+        ); })}
       </div>
+      {BLOGS.length > ARTICLES_PER_PAGE && <ListPagination page={current} total={BLOGS.length} perPage={ARTICLES_PER_PAGE} onPage={turn} noun="articles" />}
       <ArticleEditor post={editing === "new" ? null : editing} open={editing !== null} onClose={() => setEditing(null)} notify={notify} />
       {confirm}
     </div>
@@ -287,7 +299,7 @@ export function TeamSection({ notify, openId, onOpened }: { notify: Notify; open
             <div key={m.id} className="border" style={{ borderColor: BORDER_L, background: WHITE }}>
               <div className="overflow-hidden" style={{ aspectRatio: "4/5" }}>
                 {m.img
-                  ? <img src={m.img} alt={m.name} className="w-full h-full object-cover" />
+                  ? <img src={cardSrc(m.img)} onError={fullPhotoOnError(m.img)} alt={m.name} className="w-full h-full object-cover" />
                   : <div className="w-full h-full flex items-center justify-center text-[2.5rem]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>{m.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>}
               </div>
               <div className="p-4 flex flex-col gap-3">
@@ -479,7 +491,7 @@ export function TestimonialsSection({ notify }: { notify: Notify }) {
               <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t" style={{ borderColor: BORDER_L }}>
                 <div className="flex items-center gap-3 min-w-0">
                   {t.img
-                    ? <img src={t.img} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    ? <img src={cardSrc(t.img)} onError={fullPhotoOnError(t.img)} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
                     : <span aria-hidden className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[14px]" style={{ background: "#e9e3d8", color: GOLD, ...serif }}>{t.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</span>}
                   <div className="min-w-0"><p className="text-[14px] truncate" style={{ color: FG_LIGHT, ...sans }}>{t.name}</p><p className="text-[12px] truncate" style={{ color: MUTED_L, ...sans }}>{t.role}</p></div>
                 </div>

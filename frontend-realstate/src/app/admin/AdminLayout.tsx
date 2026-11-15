@@ -14,11 +14,13 @@ export type AdminPage = "admin" | "admin-users" | "admin-reviews" | "admin-listi
 
 /**
  * The navigation the admin needs from App.tsx. App's own `go` satisfies this;
- * `openProperty` shows one listing on the public site.
+ * `openProperty` shows one listing on the public site; `openListing` opens a seller's free
+ * listing as its own page (/admin/listings/<id>).
  */
 export type AdminNav = {
   go: (page: AdminPage | "home" | "login") => void;
   openProperty: (id: number) => void;
+  openListing: (id: number) => void;
 };
 
 /** `lead` is a word shown only on wide screens ("Free" Listings), so each tab has one label. */

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorResponse, jsonResponse } from "@/lib/auth/guards";
+import { errorResponse, publicJsonResponse } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 import { queryObject } from "@/lib/http/params";
 import { listPublicProperties } from "@/lib/content/properties";
@@ -14,7 +14,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const query = propertyQuerySchema.parse(queryObject(request));
-    return jsonResponse(request, await listPublicProperties(query));
+    return publicJsonResponse(request, await listPublicProperties(query));
   } catch (error) {
     return errorResponse(request, error);
   }

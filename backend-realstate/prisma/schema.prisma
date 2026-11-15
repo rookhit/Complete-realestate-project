@@ -554,6 +554,9 @@ model ListingSubmission {
   landArea           String         @default("")
   buildYear          String         @default("")
   description        String         @default("")
+  // Type-dependent details (lib/validation/listing.ts listingDetailsSchema): address, mapUrl,
+  // bedrooms, bathrooms, floors, facing, roadSurface, roadWidthFt. NULL for rows sent before 2026-11-14.
+  details            Json?
   // Canonical amenity names the seller ticked.
   amenities          String[]
   // Photo URLs (Cloudflare R2), [0] = cover.

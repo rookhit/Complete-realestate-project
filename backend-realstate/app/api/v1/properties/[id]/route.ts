@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { errorResponse, jsonResponse } from "@/lib/auth/guards";
+import { errorResponse, publicJsonResponse } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 import { idParam } from "@/lib/http/params";
 import { getPublicProperty } from "@/lib/content/properties";
@@ -16,7 +16,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request, ctx: RouteContext<"/api/v1/properties/[id]">): Promise<NextResponse> {
   try {
     const { id } = await ctx.params;
-    return jsonResponse(request, { data: await getPublicProperty(idParam(id)) });
+    return publicJsonResponse(request, { data: await getPublicProperty(idParam(id)) });
   } catch (error) {
     return errorResponse(request, error);
   }

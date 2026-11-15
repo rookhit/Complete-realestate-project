@@ -91,20 +91,29 @@ export function applySaved(saved: ApiProperty): Prop {
 }
 
 export const PROP_TYPES = ["All Types","House/Bungalow","Land","Apartment","Commercial","Flat"];
-export const PRICE_RANGES: Record<"For Sale"|"For Rent", {label:string;min:number;max:number}[]> = {
+/**
+ * The Buy / Rent price filter (rent is per month). Each bracket is a rule on the price in rupees, so
+ * every priced property falls in exactly one; "Any Price" (`fits` null) shows everything. A property
+ * without a price ("Negotiable") only shows under Any Price, never in a bracket.
+ */
+export type PriceRange = { label: string; fits: ((price: number) => boolean) | null };
+const LAKH = 100_000, CRORE = 10_000_000;
+export const PRICE_RANGES: Record<"For Sale"|"For Rent", PriceRange[]> = {
   "For Sale": [
-    { label:"Any Price", min:0, max:Infinity },
-    { label:"Under 5 Cr", min:0, max:50000000 },
-    { label:"5 - 10 Cr", min:50000000, max:100000000 },
-    { label:"Above 10 Cr", min:100000000, max:Infinity },
+    { label:"Any Price", fits:null },
+    { label:"Under 3 Cr", fits:n => n < 3 * CRORE },
+    { label:"3 – 7 Cr", fits:n => n >= 3 * CRORE && n <= 7 * CRORE },
+    { label:"Above 7 Cr", fits:n => n > 7 * CRORE },
   ],
   "For Rent": [
-    { label:"Any Price", min:0, max:Infinity },
-    { label:"Under 1 Lakh", min:0, max:100000 },
-    { label:"1 - 2 Lakh", min:100000, max:200000 },
-    { label:"Above 2 Lakh", min:200000, max:Infinity },
+    { label:"Any Price", fits:null },
+    { label:"Under 3 Lakh", fits:n => n < 3 * LAKH },
+    { label:"3 Lakh & Above", fits:n => n >= 3 * LAKH },
   ],
 };
+/** Whether a property's price fits the chosen bracket (no bracket, or "Any Price": always). */
+export const inPriceRange = (price: number, range: PriceRange | undefined): boolean =>
+  !range?.fits || (price > 0 && range.fits(price));
 
 // ─── Vocabulary for the admin dropdowns ───────────────────────────────────────
 // Every value below is what gets stored. The API should accept exactly these strings.

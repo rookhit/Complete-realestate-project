@@ -4,6 +4,7 @@ import type { Prop } from "@/app/data/properties";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { coverStyle, frameOf } from "./cover-frame";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 // Sort options for Buy/Rent. The keys double as the API's `sort` values.
 export type SortKey = "newest" | "price_asc" | "price_desc";
 
@@ -102,7 +103,7 @@ export function ResultsToolbar({ count, query, onQuery, sort, onSort, suggestion
                       className="flex items-center gap-3 px-3 py-2.5 cursor-pointer"
                       style={{ background: i === active ? "rgba(176,136,72,0.1)" : "transparent" }}>
                       <span className="w-16 h-12 shrink-0 overflow-hidden" style={{ background: "#e9e3d8" }}>
-                        {p.hero && <img src={p.hero} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />}
+                        {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />}
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-[15px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</span>

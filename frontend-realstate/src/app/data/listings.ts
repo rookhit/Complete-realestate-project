@@ -5,7 +5,7 @@
 // Stored in the database (backend-realstate/lib/content/listings.ts, src/api/listings.ts). The
 // form posts straight to the API; LISTINGS is the admin's copy: loadListings() fills it (polled
 // with the inbox), and updateListing() shows a change at once and saves it.
-import { fetchListings, patchListing } from "@/api/listings";
+import { fetchListings, patchListing, type ListingDetails } from "@/api/listings";
 import { ApiError } from "@/app/auth";
 import { emitChange } from "./store";
 import { nextPropRef, nextPropertyId, formatPrice, type Listing, type Prop } from "./properties";
@@ -28,6 +28,7 @@ export interface ListingSubmission {
   landArea: string;              // as typed, e.g. "8 Ropani" or "4-4-0-1"
   buildYear: string;
   description: string;
+  details: ListingDetails;       // address, map link, rooms, floors, facing, road (empty on old listings)
   amenities: string[];
   photos: string[];
   draft?: Prop;                  // the admin's edited version, kept by "Save for later"
@@ -132,17 +133,22 @@ export function listingToProp(l: ListingSubmission): Prop {
   if (l.draft) return l.draft;
   const priceNum = priceFromText(l.price);
   const isLand = l.type === "Land";
+  // Listings loaded before the backend sent `details` have none.
+  const d: Partial<ListingDetails> = l.details ?? {};
   // The lowest free NB ID in the seller's sequence (NBS for sale, NBL for rent); editable in the review.
   const nbId = nextPropRef(l.listing);
+  // Same "Black-topped 20ft" form the property editor writes (PropertyEditor.tsx assembles it).
+  const roadAccess = d.roadSurface && d.roadWidthFt ? `${d.roadSurface} ${d.roadWidthFt}ft` : d.roadSurface ?? "";
   return {
     id: nextPropertyId(), nbId, badge: "New", title: l.title, tagline: "",
-    location: l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing) : "", priceNum,
+    location: d.address?.trim() || l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing) : "", priceNum,
     listing: l.listing, type: l.type || "House/Bungalow",
-    beds: 0, baths: 0, builtArea: isLand || !l.builtArea.trim() ? "—" : l.builtArea.trim(), landArea: landFromText(l.landArea),
-    roadAccess: "", facing: "North", buildYear: Number(l.buildYear) || 0, floors: 0,
+    beds: d.bedrooms ?? 0, baths: d.bathrooms ?? 0, builtArea: isLand || !l.builtArea.trim() ? "—" : l.builtArea.trim(), landArea: landFromText(l.landArea),
+    roadAccess, facing: d.facing || "North", buildYear: Number(l.buildYear) || 0, floors: d.floors ?? 0,
     verified: false, featured: false,
     hero: l.photos[0] ?? "", gallery: [...l.photos], description: l.description, features: [...l.amenities],
     mapX: 50, mapY: 50,
+    ...(d.mapUrl ? { mapUrl: d.mapUrl } : {}),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Clock, Eye, Film, Heart, History, Lightbulb, Loader2, Lock, MapPin, Plus, Shield, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, Eye, Film, Heart, History, Lightbulb, Loader2, Lock, MapPin, Plus, Shield, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
   BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
   ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, refTaken, applySaved,
@@ -25,9 +25,11 @@ import { CoverFramer } from "./CoverFramer";
 import { listingToProp, type ListingSubmission } from "@/app/data/listings";
 import { timeAgo } from "@/app/data/messages";
 import { createProperty, updateProperty, type PropertyInput } from "@/api/properties";
-import { uploadMedia } from "@/api/uploads";
+import { uploadMedia, uploadPropertyPhoto } from "@/api/uploads";
+import { SMOOTH_MBPS, videoBitrate } from "@/app/media/video-check";
 import { ApiError } from "@/app/auth";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 // ─── Draft: the form's working copy of a property ─────────────────────────────
 // The form edits friendly pieces (a number and a unit, a road surface and a width);
 // toProp() assembles them into the exact strings the site and the API use.
@@ -318,7 +320,7 @@ function PropertyPreview({ p, amenities, highlights, plans }: { p: Prop; ameniti
         <div className="border overflow-hidden" style={{ borderColor: BORDER_L, background: WHITE }}>
           <div className="relative" style={{ aspectRatio: "16/10", background: "#e9e3d8" }}>
             {p.hero
-              ? <img src={p.hero} alt="" className="w-full h-full object-cover" />
+              ? <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt="" className="w-full h-full object-cover" />
               : <p className="absolute inset-0 flex items-center justify-center text-[12px]" style={{ color: MUTED_L, ...sans }}>Add a main photo in step 5</p>}
             {p.gallery.length > 1 && (
               <span className="absolute right-3 bottom-3 px-2 py-1 text-[10px] tracking-[0.15em]" style={{ background: "rgba(10,9,8,0.6)", color: WHITE, ...sans }}>{p.gallery.length} photos</span>
@@ -575,15 +577,15 @@ export function PropertyEditor({ property, template = null, source = null, open,
       {!d.isNew && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
       {source && <Button variant="quiet" onClick={() => { clearDraft(keyFor(d)); source.onReject(); }}><X size={14} />Reject</Button>}
       {source && <Button variant="quiet" onClick={saveForLater}><Clock size={14} />Save for Later</Button>}
-      <Button onClick={() => void save()} title="Ctrl + S" disabled={saving}><Check size={14} />{saving ? "Saving…" : source ? "Publish Now" : d.isNew ? "Publish Property" : "Save Changes"}</Button>
+      <Button onClick={() => void save()} title="Ctrl + S" disabled={saving}><Check size={14} />{saving ? "Saving…" : d.isNew ? "Publish Property" : "Save Changes"}</Button>
     </>
   );
 
   return (
     <Drawer open={open} onClose={close} backLabel={source ? "Back to Free Listings" : "Back to Properties"} dirty={dirty} onSave={() => void save()}
-      title={source ? "Review Free Listing" : template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
+      title={source ? "Add Property from a Free Listing" : template ? `Copy of ${template.title}` : d.isNew ? "Add a Property" : `Edit ${property?.title ?? "Property"}`}
       subtitle={source
-        ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.nbId)} · Fill the gaps, then publish now or later`
+        ? `From ${source.submission.seller.name}, ${timeAgo(source.submission.receivedAt)} · Will publish as ${displayRef(assembled.nbId)} · Copied from the seller's listing: check every detail, then publish`
         : `NB ID ${displayRef(assembled.nbId)} · Saved as a draft while you work · Ctrl + S to save`}
       headerExtra={<Progress d={d} />}
       preview={<PropertyPreview p={previewProp} amenities={d.amenities} highlights={d.highlights} plans={d.floorPlan.length} />}
@@ -673,7 +675,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
 
         <FormSection id="pe-photos" n={5} title="Photos" subtitle="The first photo is the cover shown on cards and at the top of the page.">
           <PhotoManager photos={d.photos} onChange={v => set("photos", v)}
-            upload={(file, progress) => track(uploadMedia("image", file, progress))}
+            upload={(file, progress) => track(uploadPropertyPhoto(file, progress))}
             onAdd={url => setD(o => ({ ...o, photos: [...o.photos, url] }))}
             coverFrame={draftFrame(d)} onAdjustCover={() => setFraming(true)} />
           {d.photos[0] && (
@@ -730,21 +732,44 @@ function VideoField({ value, onChange, upload }: {
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [over, setOver] = useState(false);
-  const take = (file: File | undefined) => {
-    setError("");
-    if (!file) return;
-    if (!file.type.startsWith("video/")) { setError("That file isn't a video. Choose an MP4, MOV or WebM file."); return; }
-    if (file.size > VIDEO_MAX_MB * 1024 * 1024) { setError(`That file is over ${VIDEO_MAX_MB} MB. Please compress it first.`); return; }
+  // A video too heavy to play smoothly on phones waits here until the admin decides.
+  const [heavy, setHeavy] = useState<{ file: File; mbps: number } | null>(null);
+  const start = (file: File) => {
+    setHeavy(null);
     setProgress(0);
     upload(file, setProgress).then(
       url => { onChange(url); setProgress(null); },
       err => { setError(err instanceof Error ? err.message : "Upload failed"); setProgress(null); },
     );
   };
+  const take = async (file: File | undefined) => {
+    setError(""); setHeavy(null);
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { setError("That file isn't a video. Choose an MP4, MOV or WebM file."); return; }
+    if (file.size > VIDEO_MAX_MB * 1024 * 1024) { setError(`That file is over ${VIDEO_MAX_MB} MB. Please compress it first.`); return; }
+    const mbps = await videoBitrate(file);
+    if (mbps !== null && mbps > SMOOTH_MBPS) { setHeavy({ file, mbps }); return; }
+    start(file);
+  };
   return (
-    <Field label="Property Video" hint={`Optional. MP4, MOV or WebM up to ${VIDEO_MAX_MB} MB. Shown on the property page.`}>
-      <input ref={picker} type="file" accept="video/mp4,video/quicktime,video/webm" hidden onChange={e => { take(e.target.files?.[0]); e.target.value = ""; }} />
-      {progress !== null ? (
+    <Field label="Property Video" hint={`Optional. MP4, MOV or WebM up to ${VIDEO_MAX_MB} MB; best for phones: 720p, about 20 MB a minute. Shown on the property page.`}>
+      <input ref={picker} type="file" accept="video/mp4,video/quicktime,video/webm" hidden onChange={e => { void take(e.target.files?.[0]); e.target.value = ""; }} />
+      {heavy ? (
+        <div className="flex flex-col gap-3 border px-5 py-4" style={{ borderColor: "rgba(138,32,48,0.45)", background: "rgba(138,32,48,0.04)" }}>
+          <p className="flex items-start gap-2 text-[13px] leading-relaxed" style={{ color: FG_LIGHT, ...sans }}>
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: MAROON }} />
+            <span>
+              This video is heavy for phones: about {Math.round(heavy.mbps)} Mbit/s ({Math.round(heavy.file.size / 1024 / 1024)} MB).
+              On a 4G phone it will keep stopping to load. Make a smaller copy first (720p, about 2–3 Mbit/s: HandBrake&apos;s
+              “Fast 720p30” preset, or any video compressor app), then upload that.
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => picker.current?.click()}><Film size={14} />Choose a smaller file</Button>
+            <Button variant="quiet" onClick={() => start(heavy.file)}><Upload size={14} />Upload anyway</Button>
+          </div>
+        </div>
+      ) : progress !== null ? (
         <div className="flex flex-col gap-2 border px-5 py-4" style={{ borderColor: BORDER_L, background: WHITE }}>
           <p className="flex items-center gap-2 text-[13px]" style={{ color: FG_LIGHT, ...sans }}>
             <Loader2 size={15} className="animate-spin" style={{ color: MAROON }} />Uploading the video… {Math.round(progress * 100)}%
@@ -765,7 +790,7 @@ function VideoField({ value, onChange, upload }: {
       ) : (
         <button type="button" onClick={() => picker.current?.click()}
           onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-          onDrop={e => { e.preventDefault(); setOver(false); take(e.dataTransfer.files?.[0]); }}
+          onDrop={e => { e.preventDefault(); setOver(false); void take(e.dataTransfer.files?.[0]); }}
           className="flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-8 text-center transition-colors"
           style={{ borderColor: over ? MAROON : "rgba(176,136,72,0.5)", background: over ? "rgba(138,32,48,0.04)" : "#fbf9f5" }}>
           <Upload size={22} style={{ color: GOLD }} />

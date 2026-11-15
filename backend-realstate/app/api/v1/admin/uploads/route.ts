@@ -3,7 +3,7 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireAdmin } from "@/lib/auth/guards";
 import { preflightResponse } from "@/lib/http/cors";
 import { readJsonBody } from "@/lib/http/body";
-import { createUpload } from "@/lib/storage/r2";
+import { CARD_MAX_BYTES, createUpload } from "@/lib/storage/r2";
 
 // POST /api/v1/admin/uploads  { kind: "image" | "video", contentType, size, folder?: "properties" | "articles" | "team" | "testimonials" | "site" }
 // → 201 { data: { uploadUrl, url, key, headers } }. The browser then PUTs the file to uploadUrl
@@ -22,13 +22,16 @@ const uploadSchema = z.object({
   // properties (default): photos and videos; articles (journal covers), team (portraits) and
   // testimonials (client photos), site (featured district tiles): images only.
   folder: z.enum(["properties", "articles", "team", "testimonials", "site"]).default("properties"),
+  // Images: the byte size of the card-size JPEG copy the browser made; the answer adds `card`, a
+  // signed upload for it beside the photo (lib/storage/r2.ts cardKeyOf).
+  cardSize: z.number().int().positive().max(CARD_MAX_BYTES, "The card copy is too large").optional(),
 }).refine((v) => v.folder === "properties" || v.kind === "image", { message: "Only images can be uploaded here", path: ["kind"] });
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     await requireAdmin(request);
-    const { kind, contentType, size, folder } = await readJsonBody(request, uploadSchema);
-    return jsonResponse(request, { data: await createUpload(kind, contentType, size, folder, new URL(request.url).origin) }, 201);
+    const { kind, contentType, size, folder, cardSize } = await readJsonBody(request, uploadSchema);
+    return jsonResponse(request, { data: await createUpload(kind, contentType, size, folder, new URL(request.url).origin, cardSize) }, 201);
   } catch (error) {
     return errorResponse(request, error);
   }

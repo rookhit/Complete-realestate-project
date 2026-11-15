@@ -1,0 +1,67 @@
+/* The maps' floating card and tooltip (components/ui/maplibre-maps.tsx).
+   Loaded with the map. The card lives outside the map (fixed, above the navbar), so the map's edge
+   and the sticky bars can never cut it off. */
+
+.nb-map-float {
+  position: fixed;
+  z-index: 70;            /* above the navbar (z-50) and the sticky filter bar (z-30) */
+  pointer-events: none;
+  font-family: 'Jost', system-ui, sans-serif;
+  color: #1a1611;
+  transition: opacity .12s ease;
+}
+.nb-map-float--interactive { pointer-events: auto; cursor: pointer; }
+
+/* The little arrow points at the pin: under the card, or above it when the card is flipped below. */
+.nb-map-float__arrow {
+  position: absolute;
+  width: 12px; height: 12px;
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
+  border: 1px solid rgba(26, 22, 17, 0.12);
+}
+.nb-map-float--above .nb-map-float__arrow { bottom: -6px; border-top: 0; border-left: 0; }
+.nb-map-float--below .nb-map-float__arrow { top: -6px; border-bottom: 0; border-right: 0; }
+
+.nb-map-card {
+  position: relative;
+  width: 250px;
+  background: #ffffff;
+  border: 1px solid rgba(26, 22, 17, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 10px 28px rgba(26, 22, 17, 0.22);
+}
+.nb-map-card__inner { position: relative; z-index: 1; border-radius: 4px; overflow: hidden; background: #ffffff; }
+.nb-map-card__photo { position: relative; height: 130px; background: #e9e3d8; overflow: hidden; }
+.nb-map-card__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nb-map-card__tag {
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 8px; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: #ffffff; background: #8a2030;
+}
+.nb-map-card__body { padding: 10px 12px 12px; }
+.nb-map-card__price { margin: 0; font-size: 15px; font-weight: 600; color: #8a2030; }
+.nb-map-card__title { margin: 2px 0 0; font-size: 14px; line-height: 1.3; }
+.nb-map-card__place { margin: 3px 0 0; font-size: 11px; color: #6b6154; }
+.nb-map-card__facts { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; }
+.nb-map-card__fact { font-size: 11px; color: #6b6154; }
+.nb-map-card__fact + .nb-map-card__fact::before { content: "\00B7"; margin-right: 10px; color: #b08848; }
+/* Touch screens: the first tap shows the card, a tap on the card opens the property. */
+.nb-map-card__open {
+  display: block; margin-top: 10px; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: #8a2030;
+}
+
+/* A short label (admin preview, "Approximate location"). */
+.nb-map-tip {
+  position: relative;
+  max-width: 240px;
+  padding: 6px 10px;
+  font-size: 12px; line-height: 1.35;
+  color: #ffffff; background: #1a1611;
+  border-radius: 3px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.nb-map-float--tip .nb-map-float__arrow { background: #1a1611; border: 0; }
+
+/* The "use two fingers" / "Ctrl + scroll" notice, in the site's font. */
+.maplibregl-cooperative-gesture-screen { font-family: 'Jost', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.02em; }

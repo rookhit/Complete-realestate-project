@@ -15,12 +15,12 @@
     "db:seed-testimonials": "tsx prisma/seed-sample-testimonials.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
-    "next": "16.3.5",
+    "next": "16.4.6",
     "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
     "react": "19.2.8",
@@ -35,8 +35,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
-    "prisma": "^7.10.0",
+    "eslint-config-next": "16.4.6",
+    "prisma": "^7.10.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"

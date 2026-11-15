@@ -17,3 +17,16 @@ export const saveSiteStats = (items: Pick<Stat, "value" | "label">[]): Promise<S
 export const saveSiteDistricts = (items: Pick<FeaturedDistrict, "name" | "img">[]): Promise<FeaturedDistrict[]> => put("featured-districts", { items });
 export const saveSiteContact = (contact: ContactInfo): Promise<ContactInfo> => put("contact", contact);
 export const saveSiteServices = (items: Pick<Service, "icon" | "title" | "desc">[]): Promise<Service[]> => put("services", { items });
+
+/**
+ * The mark stamped on property photos before they upload (backend lib/content/watermark.ts): a
+ * see-through band across the middle with the text and / or logo. `logo` is a PNG / WebP data: URL
+ * or ""; `opacity` = how dark the band is (10-90 %); `size` = its height (6-30 % of the photo).
+ */
+export type Watermark = { enabled: boolean; text: string; logo: string; opacity: number; size: number };
+
+/** Public: sellers' browsers stamp their free-listing photos too. Kept out of GET /site (the logo). */
+export async function fetchWatermark(): Promise<Watermark> {
+  return (await authFetch<{ data: Watermark }>("/site/watermark")).data;
+}
+export const saveSiteWatermark = (w: Watermark): Promise<Watermark> => put("watermark", w);

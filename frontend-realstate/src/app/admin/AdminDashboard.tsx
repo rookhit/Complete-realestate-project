@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
-  ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Star, Trash2, Users,
+  ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Stamp, Star, Trash2, Users,
 } from "lucide-react";
 import { ApiError, useAuth } from "@/app/auth";
 import { deletePropertyOnServer, restorePropertyOnServer, toProp, updateProperty } from "@/api/properties";
@@ -12,19 +12,21 @@ import { useDataVersion } from "@/app/data/store";
 import { AMENITIES } from "@/app/icons/amenities";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { Button, Select } from "@/app/components/ui/form-controls";
-import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
+import { ListPagination, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { PropertyEditor } from "./PropertyEditor";
 import { HomePageSection, JournalSection, TeamSection, TestimonialsSection, VideosSection } from "./ContentEditors";
 import { CompanySection } from "./CompanyEditor";
+import { WatermarkSection } from "./WatermarkEditor";
 import { OptionsSection } from "./OptionsEditor";
 import { onOptionSaveFailed } from "@/app/data/options";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { Chip, EmptyState, SearchBox, SectionHeading, useToast, type Notify } from "./parts";
 
-type Section = "overview" | "properties" | "journal" | "team" | "testimonials" | "videos" | "homepage" | "company" | "options";
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
+type Section = "overview" | "properties" | "journal" | "team" | "testimonials" | "videos" | "homepage" | "company" | "watermark" | "options";
 
 const SECTIONS: { key: Section; label: string; Icon: typeof Home }[] = [
   { key: "overview", label: "Overview", Icon: LayoutGrid },
@@ -35,6 +37,7 @@ const SECTIONS: { key: Section; label: string; Icon: typeof Home }[] = [
   { key: "videos", label: "Videos", Icon: Clapperboard },
   { key: "homepage", label: "Home Page", Icon: Home },
   { key: "company", label: "Contact & Services", Icon: Phone },
+  { key: "watermark", label: "Watermark", Icon: Stamp },
   { key: "options", label: "Dropdown Options", Icon: ListChecks },
 ];
 
@@ -79,6 +82,7 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
       act("a-listings", "Review free listings from sellers", <ClipboardList size={15} />, () => nav.go("admin-listings"), "free listing seller submission publish"),
       act("a-messages", "Open messages and enquiries", <Mail size={15} />, () => nav.go("admin-messages"), "inbox email enquiry callback reply unread"),
       act("a-contact", "Edit contact details and services", <Phone size={15} />, () => goTo("company"), "phone whatsapp email address hours social instagram facebook services"),
+      act("a-watermark", "Photo watermark", <Stamp size={15} />, () => goTo("watermark"), "trademark logo stamp brand photos copy protect"),
       act("a-overview", "Overview and checklist", <LayoutGrid size={15} />, () => goTo("overview"), "dashboard attention"),
       act("a-users", "Users", <Users size={15} />, () => nav.go("admin-users"), "accounts members people"),
       act("a-reviews", "Reviews", <MessageSquare size={15} />, () => nav.go("admin-reviews"), "comments moderate"),
@@ -108,6 +112,7 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
     videos: <VideosSection notify={notify} />,
     homepage: <HomePageSection notify={notify} />,
     company: <CompanySection notify={notify} />,
+    watermark: <WatermarkSection notify={notify} />,
     options: <OptionsSection notify={notify} />,
   };
 
@@ -294,6 +299,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
   const [type, setType] = useState("All");
   const [sort, setSort] = useState<SortKey>("list");
   const [page, setPage] = useState(1);
+  const { listTop, turn } = usePageTurner(setPage);
   const [toDelete, setToDelete] = useState<Prop | null>(null);
 
   const rows = useMemo(() => {
@@ -363,13 +369,14 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
         <div className="grid grid-cols-3 gap-3 xl:w-[34rem]">
           <Select value={listing} onChange={v => { setListing(v); setPage(1); }} options={[{ value: "All", label: "Sale & Rent" }, "For Sale", "For Rent"]} />
           <Select value={type} onChange={v => { setType(v); setPage(1); }} options={[{ value: "All", label: "All types" }, ...PROPERTY_TYPES]} />
-          <Select value={sort} onChange={v => setSort(v as SortKey)} options={[
+          <Select value={sort} onChange={v => { setSort(v as SortKey); setPage(1); }} options={[
             { value: "list", label: "Site order" }, { value: "price_desc", label: "Price: high–low" },
             { value: "price_asc", label: "Price: low–high" }, { value: "reactions", label: "Most reactions" },
           ]} />
         </div>
       </div>
 
+      <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
       {rows.length === 0 ? (
         <EmptyState title="No properties match" text="Try a different search or filter." />
       ) : (
@@ -377,7 +384,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
           {paginate(rows, current, PER_PAGE).map(p => (
             <div key={p.id} className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap md:items-center gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
               <button onClick={() => onEdit(p)} className="w-full md:w-40 shrink-0 overflow-hidden" style={{ aspectRatio: "4/3" }} aria-label={`Edit ${p.title}`}>
-                <img src={p.hero} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />
+                <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap gap-1.5 mb-2">
@@ -425,7 +432,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
           ))}
         </div>
       )}
-      <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={setPage} noun="properties" />
+      <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={turn} noun="properties" />
 
       <ConfirmDialog open={toDelete !== null} title="Delete this property?"
         message={toDelete ? `“${toDelete.title}” (${displayRef(toDelete.nbId)}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}

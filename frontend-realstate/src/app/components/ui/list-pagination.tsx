@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { BORDER_L, FG_LIGHT, MUTED_L, WHITE, sans } from "./brand";
 
@@ -9,6 +10,25 @@ export function paginate<T>(items: T[], page: number, perPage: number): T[] {
 }
 
 export const pageCount = (total: number, perPage: number) => Math.max(1, Math.ceil(total / perPage));
+
+/**
+ * Page turning for a list whose pager sits below it: `turn(n)` shows page n and, if the list's top
+ * has scrolled out of view, brings it back (put `listTop` on the list, with a scroll-margin-top for
+ * the fixed menu bar), so the reader starts the new page at its first item, not its last.
+ */
+export function usePageTurner(setPage: (n: number) => void) {
+  const listTop = useRef<HTMLDivElement>(null);
+  const turn = useCallback((n: number) => {
+    setPage(n);
+    const el = listTop.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    if (top >= 0 && top < window.innerHeight * 0.5) return;   // already in view: don't move the page
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+  }, [setPage]);
+  return { listTop, turn };
+}
 
 /**
  * "Showing 1–10 of 42" with previous/next and numbered pages.

@@ -3,7 +3,7 @@ import { RotateCcw } from "lucide-react";
 import { ApiError, UNVERIFIED_ACCOUNT_DAYS, authFetch, useAuth } from "@/app/auth";
 import { BG_LIGHT, BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { Button, Select } from "@/app/components/ui/form-controls";
-import { ListPagination, paginate } from "@/app/components/ui/list-pagination";
+import { ListPagination, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { AdminLayout, type AdminNav } from "./AdminLayout";
 import { EmptyState, SearchBox } from "./parts";
 
@@ -28,6 +28,7 @@ export function AdminUsers({ nav }: { nav: AdminNav }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(1);
+  const { listTop, turn } = usePageTurner(setPage);
 
   const load = useCallback(() => {
     setErr(""); setUsers(null);
@@ -87,6 +88,7 @@ export function AdminUsers({ nav }: { nav: AdminNav }) {
           </div>
         </div>
 
+        <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
         {rows.length === 0 ? (
           <EmptyState title="No users match" text="Try a different search or filter." />
         ) : (
@@ -124,7 +126,7 @@ export function AdminUsers({ nav }: { nav: AdminNav }) {
             </table>
           </div>
         )}
-        <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={setPage} noun="users" />
+        <ListPagination page={current} total={rows.length} perPage={PER_PAGE} onPage={turn} noun="users" />
       </>)}
     </AdminLayout>
   );

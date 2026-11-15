@@ -4,11 +4,22 @@ import { authFetch } from "@/app/auth";
 import type { ListingStatus, ListingSubmission } from "@/app/data/listings";
 import type { Prop } from "@/app/data/properties";
 
+/**
+ * The Free Listing details that depend on the property type (backend listingDetailsSchema).
+ * Numbers are null when not given (or not asked for, e.g. bedrooms on land). mapUrl is admin-only.
+ */
+export type ListingDetails = {
+  address: string; mapUrl: string;
+  bedrooms: number | null; bathrooms: number | null; floors: number | null;
+  facing: string; roadSurface: string; roadWidthFt: number | null;
+};
+
 /** What the Free Listing form sends; photos are uploaded first (uploadListingPhoto). */
 export type ListingInput = {
   sellerName: string; sellerPhone: string; sellerEmail: string;
   title: string; listing: "For Sale" | "For Rent"; type: string; district: string;
   price: string; builtArea: string; landArea: string; buildYear: string; description: string;
+  details: ListingDetails;
   amenities: string[]; photos: string[];
 };
 

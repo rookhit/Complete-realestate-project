@@ -5,6 +5,7 @@ import type { TeamMember } from "@/app/data/content";
 import { BORDER_L, CREAM, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { BackButton } from "./back-button";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 
 /** Stands in for a missing portrait (the photo is optional): the member's initials. */
@@ -26,7 +27,7 @@ export function TeamCard({ m, onOpen }: { m: TeamMember; onOpen: () => void }) {
     <button type="button" onClick={onOpen} className="group text-left" aria-label={`View ${m.name}'s profile`}>
       <div className="relative overflow-hidden mb-4" style={{ aspectRatio: "4/5" }}>
         {m.img
-          ? <img src={m.img} alt={m.name} loading="lazy" decoding="async" className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
+          ? <img src={cardSrc(m.img)} onError={fullPhotoOnError(m.img)} alt={m.name} loading="lazy" decoding="async" className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-[1.03] transition-all duration-700" />
           : <InitialsTile name={m.name} size="clamp(2.5rem,6vw,4rem)" />}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.55) 0%, transparent 45%)" }} />
         <span className="absolute left-4 bottom-4 flex items-center gap-2 text-[10px] tracking-[0.26em] uppercase opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500" style={{ color: WHITE, ...sans }}>

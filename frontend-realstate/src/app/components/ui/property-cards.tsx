@@ -8,6 +8,7 @@ import { coverStyle, frameOf } from "./cover-frame";
 import { RefTag } from "./property-ref";
 import { leaveToCard } from "@/app/links";
 
+import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
 /**
  * The two property card designs the site uses. They live here, rather than in App.tsx,
  * so the admin's live preview renders exactly the same card the visitor will see.
@@ -26,7 +27,7 @@ export function ListingCard({ p, onOpen, href, light = false, showDetails = fals
   return (
     <div className={`group flex flex-col ${onOpen ? "cursor-pointer" : ""}`} onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
+        {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
         <div className="absolute inset-0 transition-opacity duration-400" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)", opacity: on ? 1 : 0.5 }} />
         <div className="absolute top-3 left-3 flex gap-1.5">
           <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span>
@@ -70,33 +71,36 @@ function LandArea({ p, color }: { p: Prop; color: string }) {
   );
 }
 
-/** The Hot Properties card on the home page: video-style photo with a play mark. */
-export function HotCard({ p, onOpen, href }: { p: Prop; onOpen?: () => void; href?: string }) {
+/**
+ * The Hot Properties card on the home page: video-style photo with a play mark. Its width comes from
+ * the row it sits in (`className`), so the row decides how many fit (three on a laptop).
+ */
+export function HotCard({ p, onOpen, href, className = "" }: { p: Prop; onOpen?: () => void; href?: string; className?: string }) {
   return (
-    <div className={`shrink-0 flex flex-col gap-5 group ${onOpen ? "cursor-pointer" : ""}`} style={{ width: "clamp(300px,30vw,380px)", maxWidth: "100%" }} onClick={onOpen}>
+    <div className={`shrink-0 min-w-0 flex flex-col gap-4 group ${onOpen ? "cursor-pointer" : ""} ${className}`} onClick={onOpen}>
       {/* Video thumbnail style */}
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <img src={p.hero} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
+        {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
         <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.28)" }} />
         {/* Play button */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 flex items-center justify-center border-2 border-white rounded-full bg-black/30 group-hover:bg-white/20 transition-all">
-            <Play size={18} fill="white" style={{ color: "white", marginLeft: 2 }} />
+          <div className="w-10 h-10 flex items-center justify-center border-2 border-white rounded-full bg-black/30 group-hover:bg-white/20 transition-all">
+            <Play size={15} fill="white" style={{ color: "white", marginLeft: 2 }} />
           </div>
         </div>
-        <div className="absolute top-3 left-3"><span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span></div>
-        {p.verified && <div className="absolute top-3 right-3"><CheckCircle2 size={16} style={{ color: "rgba(176,136,72,0.9)" }} /></div>}
+        <div className="absolute top-2.5 left-2.5"><span className="px-2 py-0.5 text-[9.5px] tracking-[0.22em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span></div>
+        {p.verified && <div className="absolute top-2.5 right-2.5"><CheckCircle2 size={15} style={{ color: "rgba(176,136,72,0.9)" }} /></div>}
       </div>
-      {/* Same caption rhythm as the New Listings cards beside it. */}
-      <div className="flex flex-col gap-1.5 px-0.5">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] tracking-[0.25em] uppercase truncate" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
+      {/* Same caption rhythm as the New Listings cards, a size smaller so three fit side by side. */}
+      <div className="flex flex-col gap-1 px-0.5 min-w-0">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <p className="text-[10px] tracking-[0.22em] uppercase truncate" style={{ color: MUTED_L, ...sans }}>{p.type}</p>
           <RefTag nbId={p.nbId} />
         </div>
-        <h3 className="text-[19px] leading-tight" style={{ color: FG_LIGHT, ...serif }}>{href ? <a href={href} onClick={leaveToCard}>{p.title}</a> : p.title}</h3>
-        <p className="flex items-center gap-1.5 text-[13px]" style={{ color: MUTED_L, ...sans }}><MapPin size={12} style={{ color: GOLD }} />{p.location}</p>
-        <div className="flex items-baseline justify-between gap-3 mt-1">
-          <p className="text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
+        <h3 className="text-[16px] leading-snug line-clamp-2" style={{ color: FG_LIGHT, ...serif }}>{href ? <a href={href} onClick={leaveToCard}>{p.title}</a> : p.title}</h3>
+        <p className="flex items-center gap-1.5 text-[12px] min-w-0" style={{ color: MUTED_L, ...sans }}><MapPin size={11} className="shrink-0" style={{ color: GOLD }} /><span className="truncate">{p.location}</span></p>
+        <div className="flex items-baseline justify-between gap-2 mt-0.5 min-w-0">
+          <p className="text-[14px] font-medium truncate" style={{ color: MAROON, ...sans }}>{p.price}</p>
           <LandArea p={p} color={MUTED_L} />
         </div>
       </div>

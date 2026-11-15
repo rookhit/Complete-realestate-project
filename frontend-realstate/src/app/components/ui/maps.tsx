@@ -1,10 +1,24 @@
-// The only map entry points the rest of the app uses. They keep Leaflet out of the main bundle:
+// The only map entry points the rest of the app uses. They keep MapLibre GL out of the main bundle:
 // its code (and the map tiles) are fetched only when a map scrolls into view. If that download or
-// the map itself fails, the fallback is shown instead, so a map problem can never break the page.
+// the map itself fails (e.g. no WebGL), the fallback is shown instead, so a map problem can never
+// break the page.
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import type { AreaMapProps, PropertiesMapProps } from "./leaflet-maps";
+import type { AreaMapProps, PropertiesMapProps } from "./maplibre-maps";
 
-const load = () => import("./leaflet-maps");
+const load = () => import("./maplibre-maps");
+
+/**
+ * A page with a map below the fold (the property page) calls this: once the browser is idle, the
+ * map's code and its worker are fetched quietly, so the map draws at once when it is reached.
+ * Skipped when the visitor asked to save data.
+ */
+export function prefetchMapCode(): void {
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (conn?.saveData) return;
+  const go = () => { void load().then(m => m.warmUpWorker()).catch(() => undefined); };
+  if ("requestIdleCallback" in window) window.requestIdleCallback(go, { timeout: 4000 });
+  else setTimeout(go, 2000);
+}
 const AreaMapImpl = lazy(() => load().then(m => ({ default: m.AreaMap })));
 const PropertiesMapImpl = lazy(() => load().then(m => ({ default: m.PropertiesMap })));
 
@@ -15,7 +29,7 @@ class MapBoundary extends Component<{ fallback: ReactNode; children: ReactNode }
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
-/** True once the element is within 300 px of the screen. Stays true. */
+/** True once the element is within 1200 px of the screen (a fast scroll still finds it ready). Stays true. */
 function useNearScreen<T extends Element>(): [React.RefObject<T>, boolean] {
   const ref = useRef<T>(null);
   const [near, setNear] = useState(false);
@@ -23,7 +37,7 @@ function useNearScreen<T extends Element>(): [React.RefObject<T>, boolean] {
     const el = ref.current;
     if (!el || near) return;
     if (!("IntersectionObserver" in window)) { setNear(true); return; }
-    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setNear(true); io.disconnect(); } }, { rootMargin: "300px" });
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setNear(true); io.disconnect(); } }, { rootMargin: "1200px" });
     io.observe(el);
     return () => io.disconnect();
   }, [near]);
