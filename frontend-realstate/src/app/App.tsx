@@ -67,7 +67,8 @@ import { BackButton } from "@/app/components/ui/back-button";
 import { ListPagination, pageCount, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
 import { HotCard, ListingCard, ListingTags } from "@/app/components/ui/property-cards";
 import { useRevealWhen } from "@/app/components/ui/reveal";
-import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
+import { SmartPhoto } from "@/app/components/ui/smart-photo";
+import { frameOf } from "@/app/components/ui/cover-frame";
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
 import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
@@ -524,7 +525,7 @@ function HeroSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
     <section className="relative h-screen min-h-[600px] overflow-hidden flex flex-col justify-end">
       <AnimatePresence mode="wait">
         <motion.div key={slide} className="absolute inset-0" initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} exit={{opacity:0}} transition={{duration:1.4,ease:[0.16,1,0.3,1]}}>
-          <img src={prop.hero} srcSet={`${cardSrc(prop.hero)} 800w, ${prop.hero} 2000w`} sizes="100vw" onError={fullPhotoOnError(prop.hero)} alt={prop.title} className="w-full h-full object-cover" style={coverStyle(frameOf(prop))} {...{fetchpriority:slide===0?"high":"auto"}}/>
+          <SmartPhoto src={prop.hero} srcSet={`${cardSrc(prop.hero)} 800w, ${prop.hero} 2000w`} sizes="100vw" blurSrc={cardSrc(prop.hero)} onError={fullPhotoOnError(prop.hero)} alt={prop.title} frame={frameOf(prop)} framed={!!frameOf(prop)} fitPosition="50% 18%" fetchPriority={slide===0?"high":"auto"}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.4) 45%, rgba(10,9,8,0.08) 100%)"}}/>
           <div className="absolute inset-0" style={{background:"linear-gradient(to right, rgba(10,9,8,0.55) 0%, transparent 65%)"}}/>
         </motion.div>
@@ -1423,7 +1424,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
               <div key={p.id} className="flex flex-col sm:flex-row sm:items-start gap-0 border-b group cursor-pointer transition-colors hover:bg-[#f0ebe0]/50"
                 style={{borderColor:BORDER_L}} onClick={()=>{setId(p.id);go("property");}}>
                 <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
-                  <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
+                  <SmartPhoto src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" frame={frameOf(p)} framed={!!frameOf(p)} imgClassName="transition-transform duration-600 group-hover:scale-[1.03]"/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
                     <ListingTags p={p} small/>
                     {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
@@ -1500,7 +1501,7 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
             onMouseEnter={()=>{setActiveCard(p.id);setHovPin(p.id);}} onMouseLeave={()=>{setActiveCard(null);setHovPin(null);}}
             onClick={()=>{setId(p.id);go("property");}}>
             <div className="relative overflow-hidden" style={{height:180}}>
-              <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover" style={coverStyle(frameOf(p))}/>
+              <SmartPhoto src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" frame={frameOf(p)} framed={!!frameOf(p)}/>
               <div className="absolute bottom-2 left-2"><span className="text-base font-semibold px-1.5 py-0.5 text-[15px]" style={{background:"rgba(255,255,255,0.95)",color:FG_LIGHT,...sans}}>{p.price}</span></div>
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <FavButton id={p.id} light/>
@@ -1632,7 +1633,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       </div>
       {/* Hero gallery */}
       <div className="relative overflow-hidden" style={{height:"68vh",minHeight:460}} {...swipe}>
-        <img src={p.gallery[galIdx]} srcSet={`${cardSrc(p.gallery[galIdx])} 800w, ${p.gallery[galIdx]} 2000w`} sizes="100vw" onError={fullPhotoOnError(p.gallery[galIdx])} alt={p.title} className="w-full h-full object-cover" {...{fetchpriority:"high"}}/>
+        <SmartPhoto src={p.gallery[galIdx]} srcSet={`${cardSrc(p.gallery[galIdx])} 800w, ${p.gallery[galIdx]} 2000w`} sizes="100vw" blurSrc={cardSrc(p.gallery[galIdx])} onError={fullPhotoOnError(p.gallery[galIdx])} alt={p.title} fetchPriority="high"/>
         {/* The whole photo opens the full-screen view (the gradient sits on top, so it is the button). */}
         <button type="button" onClick={()=>setLightbox(true)} aria-label={`View photo ${galIdx+1} of ${photos} full screen`}
           className="absolute inset-0 w-full h-full cursor-zoom-in" style={{background:"linear-gradient(to bottom, transparent 50%, rgba(14,13,11,0.7) 100%)"}}/>
