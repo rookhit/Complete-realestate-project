@@ -41,3 +41,11 @@ export const deleteMessageOnServer = (id: number): Promise<void> =>
 
 export const restoreMessageOnServer = (id: number): Promise<One> =>
   authFetch(`/admin/messages/${id}/restore`, { method: "POST", body: "{}" });
+
+/** Delete many at once ("Delete selected" / "Delete all"); restorable together for a minute. */
+export const deleteMessagesOnServer = (ids: number[]): Promise<{ meta: { deleted: number } }> =>
+  authFetch("/admin/messages/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) });
+
+/** Undo of a bulk delete: the messages that came back. */
+export const restoreMessagesOnServer = (ids: number[]): Promise<{ data: Message[] }> =>
+  authFetch("/admin/messages/bulk-restore", { method: "POST", body: JSON.stringify({ ids }) });

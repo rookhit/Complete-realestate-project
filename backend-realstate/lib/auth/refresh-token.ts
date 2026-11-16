@@ -6,7 +6,24 @@ import { isSameUserAgentFamily, type RequestContext } from "@/lib/http/request-c
 import type { Role } from "@/generated/prisma/client";
 
 const REFRESH_TOKEN_BYTES = 32;
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long a sign-in lasts. `idle`: unused for this long, the session ends (every visit renews it,
+ * since the 15-minute access token is refreshed while the site is open). `absolute`: it ends this long
+ * after signing in however busy it is (OWASP: every session needs an absolute limit). Admins hold the
+ * keys to the whole site, so theirs is short: sign in again at least every 3 days.
+ */
+export const SESSION_LIMITS: Record<Role, { idleMs: number; absoluteMs: number }> = {
+  ADMIN: { idleMs: 1 * DAY_MS, absoluteMs: 3 * DAY_MS },
+  USER: { idleMs: 7 * DAY_MS, absoluteMs: 30 * DAY_MS },
+};
+
+/** A token's expiry: renewed by use, but never past the session's absolute limit. */
+function expiryFor(role: Role, sessionStartedAt: Date, now = Date.now()): Date {
+  const { idleMs, absoluteMs } = SESSION_LIMITS[role];
+  return new Date(Math.min(now + idleMs, sessionStartedAt.getTime() + absoluteMs));
+}
 
 // Two tabs (or a browser restoring several tabs) can send the same cookie to /refresh at the
 // same moment; the loser sees a token rotated milliseconds ago. A reload can also abort a
@@ -36,9 +53,14 @@ export type IssuedRefreshToken = {
   expiresAt: Date;
 };
 
-export async function createRefreshToken(userId: string, context: RequestContext): Promise<IssuedRefreshToken> {
+/**
+ * A new refresh token. Without `sessionStartedAt` it starts a new session (a sign-in); with it, the
+ * token continues that session (the reuse-grace re-grant) and keeps its absolute limit.
+ */
+export async function createRefreshToken(userId: string, context: RequestContext, sessionStartedAt = new Date()): Promise<IssuedRefreshToken> {
   const token = randomBytes(REFRESH_TOKEN_BYTES).toString("hex");
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  const { role } = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { role: true } });
+  const expiresAt = expiryFor(role, sessionStartedAt);
 
   await prisma.refreshToken.create({
     data: {
@@ -47,6 +69,7 @@ export async function createRefreshToken(userId: string, context: RequestContext
       ipAddress: context.ip,
       userAgent: context.userAgent,
       expiresAt,
+      sessionStartedAt,
     },
   });
 
@@ -88,11 +111,12 @@ export async function rotateRefreshToken(
     if (successor.rotatedAt) throw refreshRaceLost(); // used: the browser holds a newer cookie
     if (successor.revokedAt) throw invalidRefreshToken(); // logged out since
     if (!isSameUserAgentFamily(existing.userAgent, context.userAgent)) throw invalidRefreshToken();
-    const issued = await createRefreshToken(existing.userId, context);
+    const issued = await createRefreshToken(existing.userId, context, existing.sessionStartedAt);
     await logAuthEvent("refresh_token_regrant", { userId: existing.userId, context });
     return { ...issued, userId: existing.userId, role: existing.user.role };
   }
 
+  // Also ends a session at its absolute limit: no token is ever issued past it (expiryFor).
   if (existing.expiresAt < new Date()) throw invalidRefreshToken();
 
   if (!isSameUserAgentFamily(existing.userAgent, context.userAgent)) {
@@ -109,7 +133,9 @@ export async function rotateRefreshToken(
   }
 
   const newToken = randomBytes(REFRESH_TOKEN_BYTES).toString("hex");
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  // Same session: same start, so the absolute limit carries over; the role decides the limits.
+  const expiresAt = expiryFor(existing.user.role, existing.sessionStartedAt);
+  if (expiresAt.getTime() <= Date.now()) throw invalidRefreshToken();
 
   await prisma.$transaction(async (tx) => {
     // Conditional update: if a concurrent request already rotated this token, count is 0
@@ -128,6 +154,7 @@ export async function rotateRefreshToken(
         ipAddress: context.ip,
         userAgent: context.userAgent,
         expiresAt,
+        sessionStartedAt: existing.sessionStartedAt,
         // Same instant as the old token's rotatedAt: that is how a re-sent old token finds it.
         createdAt: now,
       },

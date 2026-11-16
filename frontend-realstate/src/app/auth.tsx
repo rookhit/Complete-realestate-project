@@ -80,7 +80,10 @@ async function refreshOnce():Promise<string> {
 function refreshAccessToken():Promise<string|null> {
   refreshing ??= refreshOnce()
     .then(t=>{ accessToken=t; setSessionHint(true); return accessToken; })
-    .catch(()=>{ accessToken=null; setSessionHint(false); return null; })
+    // Only the server saying the session is over (401/403) means "signed out". A network error, a
+    // server restart or a tab closed mid-request says nothing about the cookie, so the next visit
+    // must still try it (otherwise a valid session looks signed out until the person signs in again).
+    .catch(err=>{ accessToken=null; if(err instanceof ApiError && (err.status===401||err.status===403)) setSessionHint(false); return null; })
     .finally(()=>{ refreshing=null; });
   return refreshing;
 }

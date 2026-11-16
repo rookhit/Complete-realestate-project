@@ -5,7 +5,7 @@
 // Written for Nepal Bhoomi's real practices (what the site stores and why). Have a lawyer review
 // before relying on it, and keep LEGAL_UPDATED current whenever the wording changes.
 
-export const LEGAL_UPDATED = "14 November 2026";
+export const LEGAL_UPDATED = "16 November 2026";
 const EMAIL = "info@nepalbhoomi.com";
 const PHONE = "+977 9818783518";
 const OFFICE = "Lazimpat, Kathmandu (opposite Image Channel building)";
@@ -45,14 +45,15 @@ export const PRIVACY: LegalDoc = {
       "We may also share information when the law requires it, or with your consent (for example, putting a buyer in touch with a seller).",
     ] },
     { heading: "Cookies and storage on your device", body: [
-      "• One essential sign-in cookie keeps you signed in for up to 7 days. It cannot be read by scripts and is only sent to our sign-in service.",
+      "• One essential sign-in cookie keeps you signed in: it ends after 7 days without a visit, and in any case 30 days after you signed in. It cannot be read by scripts and is only sent to our sign-in service.",
       "• Your browser may keep a half-written Free Listing (including picked photos) on your device until you send it or log out, and form text you typed before signing in.",
       "These are needed for the site to work; there are no analytics or advertising cookies.",
     ] },
     { heading: "How long we keep it", body: [
       "• Accounts that are never verified are deleted after 7 days.",
       "• Security logs are deleted after 180 days.",
-      "• Messages, reviews and free listings are kept while they are useful for the enquiry or listing, and deleted when no longer needed.",
+      "• Messages you send us from the website (enquiries, callback requests, the contact form) are deleted 90 days after our team has read them.",
+      "• Reviews and free listings are kept while they are useful for the property or listing, and deleted when no longer needed.",
       "• Your account is kept until you ask us to delete it.",
     ] },
     { heading: "Your choices and rights", body: [

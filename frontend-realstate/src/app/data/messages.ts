@@ -5,7 +5,7 @@
 // Stored in the database (backend-realstate/lib/content/messages.ts, src/api/messages.ts). The
 // forms post straight to the API; this file is the admin's copy of the inbox: loadMessages()
 // fills it (and is polled while an admin is signed in), and the changes below go to the API first.
-import { deleteMessageOnServer, fetchAllMessages, patchMessage, restoreMessageOnServer } from "@/api/messages";
+import { deleteMessageOnServer, deleteMessagesOnServer, fetchAllMessages, patchMessage, restoreMessageOnServer, restoreMessagesOnServer } from "@/api/messages";
 import { emitChange } from "./store";
 
 // Free listings have their own page (data/listings.ts, Admin → Free Listings).
@@ -88,6 +88,26 @@ export async function restoreMessage(m: Message, index: number): Promise<void> {
   const { data } = await restoreMessageOnServer(m.id);
   if (MESSAGES.some(x => x.id === m.id)) return;
   MESSAGES.splice(Math.min(Math.max(index, 0), MESSAGES.length), 0, data);
+  emitChange();
+}
+
+/** Delete many on the server, then here (at most 5,000 a call, so bigger sets go in parts). Resolves to how many. */
+export async function deleteMessages(ids: number[]): Promise<number> {
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += 5000) deleted += (await deleteMessagesOnServer(ids.slice(i, i + 5000))).meta.deleted;
+  const gone = new Set(ids);
+  MESSAGES.splice(0, MESSAGES.length, ...MESSAGES.filter(m => !gone.has(m.id)));
+  emitChange();
+  return deleted;
+}
+
+/** Undo a bulk delete: what the server brings back goes back in, newest first. */
+export async function restoreMessages(ids: number[]): Promise<void> {
+  const back: Message[] = [];
+  for (let i = 0; i < ids.length; i += 5000) back.push(...(await restoreMessagesOnServer(ids.slice(i, i + 5000))).data);
+  const have = new Set(MESSAGES.map(m => m.id));
+  MESSAGES.push(...back.filter(m => !have.has(m.id)));
+  MESSAGES.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || b.id - a.id);
   emitChange();
 }
 

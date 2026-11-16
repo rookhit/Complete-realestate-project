@@ -1639,6 +1639,17 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-16 · prajjwal (with Claude) · Messages bulk delete, 90-day retention, session fixes.**
+  - **Admin → Messages:** a tick box on every message; "Select" (this page), "Select all N", "Delete N" and
+    "Delete all N" (everything in the current filter / search), each confirmed, with Undo
+    (`api/messages.ts` `deleteMessagesOnServer` / `restoreMessagesOnServer`, `data/messages.ts` `deleteMessages` /
+    `restoreMessages`). The page says opened messages are deleted 90 days after opening (the server does it).
+    The "Email" filter only shows once email messages exist: nothing imports the mailbox yet.
+  - **Sign-in hint fix (`auth.tsx`):** a refresh that failed for a reason other than 401/403 (offline, server
+    restart, tab closed mid-request) used to mark the browser signed out, so the next visit didn't even try the
+    still-valid cookie. Now only 401/403 does. Session lengths themselves are the backend's (admin 1 day idle,
+    3 days at most; members 7 days / 30 days).
+
 - **2026-11-16 · prajjwal (with Claude) · Sold / Rented Out, Sale/Rent tags, NB search, landing position.**
   - **Sold / Rented Out:** Admin → Properties has "Mark as Sold" / "Mark as Rented" on each row (confirm + Undo).
     Two separate dashboard sections, **Sold** and **Rented Out** (`admin/SoldRentedSection.tsx`), each with

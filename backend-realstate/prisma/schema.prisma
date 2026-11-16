@@ -66,6 +66,9 @@ model RefreshToken {
   revokedAt DateTime?
   rotatedAt DateTime?
   createdAt DateTime  @default(now())
+  // When the sign-in that started this session happened; copied to every rotated token. A session
+  // never outlives its role’s absolute limit from here (lib/auth/refresh-token.ts SESSION_LIMITS).
+  sessionStartedAt DateTime @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -511,6 +514,8 @@ model Message {
   userId     String?
   user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   read       Boolean     @default(false)
+  // When the admin first opened it. Opened messages are deleted 90 days later (lib/content/messages.ts).
+  readAt     DateTime?
   // Set when the admin opens a reply.
   replied    Boolean     @default(false)
   // Soft delete, so "Undo" can restore it.
@@ -518,6 +523,7 @@ model Message {
   receivedAt DateTime    @default(now())
 
   @@index([read, receivedAt])
+  @@index([readAt])
   @@index([kind, receivedAt])
   @@index([propertyId])
   @@index([userId])

@@ -82,11 +82,24 @@ export async function purgeDeletedMessages(): Promise<number> {
   return done.count;
 }
 
+/** Opened messages are kept this long after the admin first opened them, then deleted for good. */
+export const READ_MESSAGE_RETENTION_DAYS = 90;
+
+/**
+ * Deletes every message the admin opened more than READ_MESSAGE_RETENTION_DAYS ago (never an unread
+ * one). Run by the daily cleanup job and whenever the admin opens Messages; one indexed DELETE.
+ */
+export async function purgeOldReadMessages(): Promise<number> {
+  const cutoff = new Date(Date.now() - READ_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const done = await prisma.message.deleteMany({ where: { readAt: { lt: cutoff } } });
+  return done.count;
+}
+
 export type Page<T> = { data: T[]; meta: { page: number; limit: number; total: number; totalPages: number; unread: number } };
 
 /** Newest first. `kind`, `unread` and `q` (name, email, phone, subject, text, or a full NB ID) narrow it. */
 export async function listMessages(q: MessageQuery): Promise<Page<MessageOut>> {
-  await purgeDeletedMessages();
+  await Promise.all([purgeDeletedMessages(), purgeOldReadMessages()]);
   const and: Prisma.MessageWhereInput[] = [{ deletedAt: null }];
   if (q.kind) and.push({ kind: KIND_IN[q.kind] });
   if (q.unread) and.push({ read: false });
@@ -113,9 +126,35 @@ export async function unreadMessageCount(): Promise<number> {
 }
 
 export async function updateMessage(id: number, patch: MessagePatch): Promise<MessageOut> {
-  const done = await prisma.message.updateMany({ where: { id, deletedAt: null }, data: patch });
+  // readAt: the first time it was opened (kept on later opens); "Mark as unread" clears it, so
+  // the 90-day clock starts again the next time it is opened.
+  const readAt = patch.read === false ? { readAt: null } : {};
+  const done = await prisma.message.updateMany({ where: { id, deletedAt: null }, data: { ...patch, ...readAt } });
   if (done.count === 0) throw new HttpError(404, "NOT_FOUND", "Message not found");
+  if (patch.read === true) await prisma.message.updateMany({ where: { id, readAt: null }, data: { readAt: new Date() } });
   return toMessage(await prisma.message.findUniqueOrThrow({ where: { id }, include: INCLUDE }));
+}
+
+/** Most messages one bulk delete takes (the inbox sends every id it shows, page by page). */
+export const BULK_DELETE_MAX = 5000;
+
+/**
+ * Delete many at once (the admin's "Delete selected" / "Delete all"): hidden at once, restorable
+ * together for MESSAGE_UNDO_WINDOW_MS, then removed for good. One UPDATE, whatever the number.
+ */
+export async function deleteMessages(ids: number[]): Promise<number> {
+  const done = await prisma.message.updateMany({ where: { id: { in: ids }, deletedAt: null }, data: { deletedAt: new Date() } });
+  await purgeDeletedMessages();
+  setTimeout(() => { purgeDeletedMessages().catch((e) => console.error("Purging deleted messages failed", e)); }, MESSAGE_UNDO_WINDOW_MS + 1000).unref?.();
+  return done.count;
+}
+
+/** Undo a bulk delete: brings back those still inside the undo window. */
+export async function restoreMessages(ids: number[]): Promise<MessageOut[]> {
+  await purgeDeletedMessages();
+  await prisma.message.updateMany({ where: { id: { in: ids }, deletedAt: { not: null } }, data: { deletedAt: null } });
+  const rows = await prisma.message.findMany({ where: { id: { in: ids }, deletedAt: null }, include: INCLUDE, orderBy: [{ receivedAt: "desc" }, { id: "desc" }] });
+  return rows.map(toMessage);
 }
 
 /** Hidden at once; restorable for MESSAGE_UNDO_WINDOW_MS (Undo), then deleted for good. */

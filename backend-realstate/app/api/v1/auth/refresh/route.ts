@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const rotated = await rotateRefreshToken(refreshToken, getRequestContext(request));
     const accessToken = await signAccessToken({ sub: rotated.userId, role: rotated.role });
-    await setRefreshCookie(rotated.token);
+    await setRefreshCookie(rotated.token, rotated.expiresAt);
 
     return jsonResponse(request, { accessToken });
   } catch (error) {

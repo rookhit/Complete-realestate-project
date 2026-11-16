@@ -58,3 +58,10 @@ export type MessageQuery = z.infer<typeof messageQuerySchema>;
 export const messagePatchSchema = z.object({ read: z.boolean(), replied: z.boolean() }).partial()
   .refine((v) => v.read !== undefined || v.replied !== undefined, "Send read and/or replied");
 export type MessagePatch = z.infer<typeof messagePatchSchema>;
+
+/** POST /api/v1/admin/messages/bulk-delete and /bulk-restore: the messages to act on. */
+export const messageIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "Choose at least one message").max(5000, "At most 5,000 at a time")
+    .transform((ids) => [...new Set(ids)]),
+});
+export type MessageIds = z.infer<typeof messageIdsSchema>;

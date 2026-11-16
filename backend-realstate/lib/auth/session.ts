@@ -15,8 +15,8 @@ export async function startSession(
   metadata?: Prisma.InputJsonObject,
 ): Promise<string> {
   const accessToken = await signAccessToken({ sub: user.id, role: user.role });
-  const { token: refreshToken } = await createRefreshToken(user.id, context);
-  await setRefreshCookie(refreshToken);
+  const { token: refreshToken, expiresAt } = await createRefreshToken(user.id, context);
+  await setRefreshCookie(refreshToken, expiresAt);
   await recordSuccessfulLogin(user.id, context.ip);
   await logAuthEvent(event, { userId: user.id, context, metadata });
   return accessToken;

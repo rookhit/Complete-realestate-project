@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 
-const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60;
 const REFRESH_TOKEN_PATH = "/api/v1/auth";
 
-export async function setRefreshCookie(refreshToken: string): Promise<void> {
+/** The refresh cookie lives exactly as long as its token (lib/auth/refresh-token.ts SESSION_LIMITS). */
+export async function setRefreshCookie(refreshToken: string, expiresAt: Date): Promise<void> {
   const cookieStore = await cookies();
   const secure = process.env.NODE_ENV === "production";
 
@@ -14,7 +14,7 @@ export async function setRefreshCookie(refreshToken: string): Promise<void> {
     secure,
     sameSite: "strict",
     path: REFRESH_TOKEN_PATH,
-    maxAge: REFRESH_TOKEN_MAX_AGE,
+    maxAge: Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1000)),
   });
 }
 

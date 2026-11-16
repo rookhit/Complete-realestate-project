@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, Building2, Inbox, Mail, MailOpen, MessageCircle, Phone, Reply, Trash2 } from "lucide-react";
 import {
-  MESSAGES, MESSAGE_KINDS, deleteMessage, restoreMessage, timeAgo, unreadCount, updateMessage,
+  MESSAGES, MESSAGE_KINDS, deleteMessage, deleteMessages, restoreMessage, restoreMessages, timeAgo, unreadCount, updateMessage,
   type Message, type MessageKind,
 } from "@/app/data/messages";
 import { CONTACT } from "@/app/data/content";
@@ -31,9 +31,10 @@ const waLink = (phone: string) => {
 };
 
 /**
- * Admin → Messages: everything visitors send from the website (property enquiries,
- * callback requests, the contact form, free listings) and emails to the business address.
- * Opening a message marks it read; the red count in the tabs is what is still unread.
+ * Admin → Messages: everything visitors send from the website (property enquiries, callback
+ * requests, the contact form). Opening a message marks it read; the red count in the tabs is what
+ * is still unread. Opened messages are deleted by the server 90 days after they were first opened.
+ * Messages can be ticked and deleted together, or every message in the current view at once.
  */
 export function AdminMessages({ nav }: { nav: AdminNav }) {
   useDataVersion();
@@ -44,6 +45,10 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
   const { listTop, turn } = usePageTurner(setPage);
   const [openId, setOpenId] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<Message | null>(null);
+  // Ticked messages, and a bulk delete waiting for its confirmation.
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [bulk, setBulk] = useState<{ ids: number[]; all: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -53,6 +58,23 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
   }, [filter, q, MESSAGES.length, unreadCount()]);
   const shown = paginate(list, page, PER_PAGE);
   const open = MESSAGES.find(m => m.id === openId) ?? null;
+
+  // Only what is in view can stay ticked (a filter, search or delete drops the rest).
+  const inView = new Set(list.map(m => m.id));
+  const picked = [...selected].filter(id => inView.has(id));
+  const pageIds = shown.map(m => m.id);
+  const pageAllPicked = pageIds.length > 0 && pageIds.every(id => selected.has(id));
+  const toggle = (id: number) => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const togglePage = () => setSelected(s => { const n = new Set(s); for (const id of pageIds) { if (pageAllPicked) n.delete(id); else n.add(id); } return n; });
+  const narrow = (fn: () => void) => { fn(); setPage(1); setSelected(new Set()); };
+  const removeMany = (ids: number[]) => {
+    setBulk(null); setBusy(true);
+    deleteMessages(ids).then(n => {
+      setSelected(new Set());
+      if (openId !== null && ids.includes(openId)) setOpenId(null);
+      notify(`${n.toLocaleString("en-US")} message${n === 1 ? "" : "s"} deleted`, { label: "Undo", run: () => { restoreMessages(ids).catch(failed); } });
+    }, err => failed(err)).finally(() => setBusy(false));
+  };
 
   const reader = useRef<HTMLDivElement>(null);
   const select = (m: Message) => {
@@ -69,19 +91,20 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
   };
 
   const counts = (f: Filter) => MESSAGES.filter(m => f === "all" || (f === "unread" ? !m.read : m.kind === f)).length;
+  // "Email" only once the business mailbox is connected (nothing creates email messages yet).
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" }, { key: "unread", label: "Unread" },
-    ...(Object.keys(MESSAGE_KINDS) as MessageKind[]).map(k => ({ key: k as Filter, label: MESSAGE_KINDS[k] })),
+    ...(Object.keys(MESSAGE_KINDS) as MessageKind[]).filter(k => k !== "email" || counts("email") > 0).map(k => ({ key: k as Filter, label: MESSAGE_KINDS[k] })),
   ];
 
   return (
     <AdminLayout nav={nav} current="admin-messages" tag="Administration" title="Messages"
-      intro={<>Website enquiries and emails to <span style={{ color: FG_LIGHT }}>{CONTACT.email}</span>, newest first.</>}>
+      intro={<>Enquiries, callback requests and contact messages from the website, newest first. Opened messages are deleted automatically 90 days after you open them.</>}>
       <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden mb-5">
         {filters.map(f => {
           const on = filter === f.key, n = counts(f.key);
           return (
-            <button key={f.key} type="button" onClick={() => { setFilter(f.key); setPage(1); }} aria-pressed={on}
+            <button key={f.key} type="button" onClick={() => narrow(() => setFilter(f.key))} aria-pressed={on}
               className="shrink-0 inline-flex items-center gap-2 px-4 py-2 border text-[12px] tracking-[0.08em] transition-colors hover:border-[#8a2030]"
               style={{ borderColor: on ? FG_LIGHT : BORDER_L, background: on ? FG_LIGHT : WHITE, color: on ? WHITE : FG_LIGHT, ...sans }}>
               {f.label}
@@ -91,24 +114,60 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
           );
         })}
       </div>
-      <div className="mb-6 max-w-xl"><SearchBox value={q} onChange={v => { setQ(v); setPage(1); }} placeholder="Search by name, email, phone, NB ID or text" /></div>
+      <div className="mb-6 max-w-xl"><SearchBox value={q} onChange={v => narrow(() => setQ(v))} placeholder="Search by name, email, phone, NB ID or text" /></div>
 
       {MESSAGES.length === 0 ? (
-        <EmptyState title="No messages yet" text="Enquiries from the website and emails will appear here." />
+        <EmptyState title="No messages yet" text="Enquiries, callback requests and contact messages from the website will appear here." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {/* List (hidden on phones while a message is open) */}
           <div className={`${open ? "hidden lg:flex" : "flex"} flex-col lg:border-r`} style={{ borderColor: BORDER_L }}>
             <div ref={listTop} className="scroll-mt-28" aria-hidden="true" />
+            {/* Bulk actions: tick messages (or this page), then delete them; or delete everything in view. */}
+            {list.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3 border-b text-[12px]" style={{ borderColor: BORDER_L, background: "#faf7f2", ...sans }}>
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none" style={{ color: FG_LIGHT }}>
+                  <input type="checkbox" checked={pageAllPicked} onChange={togglePage} aria-label="Select every message on this page"
+                    ref={el => { if (el) el.indeterminate = !pageAllPicked && pageIds.some(id => selected.has(id)); }}
+                    className="w-4 h-4 cursor-pointer" style={{ accentColor: MAROON }} />
+                  {picked.length ? `${picked.length.toLocaleString("en-US")} selected` : "Select"}
+                </label>
+                {pageAllPicked && picked.length < list.length && (
+                  <button type="button" onClick={() => setSelected(new Set(list.map(m => m.id)))} className="underline underline-offset-2" style={{ color: MAROON }}>
+                    Select all {list.length.toLocaleString("en-US")}
+                  </button>
+                )}
+                {picked.length > 0 && (
+                  <button type="button" onClick={() => setSelected(new Set())} className="underline underline-offset-2" style={{ color: MUTED_L }}>Clear</button>
+                )}
+                <span className="flex-1" />
+                {picked.length > 0 ? (
+                  <button type="button" disabled={busy} onClick={() => setBulk({ ids: picked, all: false })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10.5px] tracking-[0.16em] uppercase disabled:opacity-50" style={{ background: MAROON, color: WHITE }}>
+                    <Trash2 size={13} />Delete {picked.length.toLocaleString("en-US")}
+                  </button>
+                ) : (
+                  <button type="button" disabled={busy} onClick={() => setBulk({ ids: list.map(m => m.id), all: true })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border text-[10.5px] tracking-[0.16em] uppercase transition-colors hover:border-[#8a2030] hover:text-[#8a2030] disabled:opacity-50"
+                    style={{ borderColor: BORDER_L, background: WHITE, color: MUTED_L }}>
+                    <Trash2 size={13} />Delete all {list.length.toLocaleString("en-US")}
+                  </button>
+                )}
+              </div>
+            )}
             {list.length === 0 ? (
               <p className="px-6 py-14 text-center text-[14px]" style={{ color: MUTED_L, ...sans }}>No messages match.</p>
             ) : shown.map(m => {
               const on = m.id === openId;
               return (
-                <button key={m.id} type="button" onClick={() => select(m)}
-                  className="relative text-left px-5 py-4 border-b transition-colors hover:bg-[#faf7f2]"
-                  style={{ borderColor: BORDER_L, background: on ? "rgba(176,136,72,0.1)" : undefined }}>
-                  {on && <span className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: GOLD }} />}
+                <div key={m.id} className="relative flex items-stretch border-b" style={{ borderColor: BORDER_L, background: on ? "rgba(176,136,72,0.1)" : selected.has(m.id) ? "rgba(138,32,48,0.04)" : undefined }}>
+                <label className="flex items-start pl-4 pr-1 pt-[18px] cursor-pointer" title="Select">
+                  <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggle(m.id)} aria-label={`Select the message from ${m.name}`}
+                    className="w-4 h-4 cursor-pointer" style={{ accentColor: MAROON }} />
+                </label>
+                <button type="button" onClick={() => select(m)}
+                  className="relative flex-1 min-w-0 text-left pl-2 pr-5 py-4 transition-colors hover:bg-[#faf7f2]">
+                  {on && <span className="absolute -left-[26px] top-0 bottom-0 w-[3px]" style={{ background: GOLD }} />}
                   <div className="flex items-center gap-2.5">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: m.read ? "transparent" : "#d93636" }} aria-label={m.read ? undefined : "Unread"} />
                     <span className="flex-1 min-w-0 truncate text-[15px]" style={{ color: FG_LIGHT, ...sans, fontWeight: m.read ? 400 : 600 }}>{m.name}</span>
@@ -120,6 +179,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
                   </div>
                   <p className="pl-[18px] mt-1 text-[12px] truncate" style={{ color: MUTED_L, ...sans }}>{m.body.replace(/\s+/g, " ")}</p>
                 </button>
+                </div>
               );
             })}
             {list.length > PER_PAGE && <div className="px-5 py-4"><ListPagination page={page} total={list.length} perPage={PER_PAGE} onPage={turn} noun="messages" /></div>}
@@ -198,6 +258,10 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
       <ConfirmDialog open={!!toDelete} title="Delete this message?"
         message={toDelete ? `The message from ${toDelete.name} will be removed. You can undo this for a few seconds afterwards.` : ""}
         confirmLabel="Delete" onCancel={() => setToDelete(null)} onConfirm={() => toDelete && remove(toDelete)} />
+      <ConfirmDialog open={!!bulk}
+        title={bulk ? (bulk.all ? `Delete all ${bulk.ids.length.toLocaleString("en-US")} messages${filter !== "all" || q.trim() ? " shown" : ""}?` : `Delete ${bulk.ids.length.toLocaleString("en-US")} selected message${bulk.ids.length === 1 ? "" : "s"}?`) : ""}
+        message={bulk ? `${bulk.all && (filter !== "all" || q.trim()) ? "Every message in the current filter or search" : bulk.all ? "Every message in the inbox" : "The ticked messages"} will be removed. You can undo this for a few seconds afterwards; then they are deleted for good.` : ""}
+        confirmLabel={bulk ? `Delete ${bulk.ids.length.toLocaleString("en-US")}` : "Delete"} onCancel={() => setBulk(null)} onConfirm={() => bulk && removeMany(bulk.ids)} />
       {toast}
     </AdminLayout>
   );

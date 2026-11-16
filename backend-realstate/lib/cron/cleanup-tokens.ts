@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { deleteExpiredUnverifiedUsers } from "@/lib/auth/email-verification";
+import { purgeOldReadMessages } from "@/lib/content/messages";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -18,6 +19,7 @@ export type CleanupResult = {
   auditLogs: number;
   emailVerificationCodes: number;
   unverifiedUsers: number;
+  oldReadMessages: number;
 };
 
 // Deletes auth rows that can never be used again. Safe to run as often as you like.
@@ -27,7 +29,7 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
   const resetCutoff = new Date(now - RESET_TOKEN_RETENTION_MS);
 
   const dayAgo = new Date(now - DAY_MS);
-  const [refreshTokens, passwordResetTokens, rateLimits, loginLockouts, auditLogs, emailVerificationCodes, unverifiedUsers] = await Promise.all([
+  const [refreshTokens, passwordResetTokens, rateLimits, loginLockouts, auditLogs, emailVerificationCodes, unverifiedUsers, oldReadMessages] = await Promise.all([
     prisma.refreshToken.deleteMany({
       where: { OR: [{ expiresAt: { lt: refreshCutoff } }, { revokedAt: { lt: refreshCutoff } }] },
     }),
@@ -45,6 +47,8 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
       where: { expiresAt: { lt: dayAgo }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date(now) } }] },
     }),
     deleteExpiredUnverifiedUsers(),
+    // Messages the admin opened more than 90 days ago (lib/content/messages.ts).
+    purgeOldReadMessages(),
   ]);
 
   return {
@@ -55,5 +59,6 @@ export async function cleanupExpiredTokens(): Promise<CleanupResult> {
     auditLogs: auditLogs.count,
     emailVerificationCodes: emailVerificationCodes.count,
     unverifiedUsers,
+    oldReadMessages,
   };
 }

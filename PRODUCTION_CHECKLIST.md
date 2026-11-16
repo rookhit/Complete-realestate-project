@@ -7,10 +7,19 @@ Last updated: 2026-11-15
 
 ## Before deploying the 2026-11-14 fixes round (branch `fix/frontend-audit-issues`)
 
-- [x] Database migrations `20261114120000_listing_details` (adds `ListingSubmission.details`) and
-      `20261116090000_property_closed_at` (adds `Property.closedAt`, for Sold / Rented Out) are already applied to
-      the live database (`prisma migrate deploy`, 2026-11-14 and 2026-11-16). Nothing to run. Both are nullable
-      columns: the backend that is live now keeps working until the new one is deployed.
+- [x] Database migrations `20261114120000_listing_details` (adds `ListingSubmission.details`),
+      `20261116090000_property_closed_at` (adds `Property.closedAt`, for Sold / Rented Out) and
+      `20261116150000_session_start_message_read_at` (adds `RefreshToken.sessionStartedAt`, `Message.readAt`) are
+      already applied to the live database (`prisma migrate deploy`, 2026-11-14 and 2026-11-16). Nothing to run.
+      All are additive: the backend that is live now keeps working until the new one is deployed.
+- [ ] **After deploying, admins sign in again at least every 3 days** (and after 1 day without use); members
+      after 7 days without use, 30 days at most. Change `SESSION_LIMITS` in `backend-realstate/lib/auth/refresh-token.ts`
+      if the owner wants other numbers.
+- [ ] **Emails to the business address do not reach Admin → Messages** (they go to Zoho Mail; nothing imports
+      them), and the admin gets **no email** when a website form arrives (only the dashboard's red count and
+      pop-up). Owner to choose: email the admin on each new message, import the mailbox, or both.
+- [x] Opened messages are deleted 90 days after opening, by the admin inbox and the daily cleanup job (the job
+      still needs `CRON_SECRET` + a schedule, section below).
 - [ ] **Deploy the backend first, then the frontend.** The new frontend calls `GET /api/v1/site/watermark`, sends
       `details` with free listings and `cardSize` with photo uploads; the old backend ignores or 404s those. No
       environment variable changes on either side (the maps need no key or token).

@@ -42,8 +42,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     await recordSuccessfulLogin(user.id, context.ip);
-    const { token: refreshToken } = await createRefreshToken(user.id, context);
-    await setRefreshCookie(refreshToken);
+    const { token: refreshToken, expiresAt } = await createRefreshToken(user.id, context);
+    await setRefreshCookie(refreshToken, expiresAt);
     await logAuthEvent("google_login", { userId: user.id, context });
 
     return redirectToFrontend({ auth: "google" });
