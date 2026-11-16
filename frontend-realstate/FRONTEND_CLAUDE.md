@@ -1639,16 +1639,6 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
-- **2026-11-16 · prajjwal (with Claude) · Photos adapt to their box on every screen (`components/ui/smart-photo.tsx`).**
-  Home banner, listing cards, Hot Properties cards, Buy/Rent list rows, the map view's list and the property
-  page's main photo use `SmartPhoto`: it compares the photo's real shape with the box's shape on that screen
-  (again on resize / rotation). Close shapes fill the box around the cover's focal point; if filling would cut
-  more than ~29 % (shape differs by more than 1.4×), the whole photo shows on a blurred copy of itself. A cover
-  the admin framed ("Adjust") is always filled as framed. The phone banner places a fitted photo near the top
-  (`fitPosition`), above the title. Measured: every unframed photo shows ≥ 72 % (desktop and phone), the phone
-  banner 100 %. Industry practice: fixed-shape boxes + focal point (object-fit / object-position), whole photo
-  on a blurred fill when the shapes differ too much.
-
 - **2026-11-16 · prajjwal (with Claude) · Messages bulk delete, 90-day retention, session fixes.**
   - **Admin → Messages:** a tick box on every message; "Select" (this page), "Select all N", "Delete N" and
     "Delete all N" (everything in the current filter / search), each confirmed, with Undo

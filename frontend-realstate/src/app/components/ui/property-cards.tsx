@@ -4,12 +4,11 @@ import { Bath, Bed, CheckCircle2, LandPlot, MapPin, Play, Square } from "lucide-
 import { landSqftNote, type Prop } from "@/app/data/properties";
 import { FG_DARK, FG_LIGHT, GOLD, MAROON, MUTED_D, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StatusBadge } from "./status-badge";
-import { frameOf } from "./cover-frame";
+import { coverStyle, frameOf } from "./cover-frame";
 import { RefTag } from "./property-ref";
 import { leaveToCard } from "@/app/links";
 
 import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
-import { SmartPhoto } from "./smart-photo";
 
 /**
  * "For Sale" / "For Rent", from the property's listing (never typed, so never wrong), then its badge
@@ -45,7 +44,7 @@ export function ListingCard({ p, onOpen, href, light = false, showDetails = fals
   return (
     <div className={`group flex flex-col ${onOpen ? "cursor-pointer" : ""}`} onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <SmartPhoto src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" frame={frameOf(p)} framed={!!frameOf(p)} hoverZoom={hov ? 1.05 : 1} imgClassName="transition-transform duration-700" />}
+        {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
         <div className="absolute inset-0 transition-opacity duration-400" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)", opacity: on ? 1 : 0.5 }} />
         <div className="absolute top-3 left-3 flex gap-1.5">
           <ListingTags p={p} />
@@ -98,7 +97,7 @@ export function HotCard({ p, onOpen, href, className = "" }: { p: Prop; onOpen?:
     <div className={`shrink-0 min-w-0 flex flex-col gap-4 group ${onOpen ? "cursor-pointer" : ""} ${className}`} onClick={onOpen}>
       {/* Video thumbnail style */}
       <div className="relative overflow-hidden" style={{ aspectRatio: "4/3", background: "#e9e3d8" }}>
-        {p.hero && <SmartPhoto src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" frame={frameOf(p)} framed={!!frameOf(p)} imgClassName="transition-transform duration-600 group-hover:scale-[1.04]" />}
+        {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.04]" style={coverStyle(frameOf(p))} />}
         <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.28)" }} />
         {/* Play button */}
         <div className="absolute inset-0 flex items-center justify-center">
