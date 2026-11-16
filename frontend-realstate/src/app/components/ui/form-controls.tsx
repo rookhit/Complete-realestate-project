@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { createContext, useContext, useId, type ReactNode } from "react";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans } from "./brand";
 
@@ -11,14 +11,21 @@ import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans } from "./brand"
 const inputCls = "w-full border px-4 py-3 text-[15px] outline-none transition-colors focus:border-[#8a2030]";
 const inputStyle = { borderColor: BORDER_L, color: FG_LIGHT, background: WHITE, ...sans };
 
+/**
+ * The label of the Field a control sits in: TextInput, TextArea and Select point at it with
+ * aria-labelledby, so screen readers (and tests) know what each box is for.
+ */
+const FieldLabel = createContext<string | undefined>(undefined);
+
 /** Label + control + optional hint underneath. */
 export function Field({ label, hint, children, className = "" }: {
   label: string; hint?: ReactNode; children: ReactNode; className?: string;
 }) {
+  const labelId = useId();
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
-      <span className="text-[10px] tracking-[0.28em] uppercase" style={{ color: MUTED_L, ...sans }}>{label}</span>
-      {children}
+      <span id={labelId} className="text-[10px] tracking-[0.28em] uppercase" style={{ color: MUTED_L, ...sans }}>{label}</span>
+      <FieldLabel.Provider value={labelId}>{children}</FieldLabel.Provider>
       {hint && <span className="text-[12px] leading-snug" style={{ color: MUTED_L, ...sans }}>{hint}</span>}
     </div>
   );
@@ -28,7 +35,7 @@ export function TextInput({ value, onChange, placeholder, type = "text", maxLeng
   value: string; onChange: (v: string) => void; placeholder?: string; type?: string; maxLength?: number; autoFocus?: boolean;
 }) {
   return (
-    <input type={type} value={value} maxLength={maxLength} placeholder={placeholder} autoFocus={autoFocus}
+    <input type={type} value={value} maxLength={maxLength} placeholder={placeholder} autoFocus={autoFocus} aria-labelledby={useContext(FieldLabel)}
       onChange={e => onChange(e.target.value)} className={inputCls} style={inputStyle} />
   );
 }
@@ -37,7 +44,7 @@ export function TextArea({ value, onChange, placeholder, rows = 4 }: {
   value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
 }) {
   return (
-    <textarea rows={rows} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)}
+    <textarea rows={rows} value={value} placeholder={placeholder} aria-labelledby={useContext(FieldLabel)} onChange={e => onChange(e.target.value)}
       className={`${inputCls} resize-y leading-relaxed`} style={inputStyle} />
   );
 }
@@ -49,7 +56,7 @@ export function Select({ value, onChange, options, placeholder }: {
 }) {
   return (
     <div className="relative">
-      <select value={value} onChange={e => onChange(e.target.value)}
+      <select value={value} aria-labelledby={useContext(FieldLabel)} onChange={e => onChange(e.target.value)}
         className={`${inputCls} appearance-none cursor-pointer pr-10`} style={inputStyle}>
         {placeholder && <option value="" disabled>{placeholder}</option>}
         {options.map(o => typeof o === "string"

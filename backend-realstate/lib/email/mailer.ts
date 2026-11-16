@@ -7,10 +7,13 @@ import nodemailer, { type Transporter } from "nodemailer";
 // production a missing configuration is an error: codes and reset links must never be logged.
 
 export type OutgoingEmail = {
-  to: string;
+  /** One address, or several (each gets the same email). */
+  to: string | string[];
   subject: string;
   text: string;
   html: string;
+  /** Where "Reply" goes, e.g. the visitor who sent a website message. */
+  replyTo?: string;
 };
 
 let transporter: Transporter | null = null;

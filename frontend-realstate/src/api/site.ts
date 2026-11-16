@@ -30,3 +30,13 @@ export async function fetchWatermark(): Promise<Watermark> {
   return (await authFetch<{ data: Watermark }>("/site/watermark")).data;
 }
 export const saveSiteWatermark = (w: Watermark): Promise<Watermark> => put("watermark", w);
+
+/**
+ * Where the website emails a copy of every new message (enquiry, callback request, contact form).
+ * "" = the public business email (contact.email). Admin only: it is not part of GET /site.
+ */
+export type Notifications = { email: string };
+export async function fetchNotifications(): Promise<Notifications> {
+  return (await authFetch<{ data: Notifications }>("/admin/site/notifications")).data;
+}
+export const saveSiteNotifications = (n: Notifications): Promise<Notifications> => put("notifications", n);

@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/auth/guards";
 import { formatNbId, parseNbId } from "@/lib/content/nb-id";
 import type { CallbackInput, ContactInput, EnquiryInput, MessagePatch, MessageQuery } from "@/lib/validation/message";
+import { loadSite } from "@/lib/content/site";
+import { loadNotifications } from "@/lib/content/notifications";
+import { newMessageEmail } from "@/lib/email/templates";
+import { sendEmailAfterResponse } from "@/lib/email/send-later";
 
 // Admin → Messages: what signed-in visitors send from the website forms (property enquiries,
 // callback requests, the contact form), stored in Message with the account that sent it.
@@ -39,6 +43,28 @@ export function toMessage(m: MessageRow): MessageOut {
 
 // ─── Sending (signed-in visitors) ───────────────────────────────────────────────
 
+/**
+ * Emails every new website message to the address set in Admin → Contact & Services → "Send
+ * new-message emails to"; if that is empty, the public business email; if none, the admin accounts. Reply goes to the visitor. Sent after the response,
+ * so the visitor never waits for Gmail and a mail failure never loses the message (it is already
+ * saved; the failure is logged).
+ */
+async function notifyAdmins(m: MessageOut): Promise<void> {
+  try {
+    const chosen = (await loadNotifications()).email || (await loadSite()).contact?.email;
+    const to = chosen ? [chosen] : (await prisma.user.findMany({ where: { role: "ADMIN" }, select: { email: true } })).map((u) => u.email);
+    if (!to.length || m.kind === "email") return;
+    const site = process.env.FRONTEND_ORIGIN ?? "https://www.nepalbhoomi.com";
+    sendEmailAfterResponse(newMessageEmail(to, {
+      kind: m.kind, name: m.name, email: m.email, phone: m.phone, subject: m.subject, body: m.body,
+      nbId: m.nbId ? `#${m.nbId}` : undefined, propertyUrl: m.propertyId ? `${site}/property/${m.propertyId}` : undefined,
+      accountEmail: m.account?.email, inboxUrl: `${site}/admin/messages`,
+    }));
+  } catch (e) {
+    console.error("Could not prepare the new-message email", e);
+  }
+}
+
 /** "Enquire About This Property": the subject is the property's title; its NB ID comes from the property. */
 export async function createEnquiry(userId: string, v: EnquiryInput): Promise<MessageOut> {
   const property = await prisma.property.findFirst({ where: { id: v.propertyId, deletedAt: null }, select: { title: true, listing: true, nbNumber: true } });
@@ -50,7 +76,9 @@ export async function createEnquiry(userId: string, v: EnquiryInput): Promise<Me
     },
     include: INCLUDE,
   });
-  return toMessage(row);
+  const out = toMessage(row);
+  await notifyAdmins(out);
+  return out;
 }
 
 export async function createCallback(userId: string, v: CallbackInput): Promise<MessageOut> {
@@ -58,7 +86,9 @@ export async function createCallback(userId: string, v: CallbackInput): Promise<
     data: { kind: "CALLBACK", userId, name: v.name, phone: v.phone, subject: `Please call: ${v.time}`, body: `Requested a call back: ${v.time}.` },
     include: INCLUDE,
   });
-  return toMessage(row);
+  const out = toMessage(row);
+  await notifyAdmins(out);
+  return out;
 }
 
 export async function createContact(userId: string, v: ContactInput): Promise<MessageOut> {
@@ -66,7 +96,9 @@ export async function createContact(userId: string, v: ContactInput): Promise<Me
     data: { kind: "CONTACT", userId, name: v.name, email: v.email, phone: v.phone, subject: v.topic, body: v.message || "(No message)" },
     include: INCLUDE,
   });
-  return toMessage(row);
+  const out = toMessage(row);
+  await notifyAdmins(out);
+  return out;
 }
 
 // ─── Admin ──────────────────────────────────────────────────────────────────────

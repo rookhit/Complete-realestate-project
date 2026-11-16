@@ -1639,6 +1639,12 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-16 · prajjwal (with Claude) · New-message emails; labelled admin fields.** Admin → Contact & Services has
+  "New-Message Emails": where every new enquiry / callback / contact message is emailed (`api/site.ts`
+  `fetchNotifications` / `saveSiteNotifications`, admin-only `/admin/site/notifications`; empty = the business email).
+  Set to the owner's Gmail. `Field` now labels its TextInput / TextArea / Select (`aria-labelledby`), so screen
+  readers name every admin box.
+
 - **2026-11-16 · prajjwal (with Claude) · Messages bulk delete, 90-day retention, session fixes.**
   - **Admin → Messages:** a tick box on every message; "Select" (this page), "Select all N", "Delete N" and
     "Delete all N" (everything in the current filter / search), each confirmed, with Undo

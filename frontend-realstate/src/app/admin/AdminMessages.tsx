@@ -99,7 +99,7 @@ export function AdminMessages({ nav }: { nav: AdminNav }) {
 
   return (
     <AdminLayout nav={nav} current="admin-messages" tag="Administration" title="Messages"
-      intro={<>Enquiries, callback requests and contact messages from the website, newest first. Opened messages are deleted automatically 90 days after you open them.</>}>
+      intro={<>Enquiries, callback requests and contact messages from the website, newest first; each new one is also emailed to you (Dashboard → Contact &amp; Services). Opened messages are deleted automatically 90 days after you open them.</>}>
       <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden mb-5">
         {filters.map(f => {
           const on = filter === f.key, n = counts(f.key);

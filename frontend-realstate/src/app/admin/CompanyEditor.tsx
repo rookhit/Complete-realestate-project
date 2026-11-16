@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Check, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Mail, Plus } from "lucide-react";
+import { fetchNotifications, saveSiteNotifications } from "@/api/site";
 import { CONTACT, SERVICES, SERVICE_ICONS, saveContact, saveServices, whatsappLink, type ContactInfo, type Service } from "@/app/data/content";
 import { useDataVersion } from "@/app/data/store";
 import { ApiError } from "@/app/auth";
@@ -20,8 +21,23 @@ export function CompanySection({ notify }: { notify: Notify }) {
   const [c, setC] = useState<ContactInfo>(() => ({ ...CONTACT }));
   const [services, setServices] = useState<Service[]>(() => SERVICES.map(s => ({ ...s })));
   const setField = (k: keyof ContactInfo, v: string) => setC(o => ({ ...o, [k]: v }));
-  const [saving, setSaving] = useState<"contact" | "services" | null>(null);
+  const [saving, setSaving] = useState<"contact" | "services" | "notify" | null>(null);
   const failed = (err: unknown) => notify(err instanceof ApiError ? err.message : "Could not save. Please try again.");
+
+  // Where new website messages are emailed (private; "" = the business email above).
+  const [notifyTo, setNotifyTo] = useState<string | null>(null);
+  const [notifySaved, setNotifySaved] = useState("");
+  useEffect(() => {
+    fetchNotifications().then(n => { setNotifyTo(n.email); setNotifySaved(n.email); }, () => { setNotifyTo(""); });
+  }, []);
+  const saveNotifyTo = () => {
+    const email = (notifyTo ?? "").trim().toLowerCase();
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) { notify("That email address doesn’t look right"); return; }
+    setSaving("notify");
+    saveSiteNotifications({ email })
+      .then(n => { setNotifyTo(n.email); setNotifySaved(n.email); notify(n.email ? `New messages will be emailed to ${n.email}` : `New messages will be emailed to ${CONTACT.email}`); }, failed)
+      .finally(() => setSaving(null));
+  };
 
   const saveContactDetails = () => {
     if (!c.phone.trim() || !c.email.trim()) { notify("Phone and email are needed"); return; }
@@ -74,6 +90,21 @@ export function CompanySection({ notify }: { notify: Notify }) {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div>
+        <SectionHeading title="New-Message Emails"
+          subtitle="Every enquiry, callback request and contact message from the website is also emailed here, so you don’t need the dashboard open. Reply to that email to answer the visitor. Not shown on the website."
+          actions={<Button onClick={saveNotifyTo} disabled={saving === "notify" || notifyTo === null || (notifyTo ?? "").trim().toLowerCase() === notifySaved}><Check size={14} />{saving === "notify" ? "Saving…" : "Save"}</Button>} />
+        <div className="border p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-5 items-start" style={{ borderColor: BORDER_L, background: WHITE }}>
+          <Field label="Send new-message emails to" hint={`Leave empty to use the business email (${CONTACT.email}).`}>
+            <TextInput type="email" value={notifyTo ?? ""} onChange={v => setNotifyTo(v)} placeholder={notifyTo === null ? "Loading…" : CONTACT.email} />
+          </Field>
+          <p className="flex items-start gap-2.5 md:pt-8 text-[13px] leading-relaxed" style={{ color: MUTED_L, ...sans }}>
+            <Mail size={16} className="shrink-0 mt-0.5" style={{ color: GOLD }} />
+            <span>Now going to <b style={{ color: FG_LIGHT, fontWeight: 500 }}>{notifySaved || CONTACT.email}</b>.</span>
+          </p>
         </div>
       </div>
 

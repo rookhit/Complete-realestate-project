@@ -15,9 +15,11 @@ Last updated: 2026-11-15
 - [ ] **After deploying, admins sign in again at least every 3 days** (and after 1 day without use); members
       after 7 days without use, 30 days at most. Change `SESSION_LIMITS` in `backend-realstate/lib/auth/refresh-token.ts`
       if the owner wants other numbers.
-- [ ] **Emails to the business address do not reach Admin → Messages** (they go to Zoho Mail; nothing imports
-      them), and the admin gets **no email** when a website form arrives (only the dashboard's red count and
-      pop-up). Owner to choose: email the admin on each new message, import the mailbox, or both.
+- [x] **New website messages are emailed** (2026-11-16) to the address in Admin → Contact & Services →
+      "Send new-message emails to" (set to the owner's Gmail), with Reply-To the visitor. Uses the same Gmail
+      sending as sign-up codes (`GMAIL_USER` / `GMAIL_APP_PASSWORD` must be set on the live backend; ~500 emails a
+      day on a personal Gmail). Emails sent *to* the business address still stay in Zoho Mail (no import, by the
+      owner's choice).
 - [x] Opened messages are deleted 90 days after opening, by the admin inbox and the daily cleanup job (the job
       still needs `CRON_SECRET` + a schedule, section below).
 - [ ] **Deploy the backend first, then the frontend.** The new frontend calls `GET /api/v1/site/watermark`, sends
