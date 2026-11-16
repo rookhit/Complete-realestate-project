@@ -27,6 +27,8 @@ export type ApiProperty = {
 /** The admin also gets the private location. */
 export type ApiAdminProperty = ApiProperty & {
   deletedAt: string | null; mapUrl: string | null; exact: { lat: number; lng: number } | null;
+  /** When it was sold / rented out (hidden from the website); null = on the website. */
+  closedAt: string | null;
 };
 
 /** What POST / PATCH /admin/properties take (backend-realstate/lib/validation/property.ts). */
@@ -57,6 +59,7 @@ export function toProp(p: ApiProperty | ApiAdminProperty): Prop {
     hero: p.hero, gallery: p.gallery, description: p.description, features: p.features,
     mapX: p.mapX, mapY: p.mapY,
     mapUrl: "mapUrl" in p ? p.mapUrl ?? undefined : undefined,
+    closedAt: "closedAt" in p ? p.closedAt ?? undefined : undefined,
     locationMode: p.locationMode,
     approx: p.approx ?? undefined,
     floorPlan: p.floorPlan ?? undefined,
@@ -92,6 +95,14 @@ export const deletePropertyOnServer = (id: number): Promise<void> =>
 
 export const restorePropertyOnServer = (id: number): Promise<Saved> =>
   authFetch<Saved>(`/admin/properties/${id}/restore`, { method: "POST", body: "{}" });
+
+/** Sold / rented out: off the website, kept in Admin → Sold & Rented. */
+export const closePropertyOnServer = (id: number): Promise<Saved> =>
+  authFetch<Saved>(`/admin/properties/${id}/close`, { method: "POST", body: "{}" });
+
+/** Back on the website. */
+export const reopenPropertyOnServer = (id: number): Promise<Saved> =>
+  authFetch<Saved>(`/admin/properties/${id}/reopen`, { method: "POST", body: "{}" });
 
 const CANONICAL = new Set(AMENITIES.map(a => a.name));
 const areaParts = (s: string): { value: number; unit: string } | null => {

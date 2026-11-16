@@ -1639,6 +1639,23 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-16 · prajjwal (with Claude) · Sold / Rented Out, Sale/Rent tags, NB search, landing position.**
+  - **Sold / Rented Out:** Admin → Properties has "Mark as Sold" / "Mark as Rented" on each row (confirm + Undo).
+    Two separate dashboard sections, **Sold** and **Rented Out** (`admin/SoldRentedSection.tsx`), each with
+    "Mark a Property as …" (pick from the website's list), search, pages, Edit, "Put Back on Website" and Delete.
+    Data: `Prop.closedAt`; the admin list is split into `ALL_PROPS` (on the website) and `CLOSED_PROPS`
+    (`data/properties.ts`), so no public page can show a closed one; `refTaken` checks both (closed keep their
+    NB IDs). API: `POST /admin/properties/:id/close` and `/reopen` (`api/properties.ts`).
+  - **Sale / Rent tag:** every card, Hot Properties card and Buy/Rent list row shows "For Sale" (dark) or
+    "For Rent" (white) from the listing itself, next to the badge (`ListingTags` in `property-cards.tsx`); the
+    property page heading names it too. The badge list is unchanged. An empty badge no longer leaves an empty chip.
+  - **Admin search by NB number** (`matchesRefNumber`): "008", "8", "01", "nbs8", "NBL 7", "#nbs012" in Admin →
+    Properties, Sold, Rented Out and the picker.
+  - **Landing position:** a form swapped for its "sent" message (callback, contact, property enquiry, review,
+    forgot password, Free Listing) now brings the message into view (`components/ui/reveal.ts` `useRevealWhen`)
+    instead of leaving the reader at the footer. Checked: ~140 link clicks from part-way down 8 pages (desktop and
+    phone) all open at the top; the footer "Videos" link now goes to `/videos` (opens at the videos section).
+
 - **2026-11-14 · prajjwal (with Claude) · Fixes round from the owner's issue list** (branch `fix/frontend-audit-issues`;
   backend side in `backend-realstate/CLAUDE.md`, deploy steps in `PRODUCTION_CHECKLIST.md`, top section).
   - **First paint:** `#nb-boot` splash in `index.html` instead of the pre-rendered text flashing; the SEO text stays in

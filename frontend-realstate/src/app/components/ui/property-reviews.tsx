@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, ChevronDown, MessageSquare, Send, Star, X } from "lucide-react";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "./brand";
 import { StarRow } from "./star-row";
+import { useRevealWhen } from "./reveal";
 import { loadReviews, ratingFor, reviewsFor, type Review } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
 import { hasDraft, useDraft } from "@/app/data/drafts";
@@ -191,6 +192,7 @@ export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClos
   const [hover, setHover] = useState(0);
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
+  const sentRef = useRevealWhen<HTMLDivElement>(sent);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -208,7 +210,7 @@ export function ReviewForm({ propertyId, onClose }: { propertyId: number; onClos
   };
 
   if (sent) return (
-    <div className="p-8 border flex flex-col items-start gap-3" style={{ background: WHITE, borderColor: BORDER_L }}>
+    <div ref={sentRef} className="p-8 border flex flex-col items-start gap-3" style={{ background: WHITE, borderColor: BORDER_L }}>
       <CheckCircle2 size={26} style={{ color: GOLD }} />
       <p className="text-xl" style={{ color: FG_LIGHT, ...serif }}>Thank you for your review.</p>
       <p className="text-[15px]" style={{ color: MUTED_L, ...sans }}>It will appear here once our team has verified your visit.</p>

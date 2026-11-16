@@ -47,6 +47,8 @@ export interface Prop {
   videoUrl?: string;
   /** The cover photo's framing; none = centred, no zoom. */
   coverFrame?: CoverFrame;
+  /** ADMIN ONLY: when it was sold / rented out. Such properties live in CLOSED_PROPS, never on the site. */
+  closedAt?: string;
 }
 
 /**
@@ -55,6 +57,13 @@ export interface Prop {
  * The 12 old sample listings now live in the database (backend-realstate/prisma/sample-properties.ts).
  */
 export const ALL_PROPS: Prop[] = [];
+
+/**
+ * ADMIN ONLY: properties marked sold / rented out (Admin → Sold & Rented), most recent first. Kept
+ * apart from ALL_PROPS so no page of the website can show one by mistake. Visitors never load any.
+ */
+export const CLOSED_PROPS: Prop[] = [];
+const byClosedDesc = (a: Prop, b: Prop) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "");
 
 /** Where the first load is: the loading screen waits for "ready" or "error". */
 export let propertiesStatus: "loading" | "ready" | "error" = "loading";
@@ -70,7 +79,9 @@ export async function loadProperties(admin: boolean): Promise<void> {
   try {
     const list = await fetchAllProperties(admin);
     if (run !== loadRun) return;
-    ALL_PROPS.splice(0, ALL_PROPS.length, ...list.map(toProp));
+    const props = list.map(toProp);
+    ALL_PROPS.splice(0, ALL_PROPS.length, ...props.filter(p => !p.closedAt));
+    CLOSED_PROPS.splice(0, CLOSED_PROPS.length, ...props.filter(p => p.closedAt).sort(byClosedDesc));
     for (const p of list) REACTIONS[p.id] = p.reactionCount;
     propertiesStatus = "ready";
     propertiesError = "";
@@ -214,6 +225,23 @@ export function parseRef(input: string): string | null {
 export const matchesRef = (nbId: string, query: string): boolean => parseRef(query) === nbId.toUpperCase();
 
 /**
+ * The admin's search by NB ID, as people type it. Just digits: "008", "8" or "9" find that number in
+ * both sequences, and a part of a number finds every number containing it ("01" → 001, 010, 011…).
+ * With a prefix ("nbs8", "NBL 7", "#nbs00"): that sequence only, the number or numbers starting with it.
+ */
+export function matchesRefNumber(nbId: string, query: string): boolean {
+  const m = query.replace(/[#\s-]/g, "").toUpperCase().match(/^(NB[SL]?)?(\d{1,6})$/);
+  if (!m) return false;
+  const prefix = m[1] ?? "", digits = m[2];
+  const id = nbId.toUpperCase();
+  if (prefix.length === 3 && !id.startsWith(prefix)) return false;
+  const num = id.replace(/\D/g, "");             // "008"
+  if (Number(digits) > 0 && Number(digits) === Number(num)) return true;
+  // With a prefix, the start of the number as typed, with or without its zeros ("nbs1" → NBS012, "nbs01" → NBS012).
+  return prefix ? num.startsWith(digits) || String(Number(num)).startsWith(digits) : num.includes(digits);
+}
+
+/**
  * How well a property matches what someone is typing in a search box; 0 = not at all. Used by the
  * Buy/Rent results and the suggestions under the box, so the two always agree. Understands NB IDs
  * typed in part and any way ("nb", "#nbs", "nbl00", "nbs4", "NBS-004", "004"), and words found in
@@ -245,9 +273,10 @@ export function searchScore(p: Prop, query: string): number {
   return best;
 }
 
-/** The live property already using this NB ID (same sequence, same number), if any. */
+/** The property already using this NB ID (same sequence, same number), if any. Sold / rented ones keep theirs. */
 export function refTaken(listing: Listing, n: number, exceptId?: number): Prop | null {
-  return n > 0 ? ALL_PROPS.find(p => p.id !== exceptId && p.listing === listing && refNumber(p.nbId) === n) ?? null : null;
+  const holds = (p: Prop) => p.id !== exceptId && p.listing === listing && refNumber(p.nbId) === n;
+  return n > 0 ? ALL_PROPS.find(holds) ?? CLOSED_PROPS.find(holds) ?? null : null;
 }
 
 /** Next internal id. The database generates it once the API exists. */
@@ -264,10 +293,20 @@ export function nextPropRef(listing: Listing = "For Sale", exceptId?: number): s
   return makeRef(listing, n);
 }
 
-/** Create or update. API: POST /admin/properties (new) or PATCH /admin/properties/:id. */
+/** The list a property belongs in: on the website, or sold / rented out. */
+const listOf = (p: Prop) => (p.closedAt ? CLOSED_PROPS : ALL_PROPS);
+
+/**
+ * Create or update; a property whose `closedAt` changed moves between ALL_PROPS and CLOSED_PROPS.
+ * API: POST /admin/properties (new) or PATCH /admin/properties/:id (and …/close, …/reopen).
+ */
 export function saveProperty(p: Prop): void {
-  const i = ALL_PROPS.findIndex(x => x.id === p.id);
-  if (i >= 0) ALL_PROPS[i] = p; else ALL_PROPS.unshift(p);
+  const into = listOf(p), other = into === ALL_PROPS ? CLOSED_PROPS : ALL_PROPS;
+  const gone = other.findIndex(x => x.id === p.id);
+  if (gone >= 0) other.splice(gone, 1);
+  const i = into.findIndex(x => x.id === p.id);
+  if (i >= 0) into[i] = p; else into.unshift(p);
+  if (into === CLOSED_PROPS) CLOSED_PROPS.sort(byClosedDesc);
   emitChange();
 }
 
@@ -277,15 +316,21 @@ export function saveProperty(p: Prop): void {
  * Returns the restored property (check its nbId) or null. API: POST /admin/properties/:id/restore.
  */
 export function restoreProperty(p: Prop, index: number): Prop | null {
-  if (ALL_PROPS.some(x => x.id === p.id)) return null;
+  if (ALL_PROPS.some(x => x.id === p.id) || CLOSED_PROPS.some(x => x.id === p.id)) return null;
   const back = refTaken(p.listing, refNumber(p.nbId), p.id) ? { ...p, nbId: nextPropRef(p.listing, p.id) } : p;
-  ALL_PROPS.splice(Math.min(Math.max(index, 0), ALL_PROPS.length), 0, back);
+  const into = listOf(back);
+  into.splice(Math.min(Math.max(index, 0), into.length), 0, back);
   emitChange();
   return back;
 }
 
-/** API: DELETE /admin/properties/:id. The site needs at least one listing, so the last one stays. */
+/**
+ * API: DELETE /admin/properties/:id. The site needs at least one listing, so the last one on the
+ * website stays; sold / rented ones can always be deleted.
+ */
 export function deleteProperty(id: number): boolean {
+  const closed = CLOSED_PROPS.findIndex(x => x.id === id);
+  if (closed >= 0) { CLOSED_PROPS.splice(closed, 1); emitChange(); return true; }
   if (ALL_PROPS.length <= 1) return false;
   const i = ALL_PROPS.findIndex(x => x.id === id);
   if (i < 0) return false;

@@ -256,6 +256,10 @@ model Property {
   reactionCount  Int         @default(0)
   // Soft delete, so the admin's "Undo" can restore the same id and NB ID.
   deletedAt      DateTime?
+  // Sold (FOR_SALE) or rented out (FOR_RENT): when. Hidden from the website, kept for the admin
+  // (Admin → Sold & Rented) with its NB ID, photos, reviews and hearts; the admin can put it back.
+  // NULL = on the website.
+  closedAt       DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 

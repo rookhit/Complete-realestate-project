@@ -3,6 +3,7 @@
 // Add Property: what it asks for depends on the property type (listing-fields.ts), the contact
 // details start from the account, and everything typed or picked is kept on this device until it is
 // sent (listing-draft.ts). Photos are stamped with the watermark as they upload (api/uploads.ts).
+import { useRevealWhen } from "@/app/components/ui/reveal";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, CheckCircle2, ChevronDown, Lock, RotateCcw } from "lucide-react";
 import { requestSignIn, useAuth, type AuthUser } from "@/app/auth";
@@ -161,6 +162,7 @@ export function FreeListingPage({ onCreateAccount }: { onCreateAccount: () => vo
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [err, setErr] = useState<{ field: FieldKey | null; message: string } | null>(null);
   const [done, setDone] = useState<{ title: string; district: string; photos: number; name: string } | null>(null);
+  const doneRef = useRevealWhen<HTMLDivElement>(done !== null);
   const [sending, setSending] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }));
@@ -284,7 +286,7 @@ export function FreeListingPage({ onCreateAccount }: { onCreateAccount: () => vo
               </>}
             </div>
           ) : done ? (
-            <div className="flex flex-col items-center text-center gap-4 py-16">
+            <div ref={doneRef} className="flex flex-col items-center text-center gap-4 py-16">
               <CheckCircle2 size={36} style={{ color: GOLD }} />
               <h2 className="text-2xl" style={{ color: FG_LIGHT, ...serif }}>Listing submitted</h2>
               <p className="text-[15px] leading-relaxed max-w-md" style={{ color: MUTED_L, ...sans }}>

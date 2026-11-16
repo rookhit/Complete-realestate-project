@@ -9,6 +9,23 @@ import { RefTag } from "./property-ref";
 import { leaveToCard } from "@/app/links";
 
 import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
+
+/**
+ * "For Sale" / "For Rent", from the property's listing (never typed, so never wrong), then its badge
+ * (Hot, Rare, Premium…) when it has one. Sale and rent look different at a glance: dark for sale,
+ * white for rent; the badge stays maroon. Used on every card and list row that sits on a photo.
+ */
+export function ListingTags({ p, small = false }: { p: Pick<Prop, "listing" | "badge">; small?: boolean }) {
+  const chip = `${small ? "px-2 py-0.5 text-[9.5px] tracking-[0.22em]" : "px-2.5 py-1 text-[10px] tracking-[0.25em]"} uppercase whitespace-nowrap`;
+  const rent = p.listing === "For Rent";
+  return (
+    <>
+      <span className={chip} style={{ background: rent ? WHITE : FG_LIGHT, color: rent ? FG_LIGHT : WHITE, ...sans }}>{p.listing}</span>
+      {p.badge && <span className={chip} style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span>}
+    </>
+  );
+}
+
 /**
  * The two property card designs the site uses. They live here, rather than in App.tsx,
  * so the admin's live preview renders exactly the same card the visitor will see.
@@ -30,7 +47,7 @@ export function ListingCard({ p, onOpen, href, light = false, showDetails = fals
         {p.hero && <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={coverStyle(frameOf(p), hov ? 1.05 : 1)} />}
         <div className="absolute inset-0 transition-opacity duration-400" style={{ background: "linear-gradient(to top, rgba(10,9,8,0.75) 0%, transparent 55%)", opacity: on ? 1 : 0.5 }} />
         <div className="absolute top-3 left-3 flex gap-1.5">
-          <span className="px-2.5 py-1 text-[10px] tracking-[0.25em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span>
+          <ListingTags p={p} />
         </div>
         {/* The corner badge already says "Featured" when that is the badge, so
             the status chip must not repeat it. */}
@@ -88,7 +105,7 @@ export function HotCard({ p, onOpen, href, className = "" }: { p: Prop; onOpen?:
             <Play size={15} fill="white" style={{ color: "white", marginLeft: 2 }} />
           </div>
         </div>
-        <div className="absolute top-2.5 left-2.5"><span className="px-2 py-0.5 text-[9.5px] tracking-[0.22em] uppercase" style={{ background: MAROON, color: WHITE, ...sans }}>{p.badge}</span></div>
+        <div className="absolute top-2.5 left-2.5 flex gap-1"><ListingTags p={p} small /></div>
         {p.verified && <div className="absolute top-2.5 right-2.5"><CheckCircle2 size={15} style={{ color: "rgba(176,136,72,0.9)" }} /></div>}
       </div>
       {/* Same caption rhythm as the New Listings cards, a size smaller so three fit side by side. */}

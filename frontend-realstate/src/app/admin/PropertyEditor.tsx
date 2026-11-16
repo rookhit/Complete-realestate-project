@@ -574,7 +574,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
       {issues.length === 0 && serverError && (
         <p role="alert" className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{serverError}</p>
       )}
-      {!d.isNew && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
+      {!d.isNew && !property?.closedAt && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
       {source && <Button variant="quiet" onClick={() => { clearDraft(keyFor(d)); source.onReject(); }}><X size={14} />Reject</Button>}
       {source && <Button variant="quiet" onClick={saveForLater}><Clock size={14} />Save for Later</Button>}
       <Button onClick={() => void save()} title="Ctrl + S" disabled={saving}><Check size={14} />{saving ? "Saving…" : d.isNew ? "Publish Property" : "Save Changes"}</Button>

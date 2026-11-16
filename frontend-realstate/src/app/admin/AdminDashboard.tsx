@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Heart, Home, LayoutGrid,
+  BadgeCheck, Building2, ClipboardList, CheckCircle2, Clapperboard, Copy, Eye, Handshake, Heart, Home, KeyRound, LayoutGrid,
   ListChecks, Mail, MapPin, MessageSquare, Minus, Newspaper, Pencil, Phone, Plus, Quote, Search, Stamp, Star, Trash2, Users,
 } from "lucide-react";
 import { ApiError, useAuth } from "@/app/auth";
 import { deletePropertyOnServer, restorePropertyOnServer, toProp, updateProperty } from "@/api/properties";
-import { ALL_PROPS, PROPERTY_TYPES, applySaved, deleteProperty, displayRef, matchesRef, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, CLOSED_PROPS, PROPERTY_TYPES, applySaved, deleteProperty, displayRef, matchesRefNumber, restoreProperty, saveProperty, type Prop } from "@/app/data/properties";
 import { BLOGS, TEAM, TESTIMONIALS, VIDEO_LIST } from "@/app/data/content";
 import { ADMIN_REVIEWS, REACTIONS, pendingReviewCount } from "@/app/data/reviews";
 import { useDataVersion } from "@/app/data/store";
@@ -20,17 +20,20 @@ import { HomePageSection, JournalSection, TeamSection, TestimonialsSection, Vide
 import { CompanySection } from "./CompanyEditor";
 import { WatermarkSection } from "./WatermarkEditor";
 import { OptionsSection } from "./OptionsEditor";
+import { SoldRentedSection, closeLabel, useDealActions } from "./SoldRentedSection";
 import { onOptionSaveFailed } from "@/app/data/options";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { Chip, EmptyState, SearchBox, SectionHeading, useToast, type Notify } from "./parts";
 
 import { cardSrc, fullPhotoOnError } from "@/app/components/ui/card-photo";
-type Section = "overview" | "properties" | "journal" | "team" | "testimonials" | "videos" | "homepage" | "company" | "watermark" | "options";
+type Section = "overview" | "properties" | "sold" | "rented" | "journal" | "team" | "testimonials" | "videos" | "homepage" | "company" | "watermark" | "options";
 
 const SECTIONS: { key: Section; label: string; Icon: typeof Home }[] = [
   { key: "overview", label: "Overview", Icon: LayoutGrid },
   { key: "properties", label: "Properties", Icon: Building2 },
+  { key: "sold", label: "Sold", Icon: Handshake },
+  { key: "rented", label: "Rented Out", Icon: KeyRound },
   { key: "journal", label: "Journal", Icon: Newspaper },
   { key: "team", label: "Team", Icon: Users },
   { key: "testimonials", label: "Testimonials", Icon: Quote },
@@ -79,6 +82,8 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
       act("a-video", "Company videos", <Clapperboard size={15} />, () => goTo("videos"), "add video youtube film"),
       act("a-home", "Update home page statistics and districts", <Home size={15} />, () => goTo("homepage"), "stats numbers"),
       act("a-options", "Edit dropdown options", <ListChecks size={15} />, () => goTo("options"), "positions roles badges types languages departments specialities list choices"),
+      act("a-sold", "Sold properties", <Handshake size={15} />, () => goTo("sold"), "sold archive closed deal off market put back mark"),
+      act("a-rented", "Rented-out properties", <KeyRound size={15} />, () => goTo("rented"), "rented let tenant archive off market put back mark"),
       act("a-listings", "Review free listings from sellers", <ClipboardList size={15} />, () => nav.go("admin-listings"), "free listing seller submission publish"),
       act("a-messages", "Open messages and enquiries", <Mail size={15} />, () => nav.go("admin-messages"), "inbox email enquiry callback reply unread"),
       act("a-contact", "Edit contact details and services", <Phone size={15} />, () => goTo("company"), "phone whatsapp email address hours social instagram facebook services"),
@@ -106,6 +111,8 @@ export function AdminDashboard({ nav }: { nav: AdminNav }) {
     overview: <Overview go={goTo} nav={nav} onAddProperty={() => setEditing("new")} onEditProperty={setEditing}
       onOpenArticle={id => { goTo("journal"); setOpenArticle(id); }} onOpenMember={id => { goTo("team"); setOpenMember(id); }} />,
     properties: <PropertiesSection notify={notify} onAdd={() => setEditing("new")} onEdit={setEditing} onDuplicate={setCopyOf} nav={nav} />,
+    sold: <SoldRentedSection listing="For Sale" notify={notify} onEdit={setEditing} />,
+    rented: <SoldRentedSection listing="For Rent" notify={notify} onEdit={setEditing} />,
     journal: <JournalSection notify={notify} openId={openArticle} onOpened={clearArticle} />,
     team: <TeamSection notify={notify} openId={openMember} onOpened={clearMember} />,
     testimonials: <TestimonialsSection notify={notify} />,
@@ -200,7 +207,7 @@ function Overview({ go, nav, onAddProperty, onEditProperty, onOpenArticle, onOpe
   const reviewCount = ADMIN_REVIEWS.filter(r => r.status === "published").length;
   const reactions = ALL_PROPS.reduce((n, p) => n + (REACTIONS[p.id] ?? 0), 0);
   const tiles = [
-    { label: "Properties", value: ALL_PROPS.length, note: `${ALL_PROPS.filter(p => p.listing === "For Sale").length} for sale · ${ALL_PROPS.filter(p => p.listing === "For Rent").length} for rent`, to: "properties" as Section },
+    { label: "Properties", value: ALL_PROPS.length, note: `${ALL_PROPS.filter(p => p.listing === "For Sale").length} for sale · ${ALL_PROPS.filter(p => p.listing === "For Rent").length} for rent${CLOSED_PROPS.length ? ` · ${CLOSED_PROPS.filter(p => p.listing === "For Sale").length} sold, ${CLOSED_PROPS.filter(p => p.listing === "For Rent").length} rented out` : ""}`, to: "properties" as Section },
     { label: "Featured", value: ALL_PROPS.filter(p => p.featured).length, note: "In the hero and Hot Properties", to: "properties" as Section },
     { label: "Reactions", value: reactions.toLocaleString("en-US"), note: "Hearts across all listings", to: "properties" as Section },
     { label: "Reviews", value: reviewCount, note: pendingReviewCount() ? `${pendingReviewCount()} waiting for approval` : "Approved, on the property pages", to: null },
@@ -301,12 +308,13 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
   const [page, setPage] = useState(1);
   const { listTop, turn } = usePageTurner(setPage);
   const [toDelete, setToDelete] = useState<Prop | null>(null);
+  const deal = useDealActions(notify);
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
     const list = ALL_PROPS.filter(p =>
       (listing === "All" || p.listing === listing) && (type === "All" || p.type === type) &&
-      (!s || ([p.title, p.location, p.district].some(v => v.toLowerCase().includes(s)) || matchesRef(p.nbId, s))));
+      (!s || ([p.title, p.location, p.district].some(v => v.toLowerCase().includes(s)) || matchesRefNumber(p.nbId, s))));
     if (sort === "price_desc") list.sort((a, b) => b.priceNum - a.priceNum);
     if (sort === "price_asc") list.sort((a, b) => a.priceNum - b.priceNum);
     if (sort === "reactions") list.sort((a, b) => (REACTIONS[b.id] ?? 0) - (REACTIONS[a.id] ?? 0));
@@ -417,6 +425,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                 <button type="button" aria-label="One more reaction" onClick={() => nudge(p, 1)} className="w-8 h-8 flex items-center justify-center border transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: MUTED_L }}><Plus size={13} /></button>
               </div>
               <div className="flex flex-wrap gap-2 [&>button]:px-4 sm:[&>button]:px-6">
+                <Button variant="quiet" onClick={() => deal.askClose(p)} title="Take it off the website and keep it in Sold & Rented"><Handshake size={13} />{closeLabel(p)}</Button>
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)} title="Open on the website"><Eye size={13} />View</Button>
                 <Button variant="quiet" onClick={() => onEdit(p)}><Pencil size={13} />Edit</Button>
                 {/* Wrapped so the padding rule above (for the text buttons) doesn't squeeze the icons out. */}
@@ -438,6 +447,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
         message={toDelete ? `“${toDelete.title}” (${displayRef(toDelete.nbId)}) will be removed from the website. You can undo this for a few seconds afterwards.` : ""}
         onCancel={() => setToDelete(null)}
         onConfirm={() => { if (toDelete) remove(toDelete); setToDelete(null); }} />
+      {deal.ui}
     </div>
   );
 }

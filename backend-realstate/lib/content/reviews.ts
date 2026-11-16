@@ -47,7 +47,7 @@ function toAdminReview(c: AdminCommentRow): AdminReviewOut {
 }
 
 async function liveProperty(id: number): Promise<void> {
-  const found = await prisma.property.count({ where: { id, deletedAt: null } });
+  const found = await prisma.property.count({ where: { id, deletedAt: null, closedAt: null } });   // on the website: not deleted, sold or rented out
   if (!found) throw new HttpError(404, "NOT_FOUND", "Property not found");
 }
 

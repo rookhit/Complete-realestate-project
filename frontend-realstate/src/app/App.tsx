@@ -65,7 +65,8 @@ import type { AdminNav } from "@/app/admin/AdminLayout";
 import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
 import { ListPagination, pageCount, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
-import { HotCard, ListingCard } from "@/app/components/ui/property-cards";
+import { HotCard, ListingCard, ListingTags } from "@/app/components/ui/property-cards";
+import { useRevealWhen } from "@/app/components/ui/reveal";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
 import { TeamCard, TeamProfile } from "@/app/components/ui/team-profile";
 
@@ -379,7 +380,7 @@ function Footer({ go }: { go:Go }) {
         </div>
         {[
           {title:"Properties",links:[{l:"Buy Property",p:"buy"},{l:"Rent Property",p:"rent"},{l:"Hot Properties",p:"hot"},{l:"New Listings",p:"new-listings"},{l:"View All",p:"buy"}]},
-          {title:"Company",links:[{l:"About Us",p:"about"},{l:"Our Team",p:"team"},{l:"Services",p:"services"},{l:"Blog & News",p:"blog"},{l:"Videos",p:"home",o:{scrollTo:"videos"}},{l:"Contact",p:"contact"}]},
+          {title:"Company",links:[{l:"About Us",p:"about"},{l:"Our Team",p:"team"},{l:"Services",p:"services"},{l:"Blog & News",p:"blog"},{l:"Videos",p:"videos"},{l:"Contact",p:"contact"}]},
           {title:"Tools",links:[{l:"EMI Calculator",p:"emi"},{l:"Free Listing",p:"free-listing"},{l:"Register",p:"register"},{l:"Login",p:"login"}]},
         ].map(col=>(
           <div key={col.title}>
@@ -436,6 +437,7 @@ function CallbackForm() {
   const setPhone=(v:string)=>setDraft(d=>({...d,phone:v}));
   const setTime=(v:string)=>setDraft(d=>({...d,time:v}));
   const [sent,setSent]=useState(false);
+  const sentRef=useRevealWhen<HTMLDivElement>(sent);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
   const [serverErr,setServerErr]=useState("");
@@ -453,7 +455,7 @@ function CallbackForm() {
 
   if (sent) {
     return (
-      <div className="flex flex-col items-center gap-4 py-8 text-center">
+      <div ref={sentRef} className="flex flex-col items-center gap-4 py-8 text-center">
         <CheckCircle2 size={32} style={{color:GOLD}}/>
         <p className="text-base" style={{color:FG_LIGHT,...serif}}>Thank you. We will call you shortly.</p>
       </div>
@@ -1423,7 +1425,7 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                 <div className="w-full sm:w-64 md:w-80 shrink-0 relative overflow-hidden" style={{aspectRatio:"4/3"}}>
                   <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt={p.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-600 group-hover:scale-[1.03]" style={coverStyle(frameOf(p))}/>
                   <div className="absolute bottom-3 left-3 flex gap-1.5">
-                    <span className="px-2 py-0.5 text-[10px] tracking-[0.25em] uppercase" style={{background:MAROON,color:WHITE,...sans}}>{p.badge}</span>
+                    <ListingTags p={p} small/>
                     {/* Opaque plate: the old 15% gold tint was unreadable over the photo. */}
                     {p.verified&&<VerifiedChip onImage/>}
                   </div>
@@ -1557,6 +1559,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   // Kept for the tab (per property), so the enquiry survives a sign-in prompt.
   const [form,setForm]=useDraft(`enquiry:${p.id}`,{name:"",email:"",phone:"",msg:""});
   const [sent,setSent]=useState(false);
+  const sentRef=useRevealWhen<HTMLDivElement>(sent);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
   const [serverErr,setServerErr]=useState("");
@@ -1675,7 +1678,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
         {/* Left */}
         <div className="lg:col-span-2 flex flex-col gap-14">
           <div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3"><GoldLine/><Tag c={GOLD}>{p.badge}</Tag><span className="ml-auto"><RefTag nbId={p.nbId} copy/></span></div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3"><GoldLine/><Tag c={MAROON}>{p.listing}</Tag>{p.badge&&<><span aria-hidden style={{color:GOLD}}>·</span><Tag c={GOLD}>{p.badge}</Tag></>}<span className="ml-auto"><RefTag nbId={p.nbId} copy/></span></div>
             <h1 className="leading-[0.92] mb-2" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.8rem,4vw,3.5rem)"}}>{p.title}</h1>
             {p.tagline&&<p className="mb-3 text-[16px] italic" style={{color:MUTED_L,...serif}}>{p.tagline}</p>}
             <div className="flex items-center gap-1.5 mb-3"><MapPin size={14} style={{color:GOLD}}/><span className="text-[14px]" style={{color:MUTED_L,...sans}}>{p.location}</span></div>
@@ -1772,7 +1775,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
           <div className="sticky top-28 border p-8 flex flex-col gap-5" style={{background:WHITE,borderColor:BORDER_L}}>
             <p className="text-[11px] tracking-[0.3em] uppercase" style={{color:GOLD,...sans}}>Enquire About This Property</p>
             {sent?(
-              <div className="flex flex-col items-center text-center gap-3 py-8">
+              <div ref={sentRef} className="flex flex-col items-center text-center gap-3 py-8">
                 <CheckCircle2 size={30} style={{color:GOLD}}/>
                 <p className="text-lg" style={{color:FG_LIGHT,...serif}}>Enquiry sent</p>
                 <p className="text-[14px] leading-relaxed" style={{color:MUTED_L,...sans}}>An advisor will be in touch about {p.title} within 24 hours.</p>
@@ -2225,6 +2228,7 @@ function ContactPage() {
   // Kept for the tab, so the message survives "Sign In to Send an Enquiry".
   const [form,setForm]=useDraft("contact",{name:"",email:"",phone:"",interest:CONTACT_TOPICS[0]??"",msg:""});
   const [sent,setSent]=useState(false);
+  const sentRef=useRevealWhen<HTMLDivElement>(sent);
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
   const [serverErr,setServerErr]=useState("");
@@ -2238,7 +2242,7 @@ function ContactPage() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2">
         <div className="px-8 md:px-12 py-16 border-r" style={{borderColor:BORDER_L,background:WHITE}}>
-          {sent?(<div className="flex flex-col items-start gap-4 py-8"><CheckCircle2 size={32} style={{color:GOLD}}/><p className="text-xl" style={{color:FG_LIGHT,...serif}}>Thank you for your enquiry.</p><p className="text-[15px]" style={{color:MUTED_L,...sans}}>We will be in contact within 24 hours.</p>
+          {sent?(<div ref={sentRef} className="flex flex-col items-start gap-4 py-8"><CheckCircle2 size={32} style={{color:GOLD}}/><p className="text-xl" style={{color:FG_LIGHT,...serif}}>Thank you for your enquiry.</p><p className="text-[15px]" style={{color:MUTED_L,...sans}}>We will be in contact within 24 hours.</p>
             <button onClick={()=>setSent(false)} className="mt-1 text-[11px] tracking-[0.25em] uppercase transition-colors hover:brightness-110" style={{color:MAROON,...sans}}>Send another</button></div>):(
             <div className="flex flex-col gap-5 max-w-lg">
               {[{k:"name",l:"Full Name",t:"text",ph:"Your name"},{k:"email",l:"Email",t:"email",ph:"your@email.com"},{k:"phone",l:"Phone",t:"tel",ph:"+977 ..."}].map(f=>(
@@ -2388,6 +2392,7 @@ function LoginPage({ go, googleResult=null, returnLabel=null, onReturn }: { go:G
   // Right password but the email isn't verified yet: the backend emailed a code.
   const [verifying,setVerifying]=useState<string|null>(null);
   const [resetSent,setResetSent]=useState(false);
+  const resetRef=useRevealWhen<HTMLDivElement>(resetSent);
   // The AuthProvider finishes Google sign-in on load (refresh cookie -> access token -> /me).
   const googleFailed=googleResult==="success" && status==="anonymous";
   const shownErr=err || (googleFailed ? GOOGLE_ERROR : "");
@@ -2469,7 +2474,7 @@ function LoginPage({ go, googleResult=null, returnLabel=null, onReturn }: { go:G
           </div>
         ) : mode==="forgot" ? (
           resetSent ? (
-            <div className="flex flex-col items-center text-center gap-4 py-6">
+            <div ref={resetRef} className="flex flex-col items-center text-center gap-4 py-6">
               <Mail size={30} style={{color:GOLD}}/>
               <h2 className="text-2xl" style={{color:FG_LIGHT,...serif}}>Check your inbox</h2>
               <p className="text-[15px] leading-relaxed" style={{color:MUTED_L,...sans}}>

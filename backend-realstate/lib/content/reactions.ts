@@ -10,7 +10,7 @@ const isUniqueViolation = (e: unknown): boolean =>
 
 /** Heart a property. Doing it twice changes nothing. Returns the new shown count. */
 export async function addReaction(userId: string, propertyId: number): Promise<{ liked: true; reactionCount: number }> {
-  const property = await prisma.property.findFirst({ where: { id: propertyId, deletedAt: null }, select: { id: true } });
+  const property = await prisma.property.findFirst({ where: { id: propertyId, deletedAt: null, closedAt: null }, select: { id: true } });
   if (!property) throw new HttpError(404, "NOT_FOUND", "Property not found");
   try {
     const row = await prisma.$transaction(async (tx) => {
@@ -36,8 +36,8 @@ export async function removeReaction(userId: string, propertyId: number): Promis
   return { liked: false, reactionCount: row.reactionCount };
 }
 
-/** The properties this user has hearted (live ones only). */
+/** The properties this user has hearted (ones on the website only: not deleted, sold or rented out). */
 export async function myReactions(userId: string): Promise<number[]> {
-  const rows = await prisma.propertyReaction.findMany({ where: { userId, property: { deletedAt: null } }, select: { propertyId: true } });
+  const rows = await prisma.propertyReaction.findMany({ where: { userId, property: { deletedAt: null, closedAt: null } }, select: { propertyId: true } });
   return rows.map((r) => r.propertyId);
 }

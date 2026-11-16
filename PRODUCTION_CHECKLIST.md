@@ -7,8 +7,10 @@ Last updated: 2026-11-15
 
 ## Before deploying the 2026-11-14 fixes round (branch `fix/frontend-audit-issues`)
 
-- [x] Database migration `20261114120000_listing_details` (adds `ListingSubmission.details`) is already applied
-      to the live database (`prisma migrate deploy`, 2026-11-14). Nothing to run.
+- [x] Database migrations `20261114120000_listing_details` (adds `ListingSubmission.details`) and
+      `20261116090000_property_closed_at` (adds `Property.closedAt`, for Sold / Rented Out) are already applied to
+      the live database (`prisma migrate deploy`, 2026-11-14 and 2026-11-16). Nothing to run. Both are nullable
+      columns: the backend that is live now keeps working until the new one is deployed.
 - [ ] **Deploy the backend first, then the frontend.** The new frontend calls `GET /api/v1/site/watermark`, sends
       `details` with free listings and `cardSize` with photo uploads; the old backend ignores or 404s those. No
       environment variable changes on either side (the maps need no key or token).

@@ -50,6 +50,8 @@ export type PublicProperty = {
 /** The admin also gets the private location and the values exactly as the editor sends them. */
 export type AdminProperty = PublicProperty & {
   deletedAt: string | null;
+  /** When it was sold / rented out (hidden from the website); null = on the website. */
+  closedAt: string | null;
   mapUrl: string | null;
   exact: LatLng | null;
   edit: PropertyInput;
@@ -121,6 +123,7 @@ export function toAdmin(row: PropertyRow): AdminProperty {
   return {
     ...toPublic(row),
     deletedAt: row.deletedAt?.toISOString() ?? null,
+    closedAt: row.closedAt?.toISOString() ?? null,
     mapUrl: loc?.googleMapsUrl ?? null,
     exact: point(loc?.latitude, loc?.longitude),
     edit: {
@@ -294,8 +297,18 @@ export async function createProperty(v: PropertyInput): Promise<SaveResult> {
   }
 }
 
+/** Not deleted: what the admin can open and edit, sold / rented ones included. */
 async function findLive(id: number): Promise<PropertyRow> {
   const row = await prisma.property.findFirst({ where: { id, deletedAt: null }, include: INCLUDE });
+  if (!row) throw new HttpError(404, "NOT_FOUND", "Property not found");
+  return row;
+}
+
+/** What visitors may see: neither deleted nor sold / rented out. */
+const ON_SITE = { deletedAt: null, closedAt: null } satisfies Prisma.PropertyWhereInput;
+
+async function findOnSite(id: number): Promise<PropertyRow> {
+  const row = await prisma.property.findFirst({ where: { id, ...ON_SITE }, include: INCLUDE });
   if (!row) throw new HttpError(404, "NOT_FOUND", "Property not found");
   return row;
 }
@@ -450,6 +463,23 @@ export async function restoreProperty(id: number): Promise<{ property: AdminProp
   throw new HttpError(409, "REF_TAKEN", "Could not find a free NB ID. Try again.");
 }
 
+/**
+ * Sold (sale) or rented out (rent): off the website at once, kept for the admin with its NB ID,
+ * photos, reviews and hearts. `closed: false` puts it back on the website (e.g. a rental is free again).
+ */
+export async function setPropertyClosed(id: number, closed: boolean): Promise<AdminProperty> {
+  const done = await prisma.property.updateMany({
+    where: { id, deletedAt: null, closedAt: closed ? null : { not: null } },
+    data: { closedAt: closed ? new Date() : null },
+  });
+  if (done.count === 0) {
+    const row = await prisma.property.findFirst({ where: { id, deletedAt: null }, select: { closedAt: true } });
+    if (!row) throw new HttpError(404, "NOT_FOUND", "Property not found");
+    throw new HttpError(409, "CONFLICT", closed ? "This property is already marked sold / rented" : "This property is already on the website");
+  }
+  return toAdmin(await findLive(id));
+}
+
 export async function getAdminProperty(id: number): Promise<AdminProperty> {
   const row = await prisma.property.findUnique({ where: { id }, include: INCLUDE });
   if (!row) throw new HttpError(404, "NOT_FOUND", "Property not found");
@@ -472,8 +502,9 @@ export function parseListing(value: string | undefined): ListingType | undefined
   return undefined;
 }
 
-function listWhere(q: PropertyQuery): Prisma.PropertyWhereInput {
-  const and: Prisma.PropertyWhereInput[] = [{ deletedAt: null }];
+/** `onSiteOnly`: the public list (no sold / rented ones); the admin list has every property not deleted. */
+function listWhere(q: PropertyQuery, onSiteOnly: boolean): Prisma.PropertyWhereInput {
+  const and: Prisma.PropertyWhereInput[] = [onSiteOnly ? ON_SITE : { deletedAt: null }];
   const listing = parseListing(q.listing);
   if (listing) and.push({ listing });
   if (q.type && q.type !== "All Types") and.push({ type: q.type });
@@ -504,8 +535,8 @@ const ORDER: Record<PropertyQuery["sort"], Prisma.PropertyOrderByWithRelationInp
 
 export type Page<T> = { data: T[]; meta: { page: number; limit: number; total: number; totalPages: number } };
 
-async function list<T>(q: PropertyQuery, map: (row: PropertyRow) => T): Promise<Page<T>> {
-  const where = listWhere(q);
+async function list<T>(q: PropertyQuery, onSiteOnly: boolean, map: (row: PropertyRow) => T): Promise<Page<T>> {
+  const where = listWhere(q, onSiteOnly);
   const [total, rows] = await prisma.$transaction([
     prisma.property.count({ where }),
     prisma.property.findMany({ where, include: INCLUDE, orderBy: ORDER[q.sort], skip: (q.page - 1) * q.limit, take: q.limit }),
@@ -513,21 +544,22 @@ async function list<T>(q: PropertyQuery, map: (row: PropertyRow) => T): Promise<
   return { data: rows.map(map), meta: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
 }
 
-export const listPublicProperties = (q: PropertyQuery): Promise<Page<PublicProperty>> => list(q, toPublic);
+export const listPublicProperties = (q: PropertyQuery): Promise<Page<PublicProperty>> => list(q, true, toPublic);
+/** Every property not deleted, sold / rented ones too (`closedAt` set): the admin splits them. */
 export async function listAdminProperties(q: PropertyQuery): Promise<Page<AdminProperty>> {
   await purgeDeletedProperties();
-  return list(q, toAdmin);
+  return list(q, false, toAdmin);
 }
 
 export async function getPublicProperty(id: number): Promise<PublicProperty> {
-  return toPublic(await findLive(id));
+  return toPublic(await findOnSite(id));
 }
 
 /** "You may also like": 3 others with the same listing, same district and type first. */
 export async function relatedProperties(id: number): Promise<PublicProperty[]> {
-  const self = await findLive(id);
+  const self = await findOnSite(id);
   const candidates = await prisma.property.findMany({
-    where: { deletedAt: null, listing: self.listing, id: { not: id } },
+    where: { ...ON_SITE, listing: self.listing, id: { not: id } },
     include: INCLUDE, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 30,
   });
   const score = (p: PropertyRow): number =>
