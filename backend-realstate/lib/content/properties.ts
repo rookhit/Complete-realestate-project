@@ -546,7 +546,33 @@ async function list<T>(q: PropertyQuery, onSiteOnly: boolean, map: (row: Propert
   return { data: rows.map(map), meta: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
 }
 
-export const listPublicProperties = (q: PropertyQuery): Promise<Page<PublicProperty>> => list(q, true, toPublic);
+/** The longest description excerpt a card carries (cut at a word). */
+const EXCERPT_CHARS = 220;
+function excerpt(text: string): string {
+  const t = text.replace(/s+/g, " ").trim();
+  if (t.length <= EXCERPT_CHARS) return t;
+  const cut = t.slice(0, EXCERPT_CHARS);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), EXCERPT_CHARS - 40)).trimEnd()}…`;
+}
+
+/**
+ * A property as a list shows it (`view=card`): everything cards, filters, search, the map and the home
+ * sections use, without what only its own page shows. The description is an excerpt; the gallery is
+ * just the cover; amenities, highlights, the floor plan and the video are left out (GET /properties/:id
+ * has them). `card: true` tells the site to fetch the rest when the property is opened. About a third
+ * of the full size, so even hundreds of properties are one small, cached request.
+ */
+export type CardProperty = PublicProperty & { card: true };
+export function toCard(row: PropertyRow): CardProperty {
+  const p = toPublic(row);
+  return {
+    ...p, card: true, description: excerpt(p.description), gallery: p.hero ? [p.hero] : [],
+    features: [], amenities: [], highlights: [], floorPlan: null, videoUrl: null,
+  };
+}
+
+export const listPublicProperties = (q: PropertyQuery): Promise<Page<PublicProperty>> =>
+  q.view === "card" ? list(q, true, toCard) : list(q, true, toPublic);
 /** Every property not deleted, sold / rented ones too (`closedAt` set): the admin splits them. */
 export async function listAdminProperties(q: PropertyQuery): Promise<Page<AdminProperty>> {
   await purgeDeletedProperties();

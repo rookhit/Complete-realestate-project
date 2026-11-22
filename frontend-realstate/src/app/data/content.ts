@@ -6,6 +6,7 @@
  * the matching API call goes. Endpoints and field notes are in FRONTEND_CLAUDE.md §7.3 and §7.8.
  * Admin edits change these arrays in memory until the page is reloaded.
  */
+import { dataVersion } from "./version";
 import { img } from "@/app/components/ui/brand";
 import { fetchArticles, toBlog } from "@/api/articles";
 import { fetchTeam, toMember } from "@/api/team";
@@ -79,7 +80,7 @@ let articlesRun = 0;
 export async function loadArticles(admin: boolean, { quiet = false } = {}): Promise<void> {
   const run = ++articlesRun;
   try {
-    const list = await fetchArticles(admin);
+    const list = await fetchArticles(admin, dataVersion().articles || undefined);
     if (run !== articlesRun) return;
     BLOGS.splice(0, BLOGS.length, ...list.map(toBlog));
     articlesStatus = "ready";

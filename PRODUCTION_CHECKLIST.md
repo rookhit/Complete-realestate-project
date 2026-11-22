@@ -58,8 +58,12 @@ Last updated: 2026-11-15
 
 One visit (home → Buy → a property, moving inside the site) costs about **18 requests and 0.7 MB on Vercel**
 (site files + `/api`), **2–3 MB of photos from R2**, and ~1 MB of map tiles from OpenFreeMap (free, no limit).
-Public data (`/api/v1/properties`, articles, team, site…) is cached at Vercel's edge (30 s + 60 s while
-refreshing), so the database sees about one request per list every 30 s however many people browse.
+Public data (team, site, reviews…) is cached at Vercel's edge (30 s + 60 s while refreshing). The property and
+article lists go further (since 2026-11-22): the site first asks `GET /api/v1/site/version` (cached 2 s, two
+small `max` / `count` queries), then fetches the lists with `?v=<version>`, which the edge keeps for a day because
+any change gives a new version. So the database sees about one version query every 2 s at most, plus one list load
+per actual change, however many people browse. Lists are the slim card version (`view=card`); each property page
+loads its own full details (also versioned).
 
 - **Browsing visitors: thousands at the same time are fine** (pages, code and public data come from Vercel's
   CDN). The monthly allowance is the real limit:
@@ -79,9 +83,12 @@ refreshing), so the database sees about one request per list every 30 s however 
         broken photos). Connect a custom domain to the R2 bucket (e.g. `media.nepalbhoomi.com`; the domain or that
         subdomain must be on Cloudflare DNS), which also caches photos at Cloudflare's edge; then point
         `R2_PUBLIC_URL` at it and rewrite stored URLs (see Media storage below).
-- **New properties on the site:** visible to new visitors within ~1½ minutes (edge cache), and in already-open
-  tabs at the next refresh (on returning to the tab after a minute, or every 3 minutes). Before 2026-11-22 an open
-  tab never refreshed, so a phone keeping the page in memory could show the old list for hours.
+- **New or changed properties on the site:** on the next page load (the version is at most 2 s old), and in
+  already-open tabs within 30 s (they check the version every 30 s and when the visitor comes back). Before
+  2026-11-22 an open tab never refreshed, so a phone keeping the page in memory could show the old list for hours.
+  - [ ] **After deploying, check on the live site** that `/api/v1/properties?…&v=…` answers with
+        `x-vercel-cache: HIT` on a second request, and that a property saved in the admin shows in another
+        browser's open tab within 30 s (edge behaviour can't be tested locally).
 
 ## Secrets and accounts
 

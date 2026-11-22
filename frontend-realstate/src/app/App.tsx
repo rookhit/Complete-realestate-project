@@ -16,13 +16,14 @@ import logoImg from "@/imports/image.png";
 import { BOOT_SPLASH_SHOWN } from "./boot";
 import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, loadPropertyDetail, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap, prefetchMapCode } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
 import { sendCallback, sendContact, sendEnquiry } from "@/api/messages";
 import { clearListings, loadListings, newListingsCount } from "@/app/data/listings";
 import { CALLBACK_TIMES, CONTACT_TOPICS, loadSiteOptions } from "@/app/data/options";
+import { checkDataVersion } from "@/app/data/version";
 import { useDataVersion } from "@/app/data/store";
 import { useDraft } from "@/app/data/drafts";
 import { follow, leaveToCard } from "@/app/links";
@@ -1573,6 +1574,10 @@ function MapView({ props, go, setId }: { props:Prop[]; go:Go; setId:(id:number)=
 // ═══════════════════════════════════════════════════════════════════════════════
 function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { propertyId:number; go:Go; setId:(id:number)=>void; onBack:()=>void; backLabel:string }) {
   const p=ALL_PROPS.find(x=>x.id===propertyId)||ALL_PROPS[0];
+  // The list has the card version (cover, facts, an excerpt): fetch the rest (every photo, the full
+  // description, amenities, floor plan, video). The page shows the card version meanwhile.
+  const fullLoading=!p.detailed;
+  useEffect(()=>{ if(!p.detailed) void loadPropertyDetail(p.id); },[p.id,p.detailed,p.updatedAt]);
   // The location map is further down: get its code ready while the visitor looks at the photos.
   useEffect(()=>{ prefetchMapCode(); },[]);
   // Visitors get only what the admin chose to show; "Open in Google Maps" goes to that point, never the admin's link.
@@ -1737,7 +1742,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
           {/* Description */}
           <div>
             <p className="text-[11px] tracking-[0.3em] uppercase mb-4" style={{color:GOLD,...sans}}>Description</p>
-            <p className="leading-[1.85]" style={{color:MUTED_L,...sans,fontSize:"1.05rem"}}>{p.description}</p>
+            <p className="leading-[1.85]" style={{color:MUTED_L,...sans,fontSize:"1.05rem"}} aria-busy={fullLoading}>{p.description}</p>
           </div>
           <div className="h-px" style={{background:BORDER_L}}/>
           {/* Video tour uploaded by the admin (Cloudflare R2). preload="metadata": tours can be
@@ -1754,7 +1759,14 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
           {/* Features */}
           <div>
             <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Features & Amenities</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-1" aria-busy={fullLoading}>
+              {/* Placeholders while the full version loads (the card version has no amenities). */}
+              {fullLoading&&p.features.length===0&&Array.from({length:6},(_,i)=>(
+                <div key={i} className="flex items-center gap-3 py-4 border-b" style={{borderColor:BORDER_L}}>
+                  <span className="w-5 h-5 rounded-full animate-pulse" style={{background:"rgba(176,136,72,0.18)"}}/>
+                  <span className="h-3 rounded animate-pulse" style={{width:`${55+((i*17)%35)}%`,background:"rgba(26,22,17,0.08)"}}/>
+                </div>
+              ))}
               {p.features.map(f=>{
                 const Icon=amenityIcon(f);
                 return (
@@ -2906,18 +2918,27 @@ function keepFilters(page:Page, filters:Pick<NavOpts,"type"|"district"|"q"|"view
 function PropertySync() {
   const { user, status } = useAuth();
   const admin = user?.role==="ADMIN";
-  // The journal loads alongside: the admin's list includes drafts.
-  useEffect(()=>{ if(status!=="loading") { void loadProperties(admin); void loadArticles(admin); } },[status,admin]);
-  // Keep listings fresh in a tab that stays open: phones keep a page alive for hours and bring it back
-  // without reloading, so a property added meanwhile would not show. Refresh when the visitor comes
-  // back to the tab (after a minute away) and every 3 minutes while it is on screen. Quiet: a failed
-  // refresh keeps what is shown. The public list is cached at the edge, so this costs the server little.
+  // The data version first (a tiny request), then the lists for that version: cached at the edge, yet
+  // never older than the latest change. The journal loads alongside: the admin's list includes drafts.
+  useEffect(()=>{
+    if(status==="loading") return;
+    void checkDataVersion().then(()=>{ void loadProperties(admin); void loadArticles(admin); });
+  },[status,admin]);
+  // Keep listings fresh in a tab that stays open (phones keep a page alive for hours without reloading):
+  // ask for the data version every 30 s while the tab is on screen and when the visitor comes back to
+  // it, and reload only the lists that changed. Quiet: a failed refresh keeps what is shown.
   useEffect(()=>{
     if(status==="loading") return;
     let last=Date.now();
-    const refresh=()=>{ last=Date.now(); void loadProperties(admin,{ quiet:true }); void loadArticles(admin,{ quiet:true }); };
-    const onShow=()=>{ if(document.visibilityState==="visible"&&Date.now()-last>60_000) refresh(); };
-    const t=window.setInterval(()=>{ if(document.visibilityState==="visible") refresh(); },180_000);
+    const refresh=()=>{
+      last=Date.now();
+      void checkDataVersion().then(changed=>{
+        if(changed?.properties) void loadProperties(admin,{ quiet:true });
+        if(changed?.articles) void loadArticles(admin,{ quiet:true });
+      });
+    };
+    const onShow=()=>{ if(document.visibilityState==="visible"&&Date.now()-last>5_000) refresh(); };
+    const t=window.setInterval(()=>{ if(document.visibilityState==="visible") refresh(); },30_000);
     document.addEventListener("visibilitychange",onShow);
     window.addEventListener("pageshow",onShow);
     return ()=>{ window.clearInterval(t); document.removeEventListener("visibilitychange",onShow); window.removeEventListener("pageshow",onShow); };

@@ -1639,8 +1639,28 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-22 (later) · prajjwal (with Claude) · Slim card list + data version (ready for 300+ properties, instant updates).**
+  - **Card list (A1):** the public list is `GET /properties?view=card` (`fetchAllProperties`): a description
+    excerpt (220 characters), the cover photo only, no features / amenities / highlights / floor plan / video
+    (`card: true` → `Prop.detailed = false`). Pages after the first load in parallel. The property page calls
+    `loadPropertyDetail(id)` (`data/properties.ts`; one request per property, de-duplicated, kept in `DETAILS` while
+    its `updatedAt` matches) and shows placeholders (`aria-busy`, pulse rows for Features & Amenities) until the
+    full version replaces the card everywhere. Anything that needs a property's full data must check
+    `p.detailed` or call `loadPropertyDetail`. The admin list is unchanged (full items from `/admin/properties`).
+  - **Data version (A2):** `GET /site/version` → `{ properties, articles }` (`data/version.ts`
+    `checkDataVersion` / `dataVersion`). The lists are fetched with `?v=<version>`; the backend lets Vercel's edge
+    keep a versioned answer for a day, since every change gives a new version (a new address). `PropertySync`
+    checks the version first on load, then every 30 s while the tab is on screen and when the visitor comes back
+    (> 5 s since the last check), and reloads only the list that changed (quiet). Replaces the 3-minute / 1-minute
+    refresh of the entry below. Result: an admin's change shows on the next page load and in open tabs within 30 s.
+  - **`publicFetch`** (`auth.tsx`): the version, the card list, one property and the public articles are sent
+    without the bearer token, so signed-in members share the visitors' edge-cached copy. Use it for any public read
+    that is the same for everyone; keep `authFetch` for anything per-user (`/me/*`, admin, hearts).
+  - Measured locally (19 properties): list 33.2 → 23.8 KB (gzip 6.3 → 4.6 KB); one property ~1 KB gzip; the
+    version 75 bytes. The gap grows with photo-rich listings.
+
 - **2026-11-22 · prajjwal (with Claude) · Fresh listings in open tabs, phone "See more", tidier footer.**
-  - **Open tabs refresh** (`PropertySync` in `App.tsx`): properties and articles reload quietly when the visitor comes
+  - **Open tabs refresh** (timing superseded by the entry above) (`PropertySync` in `App.tsx`): properties and articles reload quietly when the visitor comes
     back to the tab after a minute and every 3 minutes while it is on screen (`loadProperties(admin, { quiet })`: a
     failure keeps what is shown). Before, the list loaded once per page load, so a phone keeping the tab in memory
     showed a new property only hours later. Local changes (`noteLocalChange` in `data/store.ts`, called by

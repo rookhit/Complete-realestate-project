@@ -70,10 +70,16 @@ and `backend-realstate/CLAUDE.md` (dated entries).
 - Backend dependencies upgraded (Next.js 16.4.6 fixes a critical advisory; Prisma 7.10.1, zod, nodemailer).
 
 ### 22 November follow-up
-- **New properties now appear quickly.** The live site was already running this round's code; the "shows
-  5–6 hours later" came from open tabs (phones keep a page in memory for hours) never reloading the list. Open tabs
-  now refresh it when the visitor comes back after a minute and every 3 minutes; the edge cache now serves a list at
-  most ~90 s old (was 5 min). Changes made in the browser (admin saves, hearts) are never undone by a refresh.
+- **New and changed properties appear at once.** The live site was already running this round's code; the "shows
+  5–6 hours later" came from open tabs (phones keep a page in memory for hours) never reloading the list. Now the
+  site asks for a tiny "data version" first and loads the lists for that version: an admin's change (new, edited,
+  sold, deleted property or article) shows on the next page load, and in already-open tabs within 30 s. Because
+  every change gives a new version, Vercel's edge can keep each list for a day without ever serving an old one, so
+  the database is barely touched however many visitors there are. Changes made in the browser (admin saves,
+  hearts) are never undone by a refresh.
+- **Ready for 300+ properties:** lists load a slim "card" version of each property (short description, cover
+  photo); a property page loads its own full details (all photos, features, floor plan, video), with placeholders
+  for a moment. About 28% less data for today's 19 properties, more with photo-rich listings.
 - **Phones: "See more" instead of long pages.** Buy / Rent / Hot / New and Blog show 6 at a time, Team 8, with a
   "See more" button; Back returns to the same place; rotating keeps the same items. The home page's Journal and
   Services and the About page's "What We Offer" show a few items and a visible "All …" button on phones (before,
@@ -93,6 +99,8 @@ and `backend-realstate/CLAUDE.md` (dated entries).
 
 | Method | Path | What |
 |---|---|---|
+| GET | `/api/v1/site/version` | The data version `{ properties, articles }` (public, edge-cached 2 s) |
+| GET | `/api/v1/properties?view=card` | The slim list (existing endpoint, new option); `?v=` on lists / one property / articles = edge-cached a day |
 | GET | `/api/v1/site/watermark` | The watermark settings (public; uploads use them) |
 | PUT | `/api/v1/admin/site/watermark` | Save the watermark |
 | GET / PUT | `/api/v1/admin/site/notifications` | Where new-message emails go (admin only) |

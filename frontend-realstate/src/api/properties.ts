@@ -1,7 +1,7 @@
 // Property calls to the backend (backend-realstate/app/api/v1/properties, …/admin/properties).
 // Shapes: FRONTEND_CLAUDE.md §0.3. Every call goes through authFetch (base URL, bearer token,
 // refresh on 401, the { error } envelope as ApiError).
-import { authFetch } from "@/app/auth";
+import { authFetch, publicFetch } from "@/app/auth";
 import { rapdOf, type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop } from "@/app/data/properties";
 import { REACTIONS } from "@/app/data/reviews";
 import { AMENITIES } from "@/app/icons/amenities";
@@ -22,6 +22,11 @@ export type ApiProperty = {
   floorPlan: PlanBox[] | null; reactionCount: number; createdAt: string; updatedAt: string;
   /** Only sent while it was set for the current cover. */
   coverFrame: CoverFrame | null;
+  /**
+   * Set on the list's slim card version (view=card): the description is an excerpt, the gallery only the
+   * cover, and there are no amenities, floor plan or video. GET /properties/:id has the rest.
+   */
+  card?: true;
 };
 
 /** The admin also gets the private location. */
@@ -65,21 +70,30 @@ export function toProp(p: ApiProperty | ApiAdminProperty): Prop {
     floorPlan: p.floorPlan ?? undefined,
     videoUrl: p.videoUrl ?? undefined,
     coverFrame: p.coverFrame ?? undefined,
+    detailed: !p.card,
+    updatedAt: p.updatedAt,
   };
 }
 
 /**
- * Every live property, page by page (100 at a time). The admin gets the admin list, which adds the
- * private location the editor needs; visitors get the public one.
+ * Every live property, 100 a page (the first page says how many pages there are; the rest load side
+ * by side). The admin gets the full admin list (with the private location the editor needs). Visitors
+ * get the slim card version (view=card), and with `version` (GET /site/version) the edge-cached copy
+ * for that version: a change to any property gives a new version, so this is never an older list.
  */
-export async function fetchAllProperties(admin: boolean): Promise<ApiProperty[]> {
-  const path = admin ? "/admin/properties" : "/properties";
-  const all: ApiProperty[] = [];
-  for (let page = 1; ; page++) {
-    const res = await authFetch<{ data: ApiProperty[]; meta: Meta }>(`${path}?limit=100&page=${page}&sort=newest`);
-    all.push(...res.data);
-    if (page >= res.meta.totalPages) return all;
-  }
+export async function fetchAllProperties(admin: boolean, version?: string): Promise<ApiProperty[]> {
+  const query = admin ? "" : `&view=card${version ? `&v=${encodeURIComponent(version)}` : ""}`;
+  const url = (page: number) => `${admin ? "/admin/properties" : "/properties"}?limit=100&page=${page}&sort=newest${query}`;
+  const get = admin ? authFetch : publicFetch;
+  const first = await get<{ data: ApiProperty[]; meta: Meta }>(url(1));
+  const rest = await Promise.all(Array.from({ length: Math.max(0, first.meta.totalPages - 1) }, (_, i) =>
+    get<{ data: ApiProperty[]; meta: Meta }>(url(i + 2))));
+  return [first, ...rest].flatMap(r => r.data);
+}
+
+/** One property in full (description, every photo, amenities, floor plan, video), for its own page. */
+export async function fetchPropertyDetail(id: number, version?: string): Promise<ApiProperty> {
+  return (await publicFetch<{ data: ApiProperty }>(`/properties/${id}${version ? `?v=${encodeURIComponent(version)}` : ""}`)).data;
 }
 
 type Saved = { data: ApiAdminProperty; meta?: { warnings?: string[]; nbIdChanged?: boolean } };

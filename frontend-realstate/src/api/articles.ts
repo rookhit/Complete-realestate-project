@@ -1,6 +1,6 @@
 // Journal article calls to the backend (backend-realstate/app/api/v1/articles, …/admin/articles).
 // Every call goes through authFetch (base URL, bearer token, refresh on 401, ApiError).
-import { authFetch } from "@/app/auth";
+import { authFetch, publicFetch } from "@/app/auth";
 import type { BlogPost } from "@/app/data/content";
 
 /** One article as the API sends it: the BlogPost shape with an ISO `date`, plus structured values. */
@@ -30,8 +30,11 @@ export function toBlog(a: ApiArticle): BlogPost {
 }
 
 /** Every article: the admin also gets drafts. */
-export async function fetchArticles(admin: boolean): Promise<ApiArticle[]> {
-  return (await authFetch<{ data: ApiArticle[] }>(admin ? "/admin/articles" : "/articles")).data;
+/** Visitors: with `version` (GET /site/version), the edge-cached list for that version. */
+export async function fetchArticles(admin: boolean, version?: string): Promise<ApiArticle[]> {
+  return admin
+    ? (await authFetch<{ data: ApiArticle[] }>("/admin/articles")).data
+    : (await publicFetch<{ data: ApiArticle[] }>(`/articles${version ? `?v=${encodeURIComponent(version)}` : ""}`)).data;
 }
 
 export const createArticle = (input: ArticleInput): Promise<{ data: ApiArticle }> =>

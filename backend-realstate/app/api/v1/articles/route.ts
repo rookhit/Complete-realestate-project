@@ -13,7 +13,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const { limit } = articleQuerySchema.parse(queryObject(request));
-    return publicJsonResponse(request, { data: await listPublicArticles(limit) });
+    return publicJsonResponse(request, { data: await listPublicArticles(limit) }, { versioned: true });
   } catch (error) {
     return errorResponse(request, error);
   }

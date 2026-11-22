@@ -142,12 +142,22 @@ export function jsonResponse(request: Request, data: unknown, status = 200): Nex
  * next.config's `Cache-Control: no-store` and never keep API data themselves. Never use it for
  * anything that depends on who is asking (auth, /me, admin).
  */
-export function publicJsonResponse(request: Request, data: unknown): NextResponse {
+export function publicJsonResponse(request: Request, data: unknown, { versioned = false, edge }: {
+  /**
+   * The answer depends only on the data version (properties, articles): asked for with ?v=<version>
+   * (lib/content/version.ts), it can stay at the edge for a day, since any change brings a new version
+   * and so a new address. Without ?v (pre-rendering, older tabs) the usual 30 s + 60 s.
+   */
+  versioned?: boolean;
+  /** An explicit Vercel-CDN-Cache-Control value (e.g. the version itself: 2 s). */
+  edge?: string;
+} = {}): NextResponse {
+  const cdn = edge ?? (versioned && new URL(request.url).searchParams.has("v") ? "max-age=86400" : "max-age=30, stale-while-revalidate=60");
   return NextResponse.json(data, {
     status: 200,
     headers: {
       ...corsHeaders(request),
-      "Vercel-CDN-Cache-Control": "max-age=30, stale-while-revalidate=60",
+      "Vercel-CDN-Cache-Control": cdn,
       // The CORS headers above depend on the Origin, so a cached copy must too.
       Vary: "Origin",
     },

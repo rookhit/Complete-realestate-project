@@ -2,7 +2,8 @@
 // The list comes from GET /api/v1/properties (visitors) or /api/v1/admin/properties (the admin), via
 // src/api/properties.ts. The admin's saves go to the API first; the functions at the bottom then
 // update this local copy so every page re-renders without reloading.
-import { fetchAllProperties, toProp, type ApiProperty } from "@/api/properties";
+import { fetchAllProperties, fetchPropertyDetail, toProp, type ApiProperty } from "@/api/properties";
+import { dataVersion } from "./version";
 import { REACTIONS } from "./reviews";
 import { changedRecently, emitChange, localChangeVersion, noteLocalChange } from "./store";
 
@@ -52,6 +53,13 @@ export interface Prop {
   coverFrame?: CoverFrame;
   /** ADMIN ONLY: when it was sold / rented out. Such properties live in CLOSED_PROPS, never on the site. */
   closedAt?: string;
+  /**
+   * false: the list's slim card version (description excerpt, cover only, no amenities / floor plan /
+   * video); its page loads the rest (loadPropertyDetail). true: everything (its own page, the admin list).
+   */
+  detailed?: boolean;
+  /** When it last changed on the server: tells a kept full version from an outdated one. */
+  updatedAt?: string;
 }
 
 /**
@@ -82,12 +90,13 @@ export async function loadProperties(admin: boolean, { quiet = false } = {}): Pr
   const run = ++loadRun;
   const startedAt = localChangeVersion();
   try {
-    const list = await fetchAllProperties(admin);
+    const list = await fetchAllProperties(admin, dataVersion().properties || undefined);
     if (run !== loadRun) return;
     // A background refresh that started before a change made here (an admin save) would put the old
     // values back: skip it, the next one catches up.
     if (quiet && localChangeVersion() !== startedAt) return;
-    const props = list.map(toProp);
+    // A property whose full version was loaded (its page) keeps it while it hasn't changed since.
+    const props = list.map(toProp).map(c => { const d = DETAILS.get(c.id); return d && d.updatedAt === c.updatedAt ? d : c; });
     ALL_PROPS.splice(0, ALL_PROPS.length, ...props.filter(p => !p.closedAt));
     CLOSED_PROPS.splice(0, CLOSED_PROPS.length, ...props.filter(p => p.closedAt).sort(byClosedDesc));
     // Heart counts: keep this browser's own recent change (the edge-cached list may predate it).
@@ -101,6 +110,31 @@ export async function loadProperties(admin: boolean, { quiet = false } = {}): Pr
     propertiesError = err instanceof Error ? err.message : "Could not load the properties.";
   }
   emitChange();
+}
+
+/** Full versions of properties loaded for their own page, kept across list refreshes (see loadProperties). */
+const DETAILS = new Map<number, Prop>();
+const loadingDetail = new Map<number, Promise<void>>();
+
+/**
+ * The full version of one property (description, every photo, amenities, floor plan, video) for its
+ * page: the list only has the card version. Replaces the card in ALL_PROPS, so every page shows it.
+ * A failure leaves the card (its page still shows the main facts) and can be tried again.
+ */
+export function loadPropertyDetail(id: number): Promise<void> {
+  const pending = loadingDetail.get(id);
+  if (pending) return pending;
+  const job = (async () => {
+    try {
+      const full = toProp(await fetchPropertyDetail(id, dataVersion().properties || undefined));
+      DETAILS.set(id, full);
+      const i = ALL_PROPS.findIndex(p => p.id === id);
+      if (i >= 0 && !ALL_PROPS[i].detailed) { ALL_PROPS[i] = full; emitChange(); }
+    } catch { /* offline or gone: the card stays */ }
+    finally { loadingDetail.delete(id); }
+  })();
+  loadingDetail.set(id, job);
+  return job;
 }
 
 /** Put what the API returned after a save into the local list (and its heart count). */

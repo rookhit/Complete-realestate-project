@@ -1,6 +1,6 @@
 // Site settings (backend-realstate/app/api/v1/site, …/admin/site/:section): home page statistics,
 // featured districts, contact details and services. Reading is public; saving is admin only.
-import { authFetch } from "@/app/auth";
+import { authFetch, publicFetch } from "@/app/auth";
 import type { ContactInfo, FeaturedDistrict, Service, Stat } from "@/app/data/content";
 
 /** The settings the admin has saved; one never saved is left out (the site keeps its default). */
@@ -40,3 +40,13 @@ export async function fetchNotifications(): Promise<Notifications> {
   return (await authFetch<{ data: Notifications }>("/admin/site/notifications")).data;
 }
 export const saveSiteNotifications = (n: Notifications): Promise<Notifications> => put("notifications", n);
+
+/**
+ * The data version (backend lib/content/version.ts): changes whenever the property or article lists
+ * change. The lists are then fetched with ?v=<version>, so they come from the edge cache yet are never
+ * older than the latest change. Cached at the edge for 2 s.
+ */
+export type DataVersion = { properties: string; articles: string };
+export async function fetchDataVersion(): Promise<DataVersion> {
+  return (await publicFetch<{ data: DataVersion }>("/site/version")).data;
+}

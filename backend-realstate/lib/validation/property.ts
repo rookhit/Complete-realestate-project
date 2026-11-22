@@ -130,5 +130,7 @@ export const propertyQuerySchema = z.object({
   sort: z.enum(["newest", "price_asc", "price_desc", "reactions"]).catch("newest").default("newest"),
   page: intParam(1, 10_000).default(1),
   limit: intParam(20, 100).default(20),
+  /** "card": the slim version for lists (lib/content/properties.ts toCard). */
+  view: z.enum(["card"]).optional().catch(undefined),
 });
 export type PropertyQuery = z.infer<typeof propertyQuerySchema>;

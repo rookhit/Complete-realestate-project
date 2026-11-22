@@ -15,7 +15,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request, ctx: RouteContext<"/api/v1/articles/[slug]">): Promise<NextResponse> {
   try {
     const { slug } = await ctx.params;
-    return publicJsonResponse(request, { data: await getPublicArticle(slug.toLowerCase()) });
+    return publicJsonResponse(request, { data: await getPublicArticle(slug.toLowerCase()) }, { versioned: true });
   } catch (error) {
     return errorResponse(request, error);
   }

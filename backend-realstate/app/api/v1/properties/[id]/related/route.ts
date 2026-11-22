@@ -16,7 +16,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function GET(request: Request, ctx: RouteContext<"/api/v1/properties/[id]/related">): Promise<NextResponse> {
   try {
     const { id } = await ctx.params;
-    return publicJsonResponse(request, { data: await relatedProperties(idParam(id)) });
+    return publicJsonResponse(request, { data: await relatedProperties(idParam(id)) }, { versioned: true });
   } catch (error) {
     return errorResponse(request, error);
   }

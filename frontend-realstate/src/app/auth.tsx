@@ -46,10 +46,10 @@ function maySignedIn():boolean {
 // parallel refreshes would race and the loser would be logged out.
 let refreshing:Promise<string|null>|null=null;
 
-async function request<T>(path:string, init:RequestInit={}):Promise<T> {
+async function request<T>(path:string, init:RequestInit={}, anonymous=false):Promise<T> {
   const headers=new Headers(init.headers);
   if(init.body!==undefined) headers.set("Content-Type","application/json");
-  if(accessToken) headers.set("Authorization",`Bearer ${accessToken}`); 
+  if(accessToken && !anonymous) headers.set("Authorization",`Bearer ${accessToken}`);
   let res:Response;
   try {
     res=await fetch(`${API_URL}/api/v1${path}`,{ ...init, headers, credentials:"include" });
@@ -97,6 +97,13 @@ export async function authFetch<T>(path:string, init:RequestInit={}):Promise<T> 
     if(!(await refreshAccessToken())) throw err;
     return request<T>(path,init);
   }
+}
+
+// A public read that is the same for everyone (data version, card list, one property, articles):
+// sent without the bearer token, so a signed-in member gets the same edge-cached copy as a visitor
+// (a CDN may skip caching requests that carry Authorization) and an expired token never costs a refresh.
+export function publicFetch<T>(path:string):Promise<T> {
+  return request<T>(path,{},true);
 }
 
 // ─── Calls that don't change who is signed in ────────────────────────────────
