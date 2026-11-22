@@ -1639,6 +1639,15 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-22 (A3) · prajjwal (with Claude) · Property and article pages for Google / link previews without a redeploy.**
+  `vercel.json` forwards `/property/:slug`, `/blog/:slug` and `/sitemap.xml` to the backend's `/seo/*` routes
+  (`backend-realstate/lib/seo/`), which fill the live `index.html`'s `seo:start` / `prerender:content` blocks per
+  request (edge-cached 60 s). `scripts/prerender.mjs` no longer writes property / article files or `sitemap.xml`
+  (the host serves files before rewrites, so they would go stale); `PRERENDER_ALL=1` writes them for a host
+  without the forwarding. **`src/seo/meta.ts` has an exact copy in `backend-realstate/lib/seo/meta.ts`** (first
+  line aside): change both; the build warns when they differ. Keep the `seo:start` / `seo:end` /
+  `prerender:content` markers in `index.html`: the backend refuses a page without them (503).
+
 - **2026-11-22 (later) · prajjwal (with Claude) · Slim card list + data version (ready for 300+ properties, instant updates).**
   - **Card list (A1):** the public list is `GET /properties?view=card` (`fetchAllProperties`): a description
     excerpt (220 characters), the cover photo only, no features / amenities / highlights / floor plan / video

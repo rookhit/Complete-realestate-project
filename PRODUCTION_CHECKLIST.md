@@ -86,6 +86,11 @@ loads its own full details (also versioned).
 - **New or changed properties on the site:** on the next page load (the version is at most 2 s old), and in
   already-open tabs within 30 s (they check the version every 30 s and when the visitor comes back). Before
   2026-11-22 an open tab never refreshed, so a phone keeping the page in memory could show the old list for hours.
+  - [ ] **After deploying (backend first: the frontend forwards to its new `/seo/*` routes), check** that
+        `https://www.nepalbhoomi.com/property/<id>` and `/sitemap.xml` come from the backend (view source: the
+        property's own `<title>`; the sitemap lists today's properties), that the page works when opened directly,
+        and paste a property link into WhatsApp to see its photo and title. Then submit `/sitemap.xml` in Google
+        Search Console once.
   - [ ] **After deploying, check on the live site** that `/api/v1/properties?…&v=…` answers with
         `x-vercel-cache: HIT` on a second request, and that a property saved in the admin shows in another
         browser's open tab within 30 s (edge behaviour can't be tested locally).

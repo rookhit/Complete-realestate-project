@@ -17,6 +17,15 @@ const securityHeaders = [
   ...(isProduction ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }] : []),
 ];
 
+// The website pages served under /seo/* (see headers() below): the same headers the website's host
+// sends for its own pages (frontend-realstate/vercel.json), plus HSTS in production.
+const seoPageHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  ...(isProduction ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }] : []),
+];
+
 const nextConfig: NextConfig = {
   // Pin the project root: a stray package-lock.json in a parent folder (e.g. the user's home
   // directory) otherwise makes Next.js pick that folder as the workspace root.
@@ -26,7 +35,11 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   headers() {
     return [
-      { source: "/:path*", headers: securityHeaders },
+      // Everything except /seo/*: those are the website's own pages (lib/seo/pages.ts), forwarded by
+      // its host. They carry the site's Content-Security-Policy in their HTML; this API's
+      // "default-src 'none'" would block the site's scripts and styles.
+      { source: "/:path((?!seo/).*)", headers: securityHeaders },
+      { source: "/seo/:path*", headers: seoPageHeaders },
       // Tokens and user data must never be stored by the browser or a proxy cache.
       { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
     ];

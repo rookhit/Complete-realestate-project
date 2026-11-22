@@ -12,6 +12,9 @@
   ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://nepal-bhoomi-api.vercel.app/api/:path*" },
+    { "source": "/property/:slug", "destination": "https://nepal-bhoomi-api.vercel.app/seo/property/:slug" },
+    { "source": "/blog/:slug", "destination": "https://nepal-bhoomi-api.vercel.app/seo/blog/:slug" },
+    { "source": "/sitemap.xml", "destination": "https://nepal-bhoomi-api.vercel.app/seo/sitemap" },
     { "source": "/((?!api/|assets/).*)", "destination": "/" }
   ],
   "headers": [

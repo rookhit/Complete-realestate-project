@@ -1,5 +1,6 @@
-// Runs after `vite build` (npm run build). Writes a ready-made HTML file for every page, property
-// and article, plus sitemap.xml and robots.txt, so search engines and link previews (Facebook,
+// Runs after `vite build` (npm run build). Writes a ready-made HTML file for every fixed page, plus
+// robots.txt (property and article pages and sitemap.xml come from the backend since 2026-11-22: see
+// "not written" below), so search engines and link previews (Facebook,
 // WhatsApp, X), which may not run JavaScript, see each page's own title, description, picture,
 // structured data, text and links. In the browser React replaces the static content as soon as
 // the app starts.
@@ -221,8 +222,26 @@ for (const p of FIXED) {
   const preload = p === "/" ? (properties.find((x) => x.featured) ?? properties[0])?.hero ?? "" : "";
   write(p, page(meta, staticContent(p, meta), { canonical: !SHARED.has(p), preload }));
 }
-for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p), { preload: p.gallery?.[0] || p.hero }));
-for (const a of articles) write(M.articlePath(a), page(M.articleMeta(SITE, a), articleContent(a)));
+// Property and article pages, and sitemap.xml, are NOT written (since 2026-11-22): the backend builds
+// them on request (backend-realstate/lib/seo/, forwarded by vercel.json), so a property added, changed
+// or sold after a deploy is right at once. A file written here would win over that forwarding (the
+// host serves files first) and go stale. PRERENDER_ALL=1 writes them anyway, for a host without
+// the forwarding.
+const ALL = process.env.PRERENDER_ALL === "1";
+if (ALL) {
+  for (const p of properties) write(M.propertyPath(p), page(M.propertyMeta(SITE, p), propertyContent(p), { preload: p.gallery?.[0] || p.hero }));
+  for (const a of articles) write(M.articlePath(a), page(M.articleMeta(SITE, a), articleContent(a)));
+}
+
+// The backend keeps an exact copy of src/seo/meta.ts (its first line aside): say so when they differ.
+const backendMeta = path.join(root, "..", "backend-realstate", "lib", "seo", "meta.ts");
+if (fs.existsSync(backendMeta)) {
+  const copy = fs.readFileSync(backendMeta, "utf8").replace(/\r\n/g, "\n");
+  const own = fs.readFileSync(path.join(root, "src", "seo", "meta.ts"), "utf8").replace(/\r\n/g, "\n");
+  if (copy.slice(copy.indexOf("\n") + 1) !== own) {
+    console.warn("prerender: WARNING backend-realstate/lib/seo/meta.ts is not an exact copy of src/seo/meta.ts: copy it over (keep its first line).");
+  }
+}
 
 // ─── sitemap.xml and robots.txt ───────────────────────────────────────────────
 
@@ -240,7 +259,7 @@ const urls = [
   ...["/about", "/team", "/services", "/contact", "/emi-calculator", "/new-listings", "/hot", "/free-listing", "/faq"].map((loc) => ({ loc, priority: "0.5" })),
   ...["/privacy-policy", "/terms"].map((loc) => ({ loc, priority: "0.2" })),
 ];
-fs.writeFileSync(path.join(dist, "sitemap.xml"),
+if (ALL) fs.writeFileSync(path.join(dist, "sitemap.xml"),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
   urls.map((u) => `  <url><loc>${esc(SITE + u.loc)}</loc>${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ""}<priority>${u.priority}</priority></url>`).join("\n") +
   `\n</urlset>\n`);
@@ -248,4 +267,6 @@ fs.writeFileSync(path.join(dist, "sitemap.xml"),
 fs.writeFileSync(path.join(dist, "robots.txt"),
   `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /login\nDisallow: /register\nDisallow: /reset-password\n\nSitemap: ${SITE}/sitemap.xml\n`);
 
-console.log(`prerender: ${FIXED.length} pages, ${properties.length} properties, ${articles.length} articles; sitemap.xml has ${urls.length} addresses (${SITE})`);
+console.log(ALL
+  ? `prerender: ${FIXED.length} pages, ${properties.length} properties, ${articles.length} articles; sitemap.xml has ${urls.length} addresses (${SITE})`
+  : `prerender: ${FIXED.length} pages (property and article pages and sitemap.xml come from the backend; ${properties.length} properties, ${articles.length} articles today)`);

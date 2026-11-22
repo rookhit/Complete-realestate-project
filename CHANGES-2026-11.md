@@ -77,6 +77,10 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   every change gives a new version, Vercel's edge can keep each list for a day without ever serving an old one, so
   the database is barely touched however many visitors there are. Changes made in the browser (admin saves,
   hearts) are never undone by a refresh.
+- **New properties are visible to Google and in shared links at once:** a property's or article's page (title,
+  description, preview photo for WhatsApp / Facebook, Google's listing data) and `sitemap.xml` are now built by the
+  backend when asked, instead of once per deploy. Added, changed or sold properties are right within about 2
+  minutes; sold ones tell Google to drop them.
 - **Ready for 300+ properties:** lists load a slim "card" version of each property (short description, cover
   photo); a property page loads its own full details (all photos, features, floor plan, video), with placeholders
   for a moment. About 28% less data for today's 19 properties, more with photo-rich listings.
@@ -99,6 +103,7 @@ and `backend-realstate/CLAUDE.md` (dated entries).
 
 | Method | Path | What |
 |---|---|---|
+| GET | `/seo/property/:slug`, `/seo/blog/:slug`, `/seo/sitemap` | Property / article pages and sitemap.xml (the website forwards `/property/*`, `/blog/*`, `/sitemap.xml` here) |
 | GET | `/api/v1/site/version` | The data version `{ properties, articles }` (public, edge-cached 2 s) |
 | GET | `/api/v1/properties?view=card` | The slim list (existing endpoint, new option); `?v=` on lists / one property / articles = edge-cached a day |
 | GET | `/api/v1/site/watermark` | The watermark settings (public; uploads use them) |
