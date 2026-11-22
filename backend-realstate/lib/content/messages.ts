@@ -144,7 +144,8 @@ export async function listMessages(q: MessageQuery): Promise<Page<MessageOut>> {
     ] });
   }
   const where = { AND: and };
-  const [total, unread, rows] = await prisma.$transaction([
+  // Side by side, not in a transaction (see lib/content/properties.ts list()).
+  const [total, unread, rows] = await Promise.all([
     prisma.message.count({ where }),
     prisma.message.count({ where: { deletedAt: null, read: false } }),
     prisma.message.findMany({ where, include: INCLUDE, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], skip: (q.page - 1) * q.limit, take: q.limit }),

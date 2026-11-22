@@ -64,7 +64,7 @@ const AdminListingPage = lazy(() => import("@/app/admin/AdminListingPage").then(
 import type { AdminNav } from "@/app/admin/AdminLayout";
 import { FloorPlanViewer } from "@/app/components/ui/floor-plan";
 import { BackButton } from "@/app/components/ui/back-button";
-import { ListPagination, pageCount, paginate, usePageTurner } from "@/app/components/ui/list-pagination";
+import { ListPagination, SeeMore, pageCount, pageItems, usePageTurner, usePhone, useSamePageAcrossSizes } from "@/app/components/ui/list-pagination";
 import { HotCard, ListingCard, ListingTags } from "@/app/components/ui/property-cards";
 import { useRevealWhen } from "@/app/components/ui/reveal";
 import { coverStyle, frameOf } from "@/app/components/ui/cover-frame";
@@ -361,25 +361,32 @@ function Navbar({ page, go }: { page:Page; go:Go }) {
 }
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
+/** Footer links: muted, light on hover (a class, since an inline colour would win over the hover). */
+const FOOT_LINK="text-[#7a7060] transition-colors hover:text-[#f0ebe0]";
 function Footer({ go }: { go:Go }) {
   return (
     <footer style={{background:"#060504"}}>
-      <div className="px-6 md:px-12 lg:px-20 py-20 md:py-24 border-b" style={{borderColor:BORDER_D}}>
-        <p className="max-w-2xl leading-snug" style={{color:FG_DARK,...serif,fontSize:"clamp(1.7rem,3.2vw,2.9rem)"}}>
+      <div className="px-6 md:px-12 lg:px-20 py-14 md:py-24 border-b" style={{borderColor:BORDER_D}}>
+        <p className="max-w-2xl leading-snug" style={{color:FG_DARK,...serif,fontSize:"clamp(1.35rem,2.8vw,2.4rem)"}}>
           "Nepal's finest addresses, curated for those who understand that a home is the most significant statement a person makes."
         </p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-14 px-6 md:px-12 lg:px-20 py-16 border-b" style={{borderColor:BORDER_D}}>
-        <div>
+      {/* Phones: the company block, then the link groups two side by side (one long column was two screens). */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10 md:gap-14 px-6 md:px-12 lg:px-20 py-12 md:py-16 border-b" style={{borderColor:BORDER_D}}>
+        <div className="col-span-2 lg:col-span-1">
           <div className="flex items-center gap-2.5 mb-4">
             <img src={logoImg} alt="NB" className="h-9 w-9 object-contain"/>
             <div><div className="text-[14px] tracking-[0.2em] uppercase" style={{color:FG_DARK,...sans,fontWeight:500}}>Nepal Bhoomi</div><div className="text-[9px] tracking-[0.28em] uppercase" style={{color:MUTED_D,...sans}}>Estate Agents</div></div>
           </div>
           <p className="text-[14px] leading-relaxed mb-5" style={{color:MUTED_D,...sans}}>Nepal's trusted real estate advisory, representing the country's most exceptional residential and investment properties.</p>
+          <div className="flex flex-col gap-2 mb-5 text-[14px]" style={sans}>
+            <a href={`tel:${CONTACT.phone.replace(/[^\d+]/g,"")}`} className={`inline-flex items-center gap-2.5 w-fit ${FOOT_LINK}`}><Phone size={14} style={{color:GOLD}}/>{CONTACT.phone}</a>
+            <a href={`mailto:${CONTACT.email}`} className={`inline-flex items-center gap-2.5 w-fit break-all ${FOOT_LINK}`}><Mail size={14} style={{color:GOLD}}/>{CONTACT.email}</a>
+          </div>
           <div className="flex gap-3">{([[Instagram,"Instagram",CONTACT.instagram],[Facebook,"Facebook",CONTACT.facebook],[Youtube,"YouTube",CONTACT.youtube],[Linkedin,"LinkedIn",CONTACT.linkedin]] as const).filter(([,,url])=>url.trim()).map(([I,name,url])=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={name} className="transition-opacity hover:opacity-70" style={{color:MUTED_D}}><I size={15}/></a>)}</div>
         </div>
         {[
-          {title:"Properties",links:[{l:"Buy Property",p:"buy"},{l:"Rent Property",p:"rent"},{l:"Hot Properties",p:"hot"},{l:"New Listings",p:"new-listings"},{l:"View All",p:"buy"}]},
+          {title:"Properties",links:[{l:"Buy Property",p:"buy"},{l:"Rent Property",p:"rent"},{l:"Hot Properties",p:"hot"},{l:"New Listings",p:"new-listings"}]},
           {title:"Company",links:[{l:"About Us",p:"about"},{l:"Our Team",p:"team"},{l:"Services",p:"services"},{l:"Blog & News",p:"blog"},{l:"Videos",p:"videos"},{l:"Contact",p:"contact"}]},
           {title:"Tools",links:[{l:"EMI Calculator",p:"emi"},{l:"Free Listing",p:"free-listing"},{l:"Register",p:"register"},{l:"Login",p:"login"}]},
         ].map(col=>(
@@ -387,7 +394,7 @@ function Footer({ go }: { go:Go }) {
             <p className="text-[10px] tracking-[0.32em] uppercase mb-4" style={{color:GOLD,...sans}}>{col.title}</p>
             <div className="flex flex-col gap-2.5">
               {col.links.map(({l,p,o}:any)=>(
-                <a key={l} href={hrefOf(p as Page,o)} onClick={follow(()=>go(p as Page,o))} className="text-[14px] text-left transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
+                <a key={l} href={hrefOf(p as Page,o)} onClick={follow(()=>go(p as Page,o))} className={`text-[14px] text-left w-fit ${FOOT_LINK}`} style={sans}>{l}</a>
               ))}
             </div>
           </div>
@@ -398,8 +405,8 @@ function Footer({ go }: { go:Go }) {
         <p className="text-[12px]" style={{color:MUTED_D,...sans}}>© {new Date().getFullYear()} Nepal Bhoomi Estate Agents. All rights reserved.</p>
         <nav aria-label="Legal" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
           {([["Privacy Policy","privacy"],["Terms of Use","terms"],["FAQ","faq"],["Sitemap",null]] as const).map(([l,p])=>(
-            p ? <a key={l} href={hrefOf(p)} onClick={follow(()=>go(p))} className="text-[12px] transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
-              : <a key={l} href="/sitemap.xml" className="text-[12px] transition-colors hover:text-foreground" style={{color:MUTED_D,...sans}}>{l}</a>
+            p ? <a key={l} href={hrefOf(p)} onClick={follow(()=>go(p))} className={`text-[12px] ${FOOT_LINK}`} style={sans}>{l}</a>
+              : <a key={l} href="/sitemap.xml" className={`text-[12px] ${FOOT_LINK}`} style={sans}>{l}</a>
           ))}
         </nav>
       </div>
@@ -612,6 +619,20 @@ function HotPropertiesSection({ go, setId }: { go:Go; setId:(id:number)=>void })
 }
 
 // ─── New Listings ─────────────────────────────────────────────────────────────
+/**
+ * A section's "see all" link as a full-width button at the end of the section, on phones only: the
+ * one in the heading row is hidden there, so without this a phone visitor had no way on but to scroll.
+ */
+function PhoneSeeAll({ label, page, go, dark=false }: { label:string; page:Page; go:Go; dark?:boolean }) {
+  return (
+    <a href={hrefOf(page)} onClick={follow(()=>go(page))}
+      className="md:hidden mt-10 flex w-full items-center justify-center gap-2 h-12 border text-[11px] tracking-[0.24em] uppercase"
+      style={{color:dark?"rgba(240,235,224,0.85)":FG_LIGHT,borderColor:dark?BORDER_D:BORDER_L,background:dark?"transparent":WHITE,...sans}}>
+      {label}<ArrowRight size={14}/>
+    </a>
+  );
+}
+
 function NewListingsSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
   const news=ALL_PROPS.filter(p=>p.badge==="New"||p.badge==="Prime");
   return (
@@ -624,6 +645,7 @@ function NewListingsSection({ go, setId }: { go:Go; setId:(id:number)=>void }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
           {news.slice(0,3).map(p=><PropertyCard key={p.id} p={p} go={go} setId={setId} light/>)}
         </div>
+        <PhoneSeeAll label="All New Listings" page="new-listings" go={go}/>
       </div>
     </section>
   );
@@ -1136,7 +1158,9 @@ function TestimonialsSection() {
 
 // ─── Blog Section ─────────────────────────────────────────────────────────────
 function BlogSection({ go }: { go:Go }) {
-  const [feat,...rest]=BLOGS;
+  const phone=usePhone();
+  const [feat,...all]=BLOGS;
+  const rest=phone ? all.slice(0,2) : all;
   // No articles (none published yet, or the journal couldn't load): leave the section out.
   if(!feat) return null;
   return (
@@ -1172,6 +1196,7 @@ function BlogSection({ go }: { go:Go }) {
             ))}
           </div>
         </div>
+        <PhoneSeeAll label={`All Articles (${BLOGS.length})`} page="blog" go={go}/>
       </div>
     </section>
   );
@@ -1179,6 +1204,7 @@ function BlogSection({ go }: { go:Go }) {
 
 // ─── Services Section ─────────────────────────────────────────────────────────
 function ServicesSectionHome({ go }: { go:Go }) {
+  const phone=usePhone();
   return (
     <section className="py-28 md:py-36 border-t" style={{background:"#0e0d0b",borderColor:BORDER_D}}>
       <div className="px-6 md:px-12 lg:px-20">
@@ -1187,7 +1213,7 @@ function ServicesSectionHome({ go }: { go:Go }) {
           <a href={hrefOf("services")} onClick={follow(()=>go("services"))} className="hidden md:flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase border px-6 py-3.5 transition-all hover:border-accent" style={{color:"rgba(240,235,224,0.6)",borderColor:BORDER_D,...sans}}>All Services<ArrowRight size={14}/></a>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_D}}>
-          {SERVICES.map(s=>(
+          {(phone ? SERVICES.slice(0,3) : SERVICES).map(s=>(
             <div key={s.id} className="border-b border-r p-10 flex flex-col gap-5 group cursor-pointer hover:bg-white/[0.02] transition-all" style={{borderColor:BORDER_D}}>
               <div style={{color:GOLD}}><ServiceIcon name={s.icon}/></div>
               <h4 className="text-base" style={{color:FG_DARK,...serif}}>{s.title}</h4>
@@ -1195,6 +1221,7 @@ function ServicesSectionHome({ go }: { go:Go }) {
             </div>
           ))}
         </div>
+        <PhoneSeeAll label={`All Services (${SERVICES.length})`} page="services" go={go} dark/>
       </div>
     </section>
   );
@@ -1240,6 +1267,8 @@ function CallbackSection() {
 // ═══════════════════════════════════════════════════════════════════════════════
 /** Buy / Rent list and grid views: 12 properties a page (four rows of three in the grid). */
 const RESULTS_PER_PAGE=12;
+/** Phones: how many more each "See more" adds (Buy / Rent, Blog). */
+const PHONE_BATCH=6;
 
 function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:"For Sale"|"For Rent"; go:Go; setId:(id:number)=>void; nav?:NavOpts }) {
   const [view,setView]=useState<"list"|"grid"|"map">(nav.view??"list");
@@ -1300,8 +1329,11 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
     return rank(a)-rank(b) || b.id-a.id;
   });
   // This page of the results (a page number from an old link that is now too high shows the last page).
-  const current=Math.min(pageNo,pageCount(props.length,RESULTS_PER_PAGE));
-  const onPage=paginate(props,current,RESULTS_PER_PAGE);
+  const phone=usePhone();
+  useSamePageAcrossSizes(phone,pageNo,setPageNo,PHONE_BATCH,RESULTS_PER_PAGE);
+  const perPage=phone ? PHONE_BATCH : RESULTS_PER_PAGE;
+  const current=Math.min(pageNo,pageCount(props.length,perPage));
+  const onPage=pageItems(props,current,perPage,phone);
   const turnPage=(n:number)=>{ setPageNo(n); resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}); };
   const types=PROP_TYPES;
   const dists=["All",...AREAS.filter(a=>ALL_PROPS.some(x=>x.district===a&&x.listing===listing))];
@@ -1462,8 +1494,10 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
             ))}
           </div>
         )}
-        {view!=="map"&&props.length>RESULTS_PER_PAGE&&(
-          <div className="mt-8"><ListPagination page={current} total={props.length} perPage={RESULTS_PER_PAGE} onPage={turnPage} noun="properties"/></div>
+        {view!=="map"&&props.length>perPage&&(
+          <div className="mt-8">{phone
+            ? <SeeMore shown={onPage.length} total={props.length} onMore={()=>setPageNo(current+1)} noun="properties"/>
+            : <ListPagination page={current} total={props.length} perPage={RESULTS_PER_PAGE} onPage={turnPage} noun="properties"/>}</div>
         )}
       </div>
     </div>
@@ -1944,6 +1978,7 @@ function EMICalculator() {
 function AboutPage({ go }: { go:Go }) {
   // Which team member's profile is open (index into the cards shown), or null.
   const [profile,setProfile]=useState<number|null>(null);
+  const phone=usePhone();
   return (
     <div className="pt-20 min-h-screen" style={{background:BG_LIGHT}}>
       <div className="relative overflow-hidden" style={{height:"55vh",minHeight:300}}>
@@ -1969,7 +2004,7 @@ function AboutPage({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20 py-20 border-b" style={{background:CREAM,borderColor:BORDER_L}}>
         <h2 className="text-3xl mb-12" style={{color:FG_LIGHT,...serif}}>What We Offer</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 border-t border-l" style={{borderColor:BORDER_L}}>
-          {SERVICES.map(s=>(
+          {(phone ? SERVICES.slice(0,3) : SERVICES).map(s=>(
             <div key={s.id} className="border-b border-r px-8 py-10" style={{borderColor:BORDER_L}}>
               <div className="mb-3" style={{color:MAROON}}><ServiceIcon name={s.icon}/></div>
               <p className="text-[15px] mb-2" style={{color:FG_LIGHT,...serif}}>{s.title}</p>
@@ -1977,6 +2012,7 @@ function AboutPage({ go }: { go:Go }) {
             </div>
           ))}
         </div>
+        <PhoneSeeAll label={`All Services (${SERVICES.length})`} page="services" go={go}/>
       </div>
       {/* Team: the first ABOUT_TEAM_LIMIT in the admin's order; everyone is on the Team page.
           Clicking a card opens that person's profile. */}
@@ -1989,7 +2025,8 @@ function AboutPage({ go }: { go:Go }) {
             </a>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+        {/* Two across on phones (one across made six full-screen portraits). */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-5 gap-y-10 sm:gap-8">
           {TEAM.slice(0,ABOUT_TEAM_LIMIT).map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(i)}/>)}
         </div>
       </div>
@@ -2034,8 +2071,12 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
   const [pageNo,setPageNo]=useState(1);
   const { listTop, turn }=usePageTurner(setPageNo);
   useEffect(()=>{ setPageNo(1); },[dept,s]);
-  const current=Math.min(pageNo,pageCount(shown.length,TEAM_PER_PAGE));
-  const first=(current-1)*TEAM_PER_PAGE;
+  const phone=usePhone();
+  useSamePageAcrossSizes(phone,pageNo,setPageNo,8,TEAM_PER_PAGE);
+  const perPage=phone ? 8 : TEAM_PER_PAGE;
+  const current=Math.min(pageNo,pageCount(shown.length,perPage));
+  // Index of the first card shown, for the profile pop-up (phones show every batch from the start).
+  const first=phone ? 0 : (current-1)*perPage;
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 pt-10 pb-14 md:pb-16 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
@@ -2073,11 +2114,13 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-12">
-            {paginate(shown,current,TEAM_PER_PAGE).map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(first+i)}/>)}
+            {pageItems(shown,current,perPage,phone).map((m,i)=><TeamCard key={m.id} m={m} onOpen={()=>setProfile(first+i)}/>)}
           </div>
         )}
-        {shown.length>TEAM_PER_PAGE&&(
-          <div className="mt-12"><ListPagination page={current} total={shown.length} perPage={TEAM_PER_PAGE} noun="advisors" onPage={turn}/></div>
+        {shown.length>perPage&&(
+          <div className="mt-12">{phone
+            ? <SeeMore shown={Math.min(current*perPage,shown.length)} total={shown.length} onMore={()=>setPageNo(current+1)} noun="advisors"/>
+            : <ListPagination page={current} total={shown.length} perPage={TEAM_PER_PAGE} noun="advisors" onPage={turn}/>}</div>
         )}
       </div>
       <TeamProfile members={shown} index={profile} onIndex={setProfile} onClose={()=>setProfile(null)}/>
@@ -2092,7 +2135,10 @@ function TeamPage({ onBack, backLabel }: { onBack:()=>void; backLabel:string }) 
 const ARTICLES_PER_PAGE=9;
 function BlogPage({ go }: { go:Go }) {
   const [pageNo,setPageNo]=useState(1);
-  const current=Math.min(pageNo,pageCount(BLOGS.length,ARTICLES_PER_PAGE));
+  const phone=usePhone();
+  useSamePageAcrossSizes(phone,pageNo,setPageNo,PHONE_BATCH,ARTICLES_PER_PAGE);
+  const perPage=phone ? PHONE_BATCH : ARTICLES_PER_PAGE;
+  const current=Math.min(pageNo,pageCount(BLOGS.length,perPage));
   return (
     <div className="min-h-screen pt-20" style={{background:BG_LIGHT}}>
       <div className="px-6 md:px-12 lg:px-20 py-16 md:py-20 border-b" style={{borderColor:BORDER_L,background:WHITE}}>
@@ -2102,7 +2148,7 @@ function BlogPage({ go }: { go:Go }) {
       <div className="px-6 md:px-12 lg:px-20 py-16">
         {BLOGS.length===0&&<p className="text-[15px]" style={{color:MUTED_L,...sans}}>No articles yet. Please check back soon.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 md:gap-14">
-          {paginate(BLOGS,current,ARTICLES_PER_PAGE).map(a=>(
+          {pageItems(BLOGS,current,perPage,phone).map(a=>(
             <a key={a.id} href={hrefOf("blog-post",{blog:a.id})} onClick={follow(()=>go("blog-post",{blog:a.id}))} className="flex flex-col group text-left">
               <div className="overflow-hidden mb-4" style={{aspectRatio:"16/10"}}>
                 <img src={cardSrc(a.image)} onError={fullPhotoOnError(a.image)} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"/>
@@ -2117,9 +2163,11 @@ function BlogPage({ go }: { go:Go }) {
             </a>
           ))}
         </div>
-        {BLOGS.length>ARTICLES_PER_PAGE&&(
-          <div className="mt-14"><ListPagination page={current} total={BLOGS.length} perPage={ARTICLES_PER_PAGE} noun="articles"
-            onPage={n=>{ setPageNo(n); window.scrollTo({top:0,behavior:"smooth"}); }}/></div>
+        {BLOGS.length>perPage&&(
+          <div className="mt-14">{phone
+            ? <SeeMore shown={Math.min(current*perPage,BLOGS.length)} total={BLOGS.length} onMore={()=>setPageNo(current+1)} noun="articles"/>
+            : <ListPagination page={current} total={BLOGS.length} perPage={ARTICLES_PER_PAGE} noun="articles"
+                onPage={n=>{ setPageNo(n); window.scrollTo({top:0,behavior:"smooth"}); }}/>}</div>
         )}
       </div>
     </div>
@@ -2860,6 +2908,20 @@ function PropertySync() {
   const admin = user?.role==="ADMIN";
   // The journal loads alongside: the admin's list includes drafts.
   useEffect(()=>{ if(status!=="loading") { void loadProperties(admin); void loadArticles(admin); } },[status,admin]);
+  // Keep listings fresh in a tab that stays open: phones keep a page alive for hours and bring it back
+  // without reloading, so a property added meanwhile would not show. Refresh when the visitor comes
+  // back to the tab (after a minute away) and every 3 minutes while it is on screen. Quiet: a failed
+  // refresh keeps what is shown. The public list is cached at the edge, so this costs the server little.
+  useEffect(()=>{
+    if(status==="loading") return;
+    let last=Date.now();
+    const refresh=()=>{ last=Date.now(); void loadProperties(admin,{ quiet:true }); void loadArticles(admin,{ quiet:true }); };
+    const onShow=()=>{ if(document.visibilityState==="visible"&&Date.now()-last>60_000) refresh(); };
+    const t=window.setInterval(()=>{ if(document.visibilityState==="visible") refresh(); },180_000);
+    document.addEventListener("visibilitychange",onShow);
+    window.addEventListener("pageshow",onShow);
+    return ()=>{ window.clearInterval(t); document.removeEventListener("visibilitychange",onShow); window.removeEventListener("pageshow",onShow); };
+  },[status,admin]);
   // The team is the same for everyone.
   useEffect(()=>{ void loadTeam(); void loadTestimonials(); void loadSiteOptions(); void loadSiteSettings(); },[]);
   // The admin's inbox: loaded on sign-in and checked every 30 s, so new messages (and the red

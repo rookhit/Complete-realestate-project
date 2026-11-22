@@ -54,6 +54,35 @@ Last updated: 2026-11-15
       mark (band, logo and text) together. Check you like it, change it there if not. It stamps only
       photos uploaded from now on; photos already on the site are unchanged.
 
+## Capacity: how much the site can take (measured 2026-11-22)
+
+One visit (home → Buy → a property, moving inside the site) costs about **18 requests and 0.7 MB on Vercel**
+(site files + `/api`), **2–3 MB of photos from R2**, and ~1 MB of map tiles from OpenFreeMap (free, no limit).
+Public data (`/api/v1/properties`, articles, team, site…) is cached at Vercel's edge (30 s + 60 s while
+refreshing), so the database sees about one request per list every 30 s however many people browse.
+
+- **Browsing visitors: thousands at the same time are fine** (pages, code and public data come from Vercel's
+  CDN). The monthly allowance is the real limit:
+  - [ ] **Vercel Hobby is for non-commercial use only** (Vercel's terms) — a business site belongs on **Pro**
+        ($20/month). Hobby includes ~1 M edge requests and 100 GB transfer a month ≈ **55,000 visits a month**
+        (~1,800 a day); after that features stop until the month resets. Pro: 10 M requests, 1 TB.
+- **Things that write to the database** (sign-in, forms, hearts, reviews, the admin) share Supabase's pooler:
+  roughly 30–100 per second on the free plan. Ample for a property site, but:
+  - [ ] **Switch `DATABASE_URL` to Supabase's transaction pooler** (port **6543**, add `?pgbouncer=true`), the mode
+        Supabase recommends for Vercel functions; keep `DIRECT_URL` on the session pooler (5432) for migrations.
+        Test sign-in, a property save and a heart after switching. Today's session pooler (5432) holds one database
+        connection per open connection, so a few busy function instances can use them all (seen 2026-11-22 as a
+        500 "Unable to start a transaction in the given time"; the code now waits up to 10 s instead of 2 s, and
+        list reads no longer use transactions). Optional: `DATABASE_POOL_MAX` (default 10) per instance.
+- **Photos are the weak spot under load:**
+  - [ ] Cloudflare says `r2.dev` addresses are **rate-limited and not for production** (over the limit: HTTP 429 →
+        broken photos). Connect a custom domain to the R2 bucket (e.g. `media.nepalbhoomi.com`; the domain or that
+        subdomain must be on Cloudflare DNS), which also caches photos at Cloudflare's edge; then point
+        `R2_PUBLIC_URL` at it and rewrite stored URLs (see Media storage below).
+- **New properties on the site:** visible to new visitors within ~1½ minutes (edge cache), and in already-open
+  tabs at the next refresh (on returning to the tab after a minute, or every 3 minutes). Before 2026-11-22 an open
+  tab never refreshed, so a phone keeping the page in memory could show the old list for hours.
+
 ## Secrets and accounts
 
 - [ ] **Rotate every secret that appeared in a chat transcript**: database password (`DATABASE_URL` /

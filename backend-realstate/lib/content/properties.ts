@@ -537,7 +537,9 @@ export type Page<T> = { data: T[]; meta: { page: number; limit: number; total: n
 
 async function list<T>(q: PropertyQuery, onSiteOnly: boolean, map: (row: PropertyRow) => T): Promise<Page<T>> {
   const where = listWhere(q, onSiteOnly);
-  const [total, rows] = await prisma.$transaction([
+  // Side by side, not in a transaction: a read needs no BEGIN / COMMIT (two extra round trips), and a
+  // transaction must grab a pooled connection within 2 s or fail with a 500 when the pool is busy.
+  const [total, rows] = await Promise.all([
     prisma.property.count({ where }),
     prisma.property.findMany({ where, include: INCLUDE, orderBy: ORDER[q.sort], skip: (q.page - 1) * q.limit, take: q.limit }),
   ]);

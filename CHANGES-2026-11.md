@@ -6,7 +6,7 @@ and `backend-realstate/CLAUDE.md` (dated entries).
 
 ## Read first
 
-- **`main` is 46 commits behind this branch.** Merging also brings in October's work that is live but was never
+- **`main` is 47 commits behind this branch.** Merging also brings in October's work that is live but was never
   merged into `main`: the Mumbai database move, the Vercel setup and the www domain, SEO pre-rendering, the
   cover-frame and admin speed work. `main` has nothing this branch lacks, so the merge is conflict-free
   (fast-forward).
@@ -68,6 +68,22 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   `backend-realstate/lib/auth/refresh-token.ts`.)
 - A brief network problem no longer signs a person out on their next visit.
 - Backend dependencies upgraded (Next.js 16.4.6 fixes a critical advisory; Prisma 7.10.1, zod, nodemailer).
+
+### 22 November follow-up
+- **New properties now appear quickly.** The live site was already running this round's code; the "shows
+  5–6 hours later" came from open tabs (phones keep a page in memory for hours) never reloading the list. Open tabs
+  now refresh it when the visitor comes back after a minute and every 3 minutes; the edge cache now serves a list at
+  most ~90 s old (was 5 min). Changes made in the browser (admin saves, hearts) are never undone by a refresh.
+- **Phones: "See more" instead of long pages.** Buy / Rent / Hot / New and Blog show 6 at a time, Team 8, with a
+  "See more" button; Back returns to the same place; rotating keeps the same items. The home page's Journal and
+  Services and the About page's "What We Offer" show a few items and a visible "All …" button on phones (before,
+  that button was hidden on phones). About's team is two across on phones. Computers keep page numbers.
+- **Footer tidied:** two columns of links on phones (about a screen shorter), phone number and email added, a
+  duplicate link removed, smaller quote, links light up on hover.
+- **Database under load:** list pages no longer open a database transaction; saves wait up to 10 s for a free
+  connection instead of failing after 2 s. See **Capacity** in `PRODUCTION_CHECKLIST.md` for how much the site can
+  take and the three changes recommended before traffic grows (Vercel Pro, Supabase transaction pooler, a custom
+  domain for photos).
 
 ### Tried and reverted
 - An automatic photo-fitting change (commits `da70ef3` / `bee5df3`) was reverted at the owner's request: photos

@@ -75,7 +75,8 @@ export let articlesStatus: "loading" | "ready" | "error" = "loading";
 let articlesRun = 0;
 
 /** Fill BLOGS from the API. A failure leaves the journal empty (the pages hide it) rather than blocking the site. */
-export async function loadArticles(admin: boolean): Promise<void> {
+/** `quiet`: a background refresh; a failure keeps the articles already shown. */
+export async function loadArticles(admin: boolean, { quiet = false } = {}): Promise<void> {
   const run = ++articlesRun;
   try {
     const list = await fetchArticles(admin);
@@ -84,6 +85,7 @@ export async function loadArticles(admin: boolean): Promise<void> {
     articlesStatus = "ready";
   } catch {
     if (run !== articlesRun) return;
+    if (quiet && articlesStatus === "ready") return;
     articlesStatus = "error";
   }
   emitChange();

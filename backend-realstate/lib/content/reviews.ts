@@ -101,7 +101,8 @@ export async function listAdminReviews(q: ReviewQuery): Promise<{ data: AdminRev
     ...(q.status ? { status: STATUS_IN[q.status] } : {}),
     ...(q.propertyId ? { propertyId: q.propertyId } : {}),
   };
-  const [rows, pending] = await prisma.$transaction([
+  // Side by side, not in a transaction (see lib/content/properties.ts list()).
+  const [rows, pending] = await Promise.all([
     prisma.propertyComment.findMany({ where, include: ADMIN_INCLUDE, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1000 }),
     prisma.propertyComment.count({ where: { deletedAt: null, status: "PENDING" } }),
   ]);

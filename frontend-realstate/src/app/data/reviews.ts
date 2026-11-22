@@ -11,7 +11,7 @@ import {
   deleteReviewOnServer, fetchAdminReviews, fetchMyHearts, fetchReviews, patchReview, restoreReviewOnServer,
   type ApiAdminReview, type ApiReview, type ReviewStatus,
 } from "@/api/reviews";
-import { emitChange } from "./store";
+import { emitChange, noteLocalChange } from "./store";
 
 export interface Review {
   id:       number;
@@ -66,6 +66,7 @@ export function clearMyHearts(): void {
 
 /** The server's answer to a heart / un-heart: the new count and whether it is hearted. */
 export function applyHeart(propertyId: number, liked: boolean, reactionCount: number): void {
+  noteLocalChange(propertyId);
   REACTIONS[propertyId] = reactionCount;
   if (liked) MY_HEARTS.add(propertyId); else MY_HEARTS.delete(propertyId);
   emitChange();
@@ -76,6 +77,7 @@ export function applyHeart(propertyId: number, liked: boolean, reactionCount: nu
  * API: PATCH /api/v1/admin/properties/:id with { reactionCount } (ADMIN).
  */
 export function setReactionCount(propertyId: number, count: number): void {
+  noteLocalChange(propertyId);
   REACTIONS[propertyId] = Math.max(0, Math.round(count));
   emitChange();
 }

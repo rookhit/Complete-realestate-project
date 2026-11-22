@@ -4,7 +4,10 @@
 // update this local copy so every page re-renders without reloading.
 import { fetchAllProperties, toProp, type ApiProperty } from "@/api/properties";
 import { REACTIONS } from "./reviews";
-import { emitChange } from "./store";
+import { changedRecently, emitChange, localChangeVersion, noteLocalChange } from "./store";
+
+/** How old the public list can be at Vercel's edge (30 s fresh + 60 s served while refreshing), plus margin. */
+const EDGE_STALE_MS = 120_000;
 
 export type Listing = "For Sale" | "For Rent";
 
@@ -72,21 +75,28 @@ let loadRun = 0;
 
 /**
  * Fill ALL_PROPS from the API. `admin`: the admin list (adds the private location for the editor).
- * A newer call wins, so switching accounts can't leave an older list on screen.
+ * A newer call wins, so switching accounts can't leave an older list on screen. `quiet`: a background
+ * refresh (PropertySync): if it fails, the list already on screen stays and no error is shown.
  */
-export async function loadProperties(admin: boolean): Promise<void> {
+export async function loadProperties(admin: boolean, { quiet = false } = {}): Promise<void> {
   const run = ++loadRun;
+  const startedAt = localChangeVersion();
   try {
     const list = await fetchAllProperties(admin);
     if (run !== loadRun) return;
+    // A background refresh that started before a change made here (an admin save) would put the old
+    // values back: skip it, the next one catches up.
+    if (quiet && localChangeVersion() !== startedAt) return;
     const props = list.map(toProp);
     ALL_PROPS.splice(0, ALL_PROPS.length, ...props.filter(p => !p.closedAt));
     CLOSED_PROPS.splice(0, CLOSED_PROPS.length, ...props.filter(p => p.closedAt).sort(byClosedDesc));
-    for (const p of list) REACTIONS[p.id] = p.reactionCount;
+    // Heart counts: keep this browser's own recent change (the edge-cached list may predate it).
+    for (const p of list) if (!(quiet && changedRecently(p.id, EDGE_STALE_MS))) REACTIONS[p.id] = p.reactionCount;
     propertiesStatus = "ready";
     propertiesError = "";
   } catch (err) {
     if (run !== loadRun) return;
+    if (quiet && propertiesStatus === "ready") return;   // keep what is on screen
     propertiesStatus = "error";
     propertiesError = err instanceof Error ? err.message : "Could not load the properties.";
   }
@@ -301,6 +311,7 @@ const listOf = (p: Prop) => (p.closedAt ? CLOSED_PROPS : ALL_PROPS);
  * API: POST /admin/properties (new) or PATCH /admin/properties/:id (and …/close, …/reopen).
  */
 export function saveProperty(p: Prop): void {
+  noteLocalChange(p.id);
   const into = listOf(p), other = into === ALL_PROPS ? CLOSED_PROPS : ALL_PROPS;
   const gone = other.findIndex(x => x.id === p.id);
   if (gone >= 0) other.splice(gone, 1);
@@ -316,6 +327,7 @@ export function saveProperty(p: Prop): void {
  * Returns the restored property (check its nbId) or null. API: POST /admin/properties/:id/restore.
  */
 export function restoreProperty(p: Prop, index: number): Prop | null {
+  noteLocalChange(p.id);
   if (ALL_PROPS.some(x => x.id === p.id) || CLOSED_PROPS.some(x => x.id === p.id)) return null;
   const back = refTaken(p.listing, refNumber(p.nbId), p.id) ? { ...p, nbId: nextPropRef(p.listing, p.id) } : p;
   const into = listOf(back);
@@ -329,6 +341,7 @@ export function restoreProperty(p: Prop, index: number): Prop | null {
  * website stays; sold / rented ones can always be deleted.
  */
 export function deleteProperty(id: number): boolean {
+  noteLocalChange(id);
   const closed = CLOSED_PROPS.findIndex(x => x.id === id);
   if (closed >= 0) { CLOSED_PROPS.splice(closed, 1); emitChange(); return true; }
   if (ALL_PROPS.length <= 1) return false;

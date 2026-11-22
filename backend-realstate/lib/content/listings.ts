@@ -64,7 +64,9 @@ export async function createListing(userId: string, v: ListingInput): Promise<Li
 
 /** Every listing, newest first; meta.new = how many wait for a first look (the red badge). */
 export async function listListings(): Promise<{ data: ListingOut[]; meta: { total: number; new: number } }> {
-  const [rows, fresh] = await prisma.$transaction([
+  // Side by side, not in a transaction: a read needs no BEGIN / COMMIT (two extra round trips), and a
+  // transaction must grab a pooled connection within 2 s or fail with a 500 when the pool is busy.
+  const [rows, fresh] = await Promise.all([
     prisma.listingSubmission.findMany({ include: INCLUDE, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], take: 1000 }),
     prisma.listingSubmission.count({ where: { status: "NEW" } }),
   ]);

@@ -1639,6 +1639,21 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-22 · prajjwal (with Claude) · Fresh listings in open tabs, phone "See more", tidier footer.**
+  - **Open tabs refresh** (`PropertySync` in `App.tsx`): properties and articles reload quietly when the visitor comes
+    back to the tab after a minute and every 3 minutes while it is on screen (`loadProperties(admin, { quiet })`: a
+    failure keeps what is shown). Before, the list loaded once per page load, so a phone keeping the tab in memory
+    showed a new property only hours later. Local changes (`noteLocalChange` in `data/store.ts`, called by
+    `saveProperty` / `restoreProperty` / `deleteProperty` / `applyHeart` / `setReactionCount`) stop a background
+    refresh from putting back older values (an admin's save, a heart vs the edge-cached list).
+  - **Phones (< 768 px) get "See more" instead of page numbers** (`usePhone`, `pageItems`, `SeeMore`,
+    `useSamePageAcrossSizes` in `components/ui/list-pagination.tsx`): Buy / Rent / Hot / New and Blog grow by 6,
+    Team by 8; `?p=` = batches shown, so Back returns to the same place; rotating keeps the reader among the same
+    items. Home Journal (featured + 2) and Services (3), About "What We Offer" (3) show a visible "All …" button
+    on phones (`PhoneSeeAll`); About's team is two across on phones. Desktop unchanged.
+  - **Footer:** two-column links on phones (1,525 → 1,183 px), phone and email links, duplicate "View All" gone,
+    smaller quote, hover colour that works (`FOOT_LINK` classes instead of inline colours).
+
 - **2026-11-16 · prajjwal (with Claude) · New-message emails; labelled admin fields.** Admin → Contact & Services has
   "New-Message Emails": where every new enquiry / callback / contact message is emailed (`api/site.ts`
   `fetchNotifications` / `saveSiteNotifications`, admin-only `/admin/site/notifications`; empty = the business email).
