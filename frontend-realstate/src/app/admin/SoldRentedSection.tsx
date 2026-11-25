@@ -180,12 +180,16 @@ export function SoldRentedSection({ listing, notify, onEdit }: { listing: Listin
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap gap-1.5 mb-2"><Chip tone="muted">{p.type}</Chip>{p.badge && <Chip tone="muted">{p.badge}</Chip>}</div>
-                <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
-                <p className="flex items-center gap-1.5 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
-                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{displayRef(p.nbId)}
+                <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }} title={p.title}>{p.title}</p>
+                {/* Same one-line form as the Properties list: NB ID first, the address cut with … if long. */}
+                <p className="flex items-center gap-1.5 mt-1 text-[13px] min-w-0" style={{ color: MUTED_L, ...sans }} title={p.location}>
+                  <span className="shrink-0 tabular-nums" style={{ color: FG_LIGHT }}>{displayRef(p.nbId)}</span>
+                  <span className="shrink-0">·</span>
+                  <MapPin size={12} className="shrink-0" style={{ color: GOLD }} />
+                  <span className="truncate">{p.location}</span>
                 </p>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-[13px]" style={{ ...sans }}>
-                  <span style={{ color: MAROON }} className="font-medium">{p.price}</span>
+                  <span style={{ color: MAROON }} className="font-medium whitespace-nowrap">{p.price}</span>
                   <span className="inline-flex items-center gap-1.5" style={{ color: FG_LIGHT }}><CalendarCheck size={13} style={{ color: GOLD }} />{w.done} on {closedOn(p.closedAt)}</span>
                 </div>
               </div>

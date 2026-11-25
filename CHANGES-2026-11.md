@@ -120,6 +120,10 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   in the database mentions them. The daily cleanup is scheduled in `backend-realstate/vercel.json`; it runs once
   `CRON_SECRET` is set in Vercel.
 - **Photo tiles:** the cover photo's buttons (arrows, Adjust, remove) no longer spill out of a narrow tile.
+- **Admin property list tidied:** the buttons sit on their own line under the details instead of beside them (which
+  squeezed the details into a narrow column: the address one word per line, the price over three lines). The NB ID
+  and address are one line (long addresses end with …; the full one shows on hover); on narrower screens the
+  buttons share each line evenly. Same address line in Sold / Rented Out.
 - **Server errors** are logged with the same reference number the visitor sees, so a report can be traced.
 - **Audit 26 November** (Brave, phone 390 / tablet 768 / laptop 1366 / desktop 1920): 25 pages × 4 sizes with no
   page errors, failed requests or sideways scrolling. Production build: first photo on screen in 1.6–2.4 s on a

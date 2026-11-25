@@ -390,20 +390,27 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
       ) : (
         <div className="border" style={{ borderColor: BORDER_L, background: WHITE }}>
           {paginate(rows, current, PER_PAGE).map(p => (
-            <div key={p.id} className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap md:items-center gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
-              <button onClick={() => onEdit(p)} className="w-full md:w-40 shrink-0 overflow-hidden" style={{ aspectRatio: "4/3" }} aria-label={`Edit ${p.title}`}>
+            // Photo on the left; details, then the controls on their own line underneath. (Putting the
+            // controls beside the details squeezed the details into a narrow column on wide screens:
+            // the address one word per line, the price over three lines.)
+            <div key={p.id} className="flex flex-col sm:flex-row gap-5 p-5 border-b last:border-b-0" style={{ borderColor: BORDER_L }}>
+              <button onClick={() => onEdit(p)} className="w-full sm:w-44 shrink-0 self-start overflow-hidden" style={{ aspectRatio: "4/3" }} aria-label={`Edit ${p.title}`}>
                 <img src={cardSrc(p.hero)} onError={fullPhotoOnError(p.hero)} alt="" className="w-full h-full object-cover" style={coverStyle(frameOf(p))} />
               </button>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 flex flex-col">
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   <Chip tone="maroon">{p.badge}</Chip><Chip tone="muted">{p.listing}</Chip><Chip tone="muted">{p.type}</Chip>
                 </div>
-                <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }}>{p.title}</p>
-                <p className="flex items-center gap-1.5 mt-1 text-[13px]" style={{ color: MUTED_L, ...sans }}>
-                  <MapPin size={12} style={{ color: GOLD }} />{p.location}<span className="mx-1.5">·</span>{displayRef(p.nbId)}
+                <p className="text-[18px] leading-snug truncate" style={{ color: FG_LIGHT, ...serif }} title={p.title}>{p.title}</p>
+                {/* One line: the NB ID first (it must stay visible), then the address, cut with … if long. */}
+                <p className="flex items-center gap-1.5 mt-1 text-[13px] min-w-0" style={{ color: MUTED_L, ...sans }} title={p.location}>
+                  <span className="shrink-0 tabular-nums" style={{ color: FG_LIGHT }}>{displayRef(p.nbId)}</span>
+                  <span className="shrink-0">·</span>
+                  <MapPin size={12} className="shrink-0" style={{ color: GOLD }} />
+                  <span className="truncate">{p.location}</span>
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <p className="mr-2 text-[16px] font-medium" style={{ color: MAROON, ...sans }}>{p.price}</p>
+                  <p className="mr-2 text-[16px] font-medium whitespace-nowrap" style={{ color: MAROON, ...sans }}>{p.price}</p>
                   {/* One-click switches, no need to open the editor. */}
                   {([["featured", "Featured", Star], ["verified", "Verified", BadgeCheck]] as const).map(([field, label, Icon]) => (
                     <button key={field} type="button" aria-pressed={p[field]} onClick={() => flip(p, field)}
@@ -414,9 +421,8 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                     </button>
                   ))}
                 </div>
-              </div>
-              {/* Controls: on their own line under the details until there is room beside them. */}
-              <div className="flex flex-wrap items-center gap-3 md:w-full xl:w-auto md:justify-end">
+              {/* Controls: hearts on the left, actions on the right, always on their own line. */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t" style={{ borderColor: BORDER_L }}>
               <div className="flex items-center gap-1 shrink-0" title="Reactions shown on the site">
                 <button type="button" aria-label="One fewer reaction" onClick={() => nudge(p, -1)} className="w-8 h-8 flex items-center justify-center border transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: MUTED_L }}><Minus size={13} /></button>
                 <span className="min-w-[4.5rem] h-8 px-2 flex items-center justify-center gap-1.5 border text-[13px] tabular-nums" style={{ borderColor: BORDER_L, color: MAROON, ...sans }}>
@@ -424,7 +430,8 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                 </span>
                 <button type="button" aria-label="One more reaction" onClick={() => nudge(p, 1)} className="w-8 h-8 flex items-center justify-center border transition-colors hover:border-[#8a2030]" style={{ borderColor: BORDER_L, color: MUTED_L }}><Plus size={13} /></button>
               </div>
-              <div className="flex flex-wrap gap-2 [&>button]:px-4 sm:[&>button]:px-6">
+              {/* Narrower screens: the buttons share each line evenly instead of wrapping ragged. */}
+              <div className="flex flex-wrap gap-2 w-full xl:w-auto [&>button]:flex-1 xl:[&>button]:flex-none [&>button]:px-4 xl:[&>button]:px-6">
                 <Button variant="quiet" onClick={() => deal.askClose(p)} title="Take it off the website and keep it in Sold & Rented"><Handshake size={13} />{closeLabel(p)}</Button>
                 <Button variant="quiet" onClick={() => nav.openProperty(p.id)} title="Open on the website"><Eye size={13} />View</Button>
                 <Button variant="quiet" onClick={() => onEdit(p)}><Pencil size={13} />Edit</Button>
@@ -435,6 +442,7 @@ function PropertiesSection({ notify, onAdd, onEdit, onDuplicate, nav }: {
                   <button type="button" aria-label={`Delete ${p.title}`} title="Delete" onClick={() => setToDelete(p)}
                     className={iconBtn} style={{ borderColor: BORDER_L, color: MUTED_L }}><Trash2 size={15} /></button>
                 </div>
+              </div>
               </div>
               </div>
             </div>
