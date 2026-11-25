@@ -72,16 +72,6 @@ export function applyHeart(propertyId: number, liked: boolean, reactionCount: nu
   emitChange();
 }
 
-/**
- * Set how many reactions a property shows. The admin can raise or lower it.
- * API: PATCH /api/v1/admin/properties/:id with { reactionCount } (ADMIN).
- */
-export function setReactionCount(propertyId: number, count: number): void {
-  noteLocalChange(propertyId);
-  REACTIONS[propertyId] = Math.max(0, Math.round(count));
-  emitChange();
-}
-
 /** The count to show while `mine` may differ from what the server has (a heart on its way). */
 export const reactionCount = (id: number, mine: boolean): number =>
   Math.max(0, (REACTIONS[id] ?? 0) - (MY_HEARTS.has(id) ? 1 : 0) + (mine ? 1 : 0));

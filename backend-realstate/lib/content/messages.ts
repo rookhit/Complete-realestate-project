@@ -168,9 +168,6 @@ export async function updateMessage(id: number, patch: MessagePatch): Promise<Me
   return toMessage(await prisma.message.findUniqueOrThrow({ where: { id }, include: INCLUDE }));
 }
 
-/** Most messages one bulk delete takes (the inbox sends every id it shows, page by page). */
-export const BULK_DELETE_MAX = 5000;
-
 /**
  * Delete many at once (the admin's "Delete selected" / "Delete all"): hidden at once, restorable
  * together for MESSAGE_UNDO_WINDOW_MS, then removed for good. One UPDATE, whatever the number.

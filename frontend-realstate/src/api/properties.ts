@@ -2,9 +2,7 @@
 // Shapes: FRONTEND_CLAUDE.md §0.3. Every call goes through authFetch (base URL, bearer token,
 // refresh on 401, the { error } envelope as ApiError).
 import { authFetch, publicFetch } from "@/app/auth";
-import { rapdOf, type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop } from "@/app/data/properties";
-import { REACTIONS } from "@/app/data/reviews";
-import { AMENITIES } from "@/app/icons/amenities";
+import { type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop } from "@/app/data/properties";
 
 type Meta = { page: number; limit: number; total: number; totalPages: number };
 
@@ -124,33 +122,3 @@ export const closePropertyOnServer = (id: number): Promise<Saved> =>
 export const reopenPropertyOnServer = (id: number): Promise<Saved> =>
   authFetch<Saved>(`/admin/properties/${id}/reopen`, { method: "POST", body: "{}" });
 
-const CANONICAL = new Set(AMENITIES.map(a => a.name));
-const areaParts = (s: string): { value: number; unit: string } | null => {
-  const m = s.match(/^([\d,.]+)\s*(.+)$/);
-  const value = m ? Number(m[1].replace(/,/g, "")) : 0;
-  return m && value > 0 ? { value, unit: m[2].trim() } : null;
-};
-
-/**
- * The API body for a finished `Prop` (e.g. a free listing published straight from the list, which
- * has no editor draft). 0 / "—" / "" mean "not applicable" and become null.
- */
-export function propToInput(p: Prop): PropertyInput {
-  const road = p.roadAccess.match(/^(.*?)\s*(\d+)\s*ft$/i);
-  const rapd = rapdOf(p.landArea);
-  const orNull = (n: number) => (n > 0 ? n : null);
-  return {
-    nbId: p.nbId, title: p.title, tagline: p.tagline, description: p.description,
-    type: p.type, badge: p.badge || null, featured: p.featured, verified: p.verified,
-    price: p.priceNum > 0 ? p.priceNum : null, priceUnit: p.priceUnit || null, videoLinks: p.videoLinks ?? [],
-    bedrooms: orNull(p.beds), bathrooms: orNull(p.baths), floors: orNull(p.floors), buildYear: orNull(p.buildYear),
-    builtArea: areaParts(p.builtArea), landArea: rapd ? { rapd } : areaParts(p.landArea),
-    facing: p.facing || null,
-    roadSurface: (road ? road[1].trim() : p.roadAccess) || null, roadWidthFt: road ? Number(road[2]) : null,
-    gallery: p.gallery.length ? p.gallery : p.hero ? [p.hero] : [],
-    amenities: p.features.filter(f => CANONICAL.has(f)), highlights: p.features.filter(f => !CANONICAL.has(f)),
-    // Kept, so a Featured / Verified toggle doesn't reset the cover's framing.
-    floorPlan: p.floorPlan ?? null, coverFrame: p.coverFrame ?? null, reactionCount: REACTIONS[p.id] ?? 0,
-    location: { district: p.district, address: p.location, mapUrl: p.mapUrl ?? null, locationMode: p.locationMode ?? "approximate" },
-  };
-}

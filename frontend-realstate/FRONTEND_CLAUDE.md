@@ -99,7 +99,7 @@ All under `/api/v1`, error envelope as in §7.1.
 | POST | `/admin/uploads`, `/listings/uploads` with `cardSize` | **2026-11-14.** For images the answer also has `card: { uploadUrl, headers }`: `api/uploads.ts` PUTs the 800 px card copy (`<uuid>.w800.jpg`) beside the photo; `components/ui/card-photo.ts` `cardSrc()` points cards at it, `fullPhotoOnError()` falls back to the full photo |
 | POST / GET | `/listings` with `details` | **2026-11-14.** Free listings send and return `details` (`ListingDetails` in `api/listings.ts`: beds, baths, floors, facing, road, address, map link…, by property type: `data/listing-fields.ts`, moved from `pages/free-listing/` on 2026-11-25) |
 | GET | `/properties` (and `/admin/properties` for the admin) | **Wired 2026-09-30.** `loadProperties()` in `data/properties.ts` fills `ALL_PROPS` from the API once the sign-in check is done (`PropertySync` in `App.tsx`); pages still filter that list client-side. `/properties/:id` and `/:id/related` exist but aren't called yet |
-| POST / PATCH / DELETE | `/admin/properties[/:id]`, `POST /admin/properties/:id/restore` | **Wired 2026-09-30.** Editor save (`toInput()` → create / update), list delete + Undo, featured / verified toggles, heart counts, free-listing publish (`propToInput()`). Client: `src/api/properties.ts`. `next-ref` exists; the editor still computes the lowest free NB ID locally from `ALL_PROPS` (the server re-checks: 409) |
+| POST / PATCH / DELETE | `/admin/properties[/:id]`, `POST /admin/properties/:id/restore` | **Wired 2026-09-30.** Editor save (`toInput()` → create / update), list delete + Undo, featured / verified toggles, heart counts. Free listings are published through the editor ("Copy to Add Property"). Client: `src/api/properties.ts`. `next-ref` exists; the editor still computes the lowest free NB ID locally from `ALL_PROPS` (the server re-checks: 409) |
 
 **Property endpoints, how to call them** (all `{ data, meta }`; errors as §7.1):
 - **Public item** = today's `Prop` (same field names and display strings: `price`, `builtArea`, `landArea` "4-4-0-1 R-A-P-D",
@@ -244,11 +244,11 @@ WhatsApp message and in the admin. Rules, all implemented in `data/properties.ts
 - **Deleting frees the number at once.** Undo (`POST /admin/properties/:id/restore`) keeps the number if it is
   still free, otherwise takes the lowest free one and says so (`restoreProperty()` returns the property).
 - **Search matches full NB IDs only**, however they are typed: `NBS005`, `nbs005`, `#NBS 005`, `NBS-005`,
-  `nbs5` all find NBS005; a bare `005` finds nothing (`parseRef()` / `matchesRef()`).
+  `nbs5` all find NBS005; a bare `005` finds nothing (`parseRef()`).
 - Old demo references (`NB-001`) are gone; nothing needs migrating.
 
 Helpers: `REF_PREFIX`, `makeRef(listing, n)`, `refNumber(nbId)`, `displayRef(nbId)`, `parseRef(q)`, `refTaken(listing, n, exceptId)`,
-`matchesRef(nbId, q)`, `nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
+`nextPropRef(listing)`. UI: `components/ui/property-ref.tsx` → `RefTag`.
 
 **Approximate location (replaced the Google embed on 2026-09-30).** Visitors never see the exact
 point. The property page and the Buy / Rent map (Leaflet + OpenStreetMap tiles, no API key; a name-free MapLibre/OpenFreeMap background was tried on 2026-09-30 and dropped: ~480 KB) show a soft,
@@ -1717,7 +1717,7 @@ Add a row instead of editing the other person's files. Delete the row when resol
     back to the tab after a minute and every 3 minutes while it is on screen (`loadProperties(admin, { quiet })`: a
     failure keeps what is shown). Before, the list loaded once per page load, so a phone keeping the tab in memory
     showed a new property only hours later. Local changes (`noteLocalChange` in `data/store.ts`, called by
-    `saveProperty` / `restoreProperty` / `deleteProperty` / `applyHeart` / `setReactionCount`) stop a background
+    `saveProperty` / `restoreProperty` / `deleteProperty` / `applyHeart`) stop a background
     refresh from putting back older values (an admin's save, a heart vs the edge-cached list).
   - **Phones (< 768 px) get "See more" instead of page numbers** (`usePhone`, `pageItems`, `SeeMore`,
     `useSamePageAcrossSizes` in `components/ui/list-pagination.tsx`): Buy / Rent / Hot / New and Blog grow by 6,

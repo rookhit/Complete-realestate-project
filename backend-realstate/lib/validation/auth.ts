@@ -80,8 +80,3 @@ export const totpDisableSchema = z.object({
   password: z.string().max(200).optional(),
   code: z.string().trim().min(6).max(20),
 });
-
-export type RegisterInput = z.infer<typeof registerSchema>;
-export type LoginInput = z.infer<typeof loginSchema>;
-export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

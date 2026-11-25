@@ -28,9 +28,3 @@ export function coverStyle(f: Framing | undefined, hoverZoom = 1): CSSProperties
   const { x, y, zoom } = f ?? CENTRED;
   return { objectPosition: `${x}% ${y}%`, transformOrigin: `${x}% ${y}%`, transform: `scale(${zoom * hoverZoom})` };
 }
-
-/** The same as an inline style string, for HTML built outside React (the Leaflet map card). */
-export function coverStyleText(f: Framing | undefined): string {
-  const { x, y, zoom } = f ?? CENTRED;
-  return `object-position:${x}% ${y}%;transform-origin:${x}% ${y}%;transform:scale(${zoom})`;
-}

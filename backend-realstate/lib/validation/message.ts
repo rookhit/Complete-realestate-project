@@ -64,4 +64,3 @@ export const messageIdsSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, "Choose at least one message").max(5000, "At most 5,000 at a time")
     .transform((ids) => [...new Set(ids)]),
 });
-export type MessageIds = z.infer<typeof messageIdsSchema>;

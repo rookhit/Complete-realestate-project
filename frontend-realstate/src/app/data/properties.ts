@@ -290,9 +290,6 @@ export function parseRef(input: string): string | null {
   return m && Number(m[2]) > 0 ? `${m[1]}${m[2].padStart(3, "0")}` : null;
 }
 
-/** True when a search is this property's full NB ID, however it is typed. */
-export const matchesRef = (nbId: string, query: string): boolean => parseRef(query) === nbId.toUpperCase();
-
 /**
  * The admin's search by NB ID, as people type it. Just digits: "008", "8" or "9" find that number in
  * both sequences, and a part of a number finds every number containing it ("01" → 001, 010, 011…).
