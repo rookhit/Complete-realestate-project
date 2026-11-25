@@ -16,7 +16,8 @@ import logoImg from "@/imports/image.png";
 import { BOOT_SPLASH_SHOWN } from "./boot";
 import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
-import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, loadPropertyDetail, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
+import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, loadPropertyDetail, priceUnitLabel, priceWithoutUnit, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
+import { SocialVideoLinks } from "@/app/components/ui/social-videos";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap, prefetchMapCode } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
@@ -1470,8 +1471,8 @@ function BuyRentPage({ page, listing, go, setId, nav={} }: { page:Page; listing:
                       <div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5"><span className="text-[11px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{p.type}</span><RefTag nbId={p.nbId}/></div>
                         <h3 className="text-lg leading-tight" style={{color:FG_LIGHT,...serif}}><a href={hrefOf("property",{},p.id)} onClick={leaveToCard}>{p.title}</a></h3></div>
                       <div className="sm:text-right shrink-0">
-                        <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{p.price}</p>
-                        {p.listing==="For Rent"&&<p className="text-[11px]" style={{color:MUTED_L,...sans}}>per month</p>}
+                        <p className="text-lg sm:text-xl font-medium whitespace-nowrap" style={{color:MAROON,...sans}}>{priceWithoutUnit(p)}</p>
+                        {priceUnitLabel(p)&&<p className="text-[11px]" style={{color:MUTED_L,...sans}}>{priceUnitLabel(p)}</p>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 mb-3"><MapPin size={12} style={{color:GOLD}}/><span className="text-[12px]" style={{color:MUTED_L,...sans}}>{p.location}</span></div>
@@ -1721,7 +1722,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
             <h1 className="leading-[0.92] mb-2" style={{color:FG_LIGHT,...serif,fontSize:"clamp(1.8rem,4vw,3.5rem)"}}>{p.title}</h1>
             {p.tagline&&<p className="mb-3 text-[16px] italic" style={{color:MUTED_L,...serif}}>{p.tagline}</p>}
             <div className="flex items-center gap-1.5 mb-3"><MapPin size={14} style={{color:GOLD}}/><span className="text-[14px]" style={{color:MUTED_L,...sans}}>{p.location}</span></div>
-            <div className="flex items-baseline gap-3"><span className="text-2xl font-medium" style={{color:MAROON,...sans}}>{p.price}</span>{p.listing==="For Rent"&&<span className="text-sm" style={{color:MUTED_L,...sans}}>per month</span>}</div>
+            <div className="flex items-baseline gap-3"><span className="text-2xl font-medium" style={{color:MAROON,...sans}}>{priceWithoutUnit(p)}</span>{priceUnitLabel(p)&&<span className="text-sm" style={{color:MUTED_L,...sans}}>{priceUnitLabel(p)}</span>}</div>
           </div>
           <div className="h-px" style={{background:BORDER_L}}/>
           {/* Property Details table */}
@@ -1753,6 +1754,14 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
               <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Video Tour</p>
               <video key={p.videoUrl} src={p.videoUrl} controls playsInline preload="metadata"
                 aria-label={`Video tour of ${p.title}`} className="w-full aspect-video bg-black border" style={{borderColor:BORDER_L}}/>
+            </div>
+            <div className="h-px" style={{background:BORDER_L}}/>
+          </>}
+          {/* Videos posted on social media: a button each, opening the post in a new tab. */}
+          {!!p.videoLinks?.length&&<>
+            <div id="social-videos" className="scroll-mt-28">
+              <p className="text-[11px] tracking-[0.3em] uppercase mb-5" style={{color:GOLD,...sans}}>Watch on Social Media</p>
+              <SocialVideoLinks links={p.videoLinks}/>
             </div>
             <div className="h-px" style={{background:BORDER_L}}/>
           </>}

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Clock, Eye, Film, Heart, History, Lightbulb, Loader2, Lock, MapPin, Plus, Shield, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
-  BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX,
+  BADGES, BUILT_UNITS, FACINGS, LAND_UNITS, PRICE_UNITS, PROPERTY_TYPES, RAPD, REF_PREFIX, RENT_UNITS,
   ROAD_SURFACES, displayRef, isRapd, normalizeRapd, rapdOf, rapdProblem, rapdToSqft, formatPrice, makeRef, nextPropRef, nextPropertyId, refNumber, refTaken, applySaved,
   type CoverFrame, type Listing, type LocationMode, type PlanBox, type Prop,
 } from "@/app/data/properties";
 import { REACTIONS } from "@/app/data/reviews";
+import { isVideoLink, platformOf } from "@/app/components/ui/social-videos";
 import { approxFor, gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
 import { AreaMap } from "@/app/components/ui/maps";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
@@ -43,6 +44,11 @@ type Draft = {
   listing: Listing; type: string; badge: string; verified: boolean; featured: boolean;
   district: string; location: string; facing: string; roadSurface: string; roadWidth: number;
   priceAmount: string; priceUnit: PriceUnit;
+  // What the price is for, shown after it ("per Aana", "per year"); "" = the whole property / per month.
+  // (priceUnit above is only how the amount is typed: Crore / Lakh / Rupees.)
+  priceFor: string;
+  // Links to the property's videos on social media, in order.
+  videoLinks: string[];
   builtValue: string; builtUnit: string; landValue: string; landUnit: string;
   beds: number; baths: number; floors: number; buildYear: number;
   photos: string[]; videoUrl: string; amenities: string[]; highlights: string[]; floorPlan: PlanBox[];
@@ -84,7 +90,7 @@ function toDraft(p?: Prop): Draft {
       title: "", tagline: "", description: "",
       listing: "For Sale", type: PROPERTY_TYPES[0], badge: "New", verified: false, featured: false,
       district: "", location: "", facing: "North", roadSurface: ROAD_SURFACES[0], roadWidth: 20,
-      priceAmount: "", priceUnit: "Crore",
+      priceAmount: "", priceUnit: "Crore", priceFor: "", videoLinks: [],
       builtValue: "", builtUnit: "sq.ft", landValue: "", landUnit: "Ropani",
       beds: 3, baths: 2, floors: 2, buildYear: new Date().getFullYear(),
       photos: [], videoUrl: "", amenities: [], highlights: [], floorPlan: [], coverFrame: null,
@@ -102,7 +108,8 @@ function toDraft(p?: Prop): Draft {
     listing: p.listing, type: p.type, badge: p.badge, verified: p.verified, featured: p.featured,
     district: p.district, location: p.location, facing: p.facing,
     roadSurface: road ? road[1].trim() : p.roadAccess, roadWidth: road ? Number(road[2]) : 0,
-    priceAmount, priceUnit, builtValue, builtUnit, landValue, landUnit,
+    priceAmount, priceUnit, priceFor: p.priceUnit ?? "", videoLinks: [...(p.videoLinks ?? [])],
+    builtValue, builtUnit, landValue, landUnit,
     beds: p.beds, baths: p.baths, floors: p.floors, buildYear: p.buildYear,
     // The gallery is the photo list; the hero is simply its first photo.
     photos: p.gallery.length ? [...p.gallery] : p.hero ? [p.hero] : [],
@@ -132,6 +139,8 @@ function toInput(d: Draft): PropertyInput {
     title: d.title.trim(), tagline: d.tagline.trim(), description: d.description.trim(),
     type: d.type, badge: d.badge || null, featured: d.featured, verified: d.verified,
     price: priceNum > 0 ? priceNum : null,
+    priceUnit: d.priceFor || null,
+    videoLinks: d.videoLinks.map(l => l.trim()).filter(Boolean),
     bedrooms: isLand ? null : orNull(d.beds), bathrooms: isLand ? null : orNull(d.baths),
     floors: isLand ? null : orNull(d.floors), buildYear: isLand ? null : orNull(d.buildYear),
     builtArea: !isLand && built > 0 ? { value: built, unit: d.builtUnit } : null,
@@ -155,7 +164,8 @@ function toProp(d: Draft): Prop {
     // NBS for sale, NBL for rent: the prefix is the listing, the number is the admin's.
     id: d.id, nbId: makeRef(d.listing, Number(d.refNo) || 0), badge: d.badge, title: d.title.trim(), tagline: d.tagline.trim(),
     location: d.location.trim() || d.district, district: d.district,
-    price: formatPrice(priceNum, d.listing), priceNum, listing: d.listing, type: d.type,
+    price: formatPrice(priceNum, d.listing, d.priceFor), priceNum, priceUnit: d.priceFor || undefined,
+    videoLinks: d.videoLinks.map(l => l.trim()).filter(Boolean), listing: d.listing, type: d.type,
     beds: isLand ? 0 : d.beds, baths: isLand ? 0 : d.baths,
     builtArea: isLand ? "—" : joinArea(d.builtValue, d.builtUnit), landArea: joinArea(d.landValue, d.landUnit),
     roadAccess: d.roadWidth > 0 ? `${d.roadSurface} ${d.roadWidth}ft` : d.roadSurface,
@@ -183,6 +193,7 @@ function draftFrame(d: Draft): CoverFrame | undefined {
 function problems(d: Draft): string[] {
   const out: string[] = [];
   if (d.title.trim().length < 3) out.push("Give the property a title.");
+  if (d.videoLinks.some(l => l.trim() && !isVideoLink(l))) out.push("A social media video link isn't a full https:// link.");
   const taken = refTakenBy(d);
   if (!(Number(d.refNo) > 0)) out.push("Give the property an NB ID number.");
   else if (taken) out.push(`${displayRef(taken.nbId)} is already used by “${taken.title}”.`);
@@ -210,7 +221,8 @@ function switchListing(d: Draft, listing: Listing): Draft {
   if (listing === d.listing) return d;
   const saved = !d.isNew && d.nbId.startsWith(REF_PREFIX[listing]) ? d.nbId : null;
   const nbId = saved ?? nextPropRef(listing, d.id);
-  return { ...d, listing, refNo: refDigits(nbId) };
+  // Sale and rent have different price units ("per Aana" vs "per year"): start again from none.
+  return { ...d, listing, refNo: refDigits(nbId), priceFor: "" };
 }
 
 /** A land area was entered: a number, or Ropani-Aana-Paisa-Dam like "4-4-0-1". */
@@ -514,7 +526,14 @@ export function PropertyEditor({ property, template = null, source = null, open,
   const issues = [...problems(d), ...(uploading > 0 ? ["Wait for the uploads to finish."] : [])];
   const isLand = d.type === "Land";
   const priceNum = priceNumOf(d);
-  const pricePreview = formatPrice(priceNum, d.listing);
+  const pricePreview = formatPrice(priceNum, d.listing, d.priceFor);
+  // The units for this listing (Admin → Dropdown Options); a saved unit no longer in the list stays choosable.
+  const unitChoices = d.listing === "For Rent" ? RENT_UNITS : PRICE_UNITS;
+  const unitOptions = [
+    { value: "", label: d.listing === "For Rent" ? "per month (default)" : "Whole property (default)" },
+    ...(d.priceFor && !unitChoices.includes(d.priceFor) ? [d.priceFor] : []),
+    ...unitChoices.filter(u => !(d.listing === "For Rent" && /^per\s+months?$/i.test(u))),
+  ];
 
   // What the site would show if saved now, with friendly stand-ins for empty fields.
   const assembled = toProp(d);
@@ -646,9 +665,15 @@ export function PropertyEditor({ property, template = null, source = null, open,
         </FormSection>
 
         <FormSection id="pe-price" n={3} title="Price" subtitle={`${d.listing === "For Rent" ? "Monthly rent." : "Asking price."} Leave it empty to show “Negotiable”.`}>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_12rem_1fr] gap-5 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_9rem_13rem] gap-5 items-start">
             <Field label="Amount"><TextInput value={d.priceAmount} onChange={v => set("priceAmount", v.replace(/[^\d.]/g, ""))} placeholder={d.priceUnit === "Crore" ? "e.g. 8.5" : "e.g. 85000"} /></Field>
             <Field label="In"><Select value={d.priceUnit} onChange={v => set("priceUnit", v as PriceUnit)} options={["Crore", "Lakh", "Rupees"]} /></Field>
+            <Field label="Price unit"><Select value={d.priceFor} onChange={v => set("priceFor", v)} options={unitOptions} /></Field>
+          </div>
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-[1fr_22rem] gap-5 items-start">
+            <p className="text-[13px] leading-relaxed" style={{ color: MUTED_L, ...sans }}>
+              The unit is shown after the price, like “per month” for rent. Filters and sorting still use the amount as entered. Add or rename units in Dropdown Options.
+            </p>
             <Field label="Shown on the site as">
               <div className="h-[50px] flex items-center px-4 border text-[17px] font-medium" style={{ borderColor: "rgba(176,136,72,0.45)", background: "rgba(176,136,72,0.07)", color: MAROON, ...sans }}>{pricePreview}</div>
             </Field>
@@ -684,6 +709,9 @@ export function PropertyEditor({ property, template = null, source = null, open,
           )}
           <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
             <VideoField value={d.videoUrl} onChange={v => set("videoUrl", v)} upload={(file, progress) => track(uploadMedia("video", file, progress))} />
+          </div>
+          <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
+            <VideoLinksField links={d.videoLinks} onChange={v => set("videoLinks", v)} />
           </div>
         </FormSection>
 
@@ -722,6 +750,46 @@ export function PropertyEditor({ property, template = null, source = null, open,
 // ─── Property video ──────────────────────────────────────────────────────────
 
 const VIDEO_MAX_MB = 500;
+
+const MAX_VIDEO_LINKS = 10;
+
+/**
+ * Links to this property's videos on social media (one, two, three… up to 10). Each row shows the
+ * platform the link belongs to; the property page shows them as buttons that open the post.
+ */
+function VideoLinksField({ links, onChange }: { links: string[]; onChange: (v: string[]) => void }) {
+  const rows = links.length ? links : [""];
+  const setRow = (i: number, v: string) => onChange(rows.map((l, n) => (n === i ? v : l)));
+  return (
+    <Field label="Videos on Social Media" hint="Optional. Paste the link of each video you posted (Facebook, Instagram, YouTube, TikTok…). Visitors see a button for each one.">
+      <div className="flex flex-col gap-3">
+        {rows.map((link, i) => {
+          const p = platformOf(link), bad = link.trim() !== "" && !isVideoLink(link);
+          return (
+            <div key={i} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-white" aria-hidden="true"
+                  style={{ background: link.trim() ? p.color : BORDER_L }}>{p.icon(17)}</span>
+                <div className="flex-1 min-w-0">
+                  <TextInput value={link} onChange={v => setRow(i, v.trim())} placeholder="https://www.facebook.com/…" />
+                </div>
+                {(rows.length > 1 || link) && (
+                  <button type="button" onClick={() => onChange(rows.filter((_, n) => n !== i))} aria-label={`Remove video link ${i + 1}`}
+                    className="p-2 transition-colors hover:text-[#8a2030]" style={{ color: MUTED_L }}><Trash2 size={16} /></button>
+                )}
+              </div>
+              {bad && <p className="text-[12px] pl-12" style={{ color: MAROON, ...sans }}>Paste the full link, starting with https://</p>}
+              {!bad && link.trim() && <p className="text-[12px] pl-12" style={{ color: MUTED_L, ...sans }}>{p.name === "Video" ? "Shown as “Watch on the web”" : `Shown as “Watch on ${p.name}”`}</p>}
+            </div>
+          );
+        })}
+        {rows.length < MAX_VIDEO_LINKS && (
+          <div><Button variant="quiet" onClick={() => onChange([...rows, ""])}><Plus size={14} />Add another link</Button></div>
+        )}
+      </div>
+    </Field>
+  );
+}
 
 /** One optional video: picked from the computer and uploaded to Cloudflare straight away. */
 function VideoField({ value, onChange, upload }: {

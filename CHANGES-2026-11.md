@@ -11,9 +11,9 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   cover-frame and admin speed work. `main` has nothing this branch lacks, so the merge is conflict-free
   (fast-forward).
 - **Deploy the backend first, then the frontend.** The new frontend calls endpoints only the new backend has.
-- **Database: nothing to run.** All three migrations of this round are already applied to the live database:
+- **Database: nothing to run.** All four migrations of this round are already applied to the live database:
   `20261114120000_listing_details`, `20261116090000_property_closed_at`,
-  `20261116150000_session_start_message_read_at`. They only add columns, so the backend that is live now keeps
+  `20261116150000_session_start_message_read_at`, `20261130090000_price_unit_video_links`. They only add columns, so the backend that is live now keeps
   working until the new one is deployed.
 - **Environment variables:** no new ones. The live backend must have `GMAIL_USER` and `GMAIL_APP_PASSWORD` set
   (already used for sign-up codes), because new-message emails use them too. The new map needs no key.
@@ -94,6 +94,17 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   connection instead of failing after 2 s. See **Capacity** in `PRODUCTION_CHECKLIST.md` for how much the site can
   take and the three changes recommended before traffic grows (Vercel Pro, Supabase transaction pooler, a custom
   domain for photos).
+
+### 30 November
+- **Price units:** the admin can choose what a price is for: per Ropani, Aana, Paisa, Dam, Bigha, Kattha, Dhur or
+  sq.ft for a sale, per year for a rent (lists editable in Dropdown Options). The site shows it after the price,
+  like rent's "per month": "NPR 45 Lakh *per Aana*". Filters and sorting are unchanged (owner's decision).
+- **Videos on social media:** the admin can paste any number of links (up to 10) to the property's videos on
+  Facebook, Instagram, YouTube, TikTok…; the property page shows a button with the platform's icon for each, opening
+  the post in a new tab.
+- **EMI calculator:** the number boxes now sit above the sliders.
+- **Database:** migration `20261130090000_price_unit_video_links` (two optional columns) is already applied to the
+  live database; the current live backend keeps working with it.
 
 ### Tried and reverted
 - An automatic photo-fitting change (commits `da70ef3` / `bee5df3`) was reverted at the owner's request: photos

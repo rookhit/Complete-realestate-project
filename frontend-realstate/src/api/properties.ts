@@ -13,9 +13,13 @@ export type ApiProperty = {
   id: number; nbId: string; listing: Listing; type: string; badge: string;
   title: string; tagline: string; description: string; featured: boolean; verified: boolean;
   price: string; priceNum: number | null;
+  /** "per Aana", "per year"…; null = the whole property (sale) / per month (rent). */
+  priceUnit?: string | null;
   beds: number; baths: number; floors: number; buildYear: number;
   builtArea: string; landArea: string; landAreaSqft: number | null; roadAccess: string; facing: string;
   hero: string; gallery: string[]; videoUrl: string | null;
+  /** The property's videos on social media (empty on the slim card version). */
+  videoLinks?: string[];
   features: string[]; amenities: string[]; highlights: string[];
   location: string; district: string; mapX: number; mapY: number;
   approx: { lat: number; lng: number } | null; locationMode: LocationMode;
@@ -39,7 +43,8 @@ export type ApiAdminProperty = ApiProperty & {
 /** What POST / PATCH /admin/properties take (backend-realstate/lib/validation/property.ts). */
 export type PropertyInput = {
   nbId: string; title: string; tagline: string; description: string; type: string; badge: string | null;
-  featured: boolean; verified: boolean; price: number | null;
+  featured: boolean; verified: boolean; price: number | null; priceUnit: string | null;
+  videoLinks: string[];
   bedrooms: number | null; bathrooms: number | null; floors: number | null; buildYear: number | null;
   builtArea: { value: number; unit: string } | null;
   landArea: { value: number; unit: string } | { rapd: string } | null;
@@ -57,7 +62,8 @@ export function toProp(p: ApiProperty | ApiAdminProperty): Prop {
   return {
     id: p.id, nbId: p.nbId, badge: p.badge, title: p.title, tagline: p.tagline,
     location: p.location, district: p.district,
-    price: p.price, priceNum: p.priceNum ?? 0, listing: p.listing, type: p.type,
+    price: p.price, priceNum: p.priceNum ?? 0, priceUnit: p.priceUnit ?? undefined, listing: p.listing, type: p.type,
+    videoLinks: p.videoLinks ?? [],
     beds: p.beds, baths: p.baths, builtArea: p.builtArea, landArea: p.landArea,
     roadAccess: p.roadAccess, facing: p.facing, buildYear: p.buildYear, floors: p.floors,
     verified: p.verified, featured: p.featured,
@@ -136,7 +142,7 @@ export function propToInput(p: Prop): PropertyInput {
   return {
     nbId: p.nbId, title: p.title, tagline: p.tagline, description: p.description,
     type: p.type, badge: p.badge || null, featured: p.featured, verified: p.verified,
-    price: p.priceNum > 0 ? p.priceNum : null,
+    price: p.priceNum > 0 ? p.priceNum : null, priceUnit: p.priceUnit || null, videoLinks: p.videoLinks ?? [],
     bedrooms: orNull(p.beds), bathrooms: orNull(p.baths), floors: orNull(p.floors), buildYear: orNull(p.buildYear),
     builtArea: areaParts(p.builtArea), landArea: rapd ? { rapd } : areaParts(p.landArea),
     facing: p.facing || null,

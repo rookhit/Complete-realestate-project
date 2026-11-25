@@ -9,7 +9,7 @@ import { fetchSavedOptions, saveOptionList } from "@/api/options";
 import { ApiError } from "@/app/auth";
 import { emitChange } from "./store";
 import {
-  ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, FLOOR_NAMES, LAND_UNITS, PROPERTY_TYPES, PROP_TYPES, ROAD_SURFACES,
+  ALL_PROPS, BADGES, BUILT_UNITS, FACINGS, FLOOR_NAMES, LAND_UNITS, PRICE_UNITS, PROPERTY_TYPES, PROP_TYPES, RENT_UNITS, ROAD_SURFACES,
 } from "./properties";
 import { DEPARTMENTS, LANGUAGES, SPECIALITIES, TEAM, TEAM_ROLES } from "./content";
 
@@ -69,6 +69,10 @@ export const OPTION_LISTS: OptionList[] = [
     items: LAND_UNITS, defaults: [...LAND_UNITS], min: 1 },
   { key: "builtUnits", group: "Properties", label: "Built area units", where: "Property editor → Size → Built Area unit",
     items: BUILT_UNITS, defaults: [...BUILT_UNITS], min: 1 },
+  { key: "priceUnits", group: "Properties", label: "Sale price units", where: "Property editor → Price → Price unit (for sale); none chosen = the whole property",
+    items: PRICE_UNITS, defaults: [...PRICE_UNITS], unit: "property", usedBy: u => count(ALL_PROPS, p => p.priceUnit === u) },
+  { key: "rentUnits", group: "Properties", label: "Rent price units", where: "Property editor → Price → Price unit (for rent); none chosen = per month",
+    items: RENT_UNITS, defaults: [...RENT_UNITS], min: 1, unit: "property", usedBy: u => count(ALL_PROPS, p => p.priceUnit === u) },
   { key: "floorNames", group: "Properties", label: "Floor-plan box names", where: "Property editor → Floor Plans (quick names for new boxes)",
     items: FLOOR_NAMES, defaults: [...FLOOR_NAMES] },
   { key: "highlightIdeas", group: "Properties", label: "Highlight ideas", where: "Property editor → Amenities → Highlights (one-tap chips)",

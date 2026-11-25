@@ -53,6 +53,9 @@ const fields = {
   verified: z.boolean(),
   // Whole rupees (per month for rent). null = no price given, shown as "Negotiable".
   price: z.number().int().positive("Price must be above 0").max(1e15).nullable(),
+  // What the price is for ("per Aana", "per year"): checked against the priceUnits / rentUnits lists.
+  // null = the whole property (sale) / per month (rent).
+  priceUnit: text(30).nullable().transform((v) => v || null),
   bedrooms: count.nullable(),
   bathrooms: count.nullable(),
   floors: count.nullable(),
@@ -68,6 +71,9 @@ const fields = {
   roadWidthFt: z.number().int().min(0).max(1000).nullable(),
   gallery: z.array(media).max(30, "At most 30 photos"),
   videoUrl: media.nullable(),
+  // The property's videos on social media (Facebook, Instagram, YouTube, TikTok…), shown as buttons.
+  videoLinks: z.array(z.string().trim().max(2000, "Link is too long")
+    .regex(/^https:\/\/\S+$/i, "Use a full link starting with https://")).max(10, "At most 10 video links"),
   amenities: z.array(text(60).min(1)).max(100),
   highlights: z.array(text(80).min(1)).max(30),
   floorPlan: z.array(planBox).max(40).nullable(),
@@ -84,6 +90,7 @@ export const propertyInputSchema = z.object({
   featured: fields.featured.default(false),
   verified: fields.verified.default(false),
   price: fields.price.default(null),
+  priceUnit: fields.priceUnit.default(null),
   bedrooms: fields.bedrooms.default(null),
   bathrooms: fields.bathrooms.default(null),
   floors: fields.floors.default(null),
@@ -95,6 +102,7 @@ export const propertyInputSchema = z.object({
   roadWidthFt: fields.roadWidthFt.default(null),
   gallery: fields.gallery.default([]),
   videoUrl: fields.videoUrl.default(null),
+  videoLinks: fields.videoLinks.default([]),
   amenities: fields.amenities.default([]),
   highlights: fields.highlights.default([]),
   floorPlan: fields.floorPlan.default(null),

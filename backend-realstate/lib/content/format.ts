@@ -4,7 +4,17 @@
 export type ListingLabel = "For Sale" | "For Rent";
 
 /** 85000000 → "NPR 8.5 Cr"; 120000 for rent → "NPR 1.2 L/mo"; 85000 for rent → "NPR 85,000/mo". No price → "Negotiable". */
-export function formatPrice(price: number | null, listing: ListingLabel): string {
+/**
+ * The short form of a price unit after the price: "per Aana" → "/Aana", rent "per month" (or none) →
+ * "/mo", "per year" → "/yr". A sale with no unit is the whole property: nothing after it.
+ */
+export function unitSuffix(unit: string | null | undefined, listing: ListingLabel): string {
+  const u = (unit ?? "").trim().replace(/^per\s+/i, "");
+  if (listing === "For Rent") return !u || /^months?$/i.test(u) ? "/mo" : /^years?$/i.test(u) ? "/yr" : `/${u}`;
+  return u ? `/${u}` : "";
+}
+
+export function formatPrice(price: number | null, listing: ListingLabel, unit?: string | null): string {
   if (price === null) return "Negotiable";
   const CR = 10_000_000, LAKH = 100_000;
   const short = (n: number): string => String(Math.round(n * 100) / 100);
@@ -13,7 +23,7 @@ export function formatPrice(price: number | null, listing: ListingLabel): string
   if (price >= CR) body = `${short(price / CR)} Cr`;
   else if (price >= LAKH) body = `${short(price / LAKH)} ${rent ? "L" : "Lakh"}`;
   else body = price.toLocaleString("en-IN");
-  return `NPR ${body}${rent ? "/mo" : ""}`;
+  return `NPR ${body}${unitSuffix(unit, listing)}`;
 }
 
 /** "4,850 sq.ft", or "—" (the frontend's "not applicable"). */

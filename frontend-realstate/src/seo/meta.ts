@@ -19,6 +19,8 @@ export type SeoContact = { address: string; phone: string; email: string; hours:
 export type SeoProperty = {
   id: number; nbId: string; title: string; tagline: string; description: string;
   listing: string; type: string; price: string; priceNum: number | null;
+  /** "per Aana", "per year"…; null / "" = the whole property (sale) or per month (rent). */
+  priceUnit?: string | null;
   location: string; district: string; hero: string; gallery: string[];
   beds: number; baths: number; builtArea: string; landArea: string;
   createdAt?: string; updatedAt?: string;
@@ -234,7 +236,9 @@ export function propertyMeta(siteUrl: string, p: SeoProperty): PageMeta {
     offers: {
       "@type": "Offer",
       businessFunction: sale ? "http://purl.org/goodrelations/v1#Sell" : "http://purl.org/goodrelations/v1#LeaseOut",
-      ...(p.priceNum ? { price: p.priceNum, priceCurrency: "NPR" } : {}),
+      // A price per unit ("per Aana", "per year") isn't the price of the listing: left out, so search
+      // results don't show it as one. The page's own text still shows it with its unit.
+      ...(p.priceNum && (!p.priceUnit || /^per\s+months?$/i.test(p.priceUnit)) ? { price: p.priceNum, priceCurrency: "NPR" } : {}),
       availability: "https://schema.org/InStock",
       seller: { "@id": `${siteUrl}/#organization` },
     },

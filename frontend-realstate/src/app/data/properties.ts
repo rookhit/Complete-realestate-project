@@ -30,6 +30,10 @@ export type LocationMode = "exact" | "approximate";
 export interface Prop {
   id: number; nbId: string; badge: string; title: string; tagline: string;
   location: string; district: string; price: string; priceNum: number;
+  /** What the price is for ("per Aana", "per year"); none = the whole property / per month. */
+  priceUnit?: string;
+  /** The property's videos on social media (Facebook, Instagram, YouTube, TikTok…). */
+  videoLinks?: string[];
   listing: Listing; type: string;
   beds: number; baths: number; builtArea: string; landArea: string;
   roadAccess: string; facing: string; buildYear: number; floors: number;
@@ -182,6 +186,20 @@ export const ROAD_SURFACES = ["Black-topped", "Concrete", "Graveled", "Earthen"]
 /** Nepali land units first, then square feet. */
 export const LAND_UNITS = ["Ropani", "Aana", "Bigha", "Kattha", "Dhur", "sq.ft"];
 export const BUILT_UNITS = ["sq.ft", "sq.m"];
+/** What a sale price is for (none = the whole property). Admin → Dropdown Options → Sale price units. */
+export const PRICE_UNITS = ["per Ropani", "per Aana", "per Paisa", "per Dam", "per Bigha", "per Kattha", "per Dhur", "per sq.ft"];
+/** What a rent is for (none = per month). Admin → Dropdown Options → Rent price units. */
+export const RENT_UNITS = ["per month", "per year"];
+
+/** The price without its short unit ending ("NPR 45 Lakh/Aana" → "NPR 45 Lakh"), for where priceUnitLabel follows it. */
+export const priceWithoutUnit = (p: { price: string; listing: Listing; priceUnit?: string }): string => {
+  const suffix = unitSuffix(p.priceUnit, p.listing);
+  return suffix && p.price.endsWith(suffix) ? p.price.slice(0, -suffix.length) : p.price;
+};
+
+/** The small text after a price, like rent's "per month": the chosen unit, else "per month" for rent. */
+export const priceUnitLabel = (p: { listing: Listing; priceUnit?: string; priceNum?: number }): string =>
+  !(Number(p.priceNum) > 0) ? "" : p.priceUnit || (p.listing === "For Rent" ? "per month" : "");
 
 /**
  * Land written the Nepali way, Ropani-Aana-Paisa-Dam: "4-4-0-1" is 4 ropani, 4 aana, 0 paisa,
@@ -226,7 +244,14 @@ export const planArea = (n: number) => `${n.toLocaleString("en-US")} sq.ft`;
  * The display price, from the number in rupees. Matches the seeded strings exactly:
  * 85000000 → "NPR 8.5 Cr", 120000 for rent → "NPR 1.2 L/mo", 85000 for rent → "NPR 85,000/mo".
  */
-export function formatPrice(priceNum: number, listing: Listing): string {
+/** Same as the backend's unitSuffix (lib/content/format.ts): "per Aana" → "/Aana"; rent → "/mo" or "/yr". */
+export function unitSuffix(unit: string | undefined, listing: Listing): string {
+  const u = (unit ?? "").trim().replace(/^per\s+/i, "");
+  if (listing === "For Rent") return !u || /^months?$/i.test(u) ? "/mo" : /^years?$/i.test(u) ? "/yr" : `/${u}`;
+  return u ? `/${u}` : "";
+}
+
+export function formatPrice(priceNum: number, listing: Listing, unit?: string): string {
   if (!(priceNum > 0)) return "Negotiable"; // no price given (the API stores null)
   const CR = 10_000_000, LAKH = 100_000;
   const short = (n: number) => String(Math.round(n * 100) / 100);
@@ -235,7 +260,7 @@ export function formatPrice(priceNum: number, listing: Listing): string {
   if (priceNum >= CR) body = `${short(priceNum / CR)} Cr`;
   else if (priceNum >= LAKH) body = `${short(priceNum / LAKH)} ${rent ? "L" : "Lakh"}`;
   else body = priceNum.toLocaleString("en-IN");
-  return `NPR ${body}${rent ? "/mo" : ""}`;
+  return `NPR ${body}${unitSuffix(unit, listing)}`;
 }
 
 /**

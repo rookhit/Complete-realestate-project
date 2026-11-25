@@ -36,6 +36,10 @@ export type PublicProperty = {
   id: number; nbId: string; listing: ListingLabel; type: string; badge: string;
   title: string; tagline: string; description: string; featured: boolean; verified: boolean;
   price: string; priceNum: number | null;
+  /** What the price is for, as the admin chose it ("per Aana", "per year"); null = whole property / per month. */
+  priceUnit: string | null;
+  /** Links to the property's videos on social media, in order. */
+  videoLinks: string[];
   beds: number; baths: number; floors: number; buildYear: number;
   builtArea: string; landArea: string; landAreaSqft: number | null; roadAccess: string; facing: string;
   hero: string; gallery: string[]; videoUrl: string | null;
@@ -85,8 +89,10 @@ export function toPublic(row: PropertyRow): PublicProperty {
     description: row.description,
     featured: row.featured,
     verified: row.verified,
-    price: formatPrice(price, listing),
+    price: formatPrice(price, listing, row.priceUnit),
     priceNum: price,
+    priceUnit: row.priceUnit,
+    videoLinks: row.videoLinks,
     // The frontend's "not applicable" is 0 / "—".
     beds: row.bedrooms ?? 0,
     baths: row.bathrooms ?? 0,
@@ -130,6 +136,7 @@ export function toAdmin(row: PropertyRow): AdminProperty {
       nbId: formatNbId(row.listing, row.nbNumber),
       title: row.title, tagline: row.tagline, description: row.description, type: row.type, badge: row.badge,
       featured: row.featured, verified: row.verified, price: row.price === null ? null : Number(row.price),
+      priceUnit: row.priceUnit, videoLinks: row.videoLinks,
       bedrooms: row.bedrooms, bathrooms: row.bathrooms, floors: row.floors, buildYear: row.buildYear,
       builtArea: builtValue !== null && row.builtAreaUnit ? { value: builtValue, unit: row.builtAreaUnit } : null,
       landArea: row.landAreaRapd ? { rapd: row.landAreaRapd }
@@ -192,6 +199,9 @@ async function resolveInput(
   check("facing", v.facing, "facings", "facings");
   check("roadSurface", v.roadSurface, "roadSurfaces", "road surfaces");
   if (v.builtArea) check("builtArea", v.builtArea.unit, "builtUnits", "built area units");
+  // The unit list depends on the listing (the NB ID's prefix): sale units for NBS, rent units for NBL.
+  if (nb.listing === "FOR_RENT") check("priceUnit", v.priceUnit, "rentUnits", "rent price units");
+  else check("priceUnit", v.priceUnit, "priceUnits", "sale price units");
   if (!isDistrict(v.location.district)) throw invalid("location.district", `“${v.location.district}” is not one of Nepal's 77 districts`);
 
   let land: Resolved["land"] = { value: null, unit: null, rapd: null, sqft: null };
@@ -259,6 +269,7 @@ function propertyData(v: PropertyInput, r: Resolved) {
     nbNumber: r.nbNumber, listing: r.listing,
     title: v.title, tagline: v.tagline, description: v.description, type: v.type, badge: v.badge,
     featured: v.featured, verified: v.verified, price: v.price === null ? null : BigInt(v.price),
+    priceUnit: v.priceUnit, videoLinks: v.videoLinks,
     bedrooms: v.bedrooms, bathrooms: v.bathrooms, floors: v.floors, buildYear: v.buildYear,
     builtAreaValue: r.builtArea?.value ?? null, builtAreaUnit: r.builtArea?.unit ?? null,
     landAreaValue: r.land.value, landAreaUnit: r.land.unit, landAreaRapd: r.land.rapd, landAreaSqft: r.land.sqft,
@@ -567,7 +578,7 @@ export function toCard(row: PropertyRow): CardProperty {
   const p = toPublic(row);
   return {
     ...p, card: true, description: excerpt(p.description), gallery: p.hero ? [p.hero] : [],
-    features: [], amenities: [], highlights: [], floorPlan: null, videoUrl: null,
+    features: [], amenities: [], highlights: [], floorPlan: null, videoUrl: null, videoLinks: [],
   };
 }
 

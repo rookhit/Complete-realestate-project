@@ -15,6 +15,8 @@ const CARD_WIDTH = 640;
  * picture asked for at CARD_WIDTH, same shape; anything else unchanged.
  */
 export function cardSrc(url: string): string {
+  // A property saved without photos (possible through the API) must not take its whole page down.
+  if (!url) return "";
   if (OUR_PHOTO.test(url)) return url.replace(OUR_PHOTO, "$1.w800.jpg");
   if (url.startsWith("https://images.unsplash.com/")) {
     try {

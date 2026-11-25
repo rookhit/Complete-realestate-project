@@ -1639,6 +1639,20 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-30 · prajjwal (with Claude) · Price units and social media video links.**
+  - **Price unit** (`Prop.priceUnit`, API `priceUnit`): the editor's Price section has "Price unit" (sale: per Ropani /
+    Aana / Paisa / Dam / Bigha / Kattha / Dhur / sq.ft, none = whole property; rent: per year, none = per month).
+    Lists editable in Dropdown Options (`priceUnits`, `rentUnits`). The API's `price` string ends with the short
+    form (`unitSuffix`: "/Aana", "/yr", rent default "/mo"); the property page and Buy/Rent rows show
+    `priceWithoutUnit(p)` + `priceUnitLabel(p)` ("NPR 45 Lakh *per Aana*"). **Display only, by the owner's
+    decision: filters and sorting still use `priceNum` as entered.** The editor's own `priceUnit` (Crore / Lakh /
+    Rupees) is only how the amount is typed; the new field is `priceFor` in the draft.
+  - **Videos on social media** (`Prop.videoLinks`, up to 10 https links): editor rows under Photos with the
+    detected platform; the property page's "Watch on Social Media" section (`components/ui/social-videos.tsx`:
+    `platformOf`, `SocialVideoLinks`) shows a button per link (Facebook, Instagram, YouTube, TikTok, X, else
+    "Watch on the web"), opening in a new tab (`noopener noreferrer`). Not in the slim card list.
+  - `cardSrc("")` returns "" (a property without photos crashed its page).
+
 - **2026-11-30 · prajjwal (with Claude) · EMI calculator: each number box now sits right under its label, above its
   slider** (was below, easy to miss). Box, slider and result stay in step; boxes have `aria-label`s.
 

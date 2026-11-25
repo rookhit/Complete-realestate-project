@@ -8,7 +8,7 @@ import { HttpError } from "@/lib/auth/guards";
 // text in the database, so these lists take the place of an enum.
 
 /** The lists that property saves are checked against (defaults copied from data/properties.ts). */
-export type OptionKey = "propertyTypes" | "badges" | "facings" | "roadSurfaces" | "landUnits" | "builtUnits";
+export type OptionKey = "propertyTypes" | "badges" | "facings" | "roadSurfaces" | "landUnits" | "builtUnits" | "priceUnits" | "rentUnits";
 
 const DEFAULTS: Record<OptionKey, readonly string[]> = {
   propertyTypes: ["House/Bungalow", "Land", "Apartment", "Commercial", "Flat"],
@@ -17,6 +17,9 @@ const DEFAULTS: Record<OptionKey, readonly string[]> = {
   roadSurfaces: ["Black-topped", "Concrete", "Graveled", "Earthen"],
   landUnits: ["Ropani", "Aana", "Bigha", "Kattha", "Dhur", "sq.ft"],
   builtUnits: ["sq.ft", "sq.m"],
+  // What a sale price is for (none chosen = the whole property) and a rent (none = per month).
+  priceUnits: ["per Ropani", "per Aana", "per Paisa", "per Dam", "per Bigha", "per Kattha", "per Dhur", "per sq.ft"],
+  rentUnits: ["per month", "per year"],
 };
 
 /**
@@ -30,6 +33,8 @@ export const OPTION_RULES = {
   roadSurfaces: { min: 1, maxLength: 40 },
   landUnits: { min: 1, maxLength: 20 },
   builtUnits: { min: 1, maxLength: 20 },
+  priceUnits: { min: 0, maxLength: 30 },
+  rentUnits: { min: 1, maxLength: 30 },
   floorNames: { min: 0, maxLength: 40 },
   highlightIdeas: { min: 0, maxLength: 80 },
   taglineIdeas: { min: 0, maxLength: 120 },

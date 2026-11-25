@@ -220,6 +220,10 @@ model Property {
   verified       Boolean     @default(false)
   // Whole rupees (per month when FOR_RENT). NULL = no price given = shown as "Negotiable".
   price          BigInt?
+  // What the price is for, shown after it ("per Aana", "per year"): one of the "priceUnits" (sale) or
+  // "rentUnits" (rent) option list. NULL = the whole property (sale) / per month (rent). Display only:
+  // filters and sorting use `price` as it is (decided 2026-11-30).
+  priceUnit      String?
   // NULL = not applicable (e.g. land), shown as "—" on the site.
   bedrooms       Int?
   bathrooms      Int?
@@ -246,6 +250,9 @@ model Property {
   gallery        String[]
   // At most one video per property, optional. The file lives in Cloudflare R2; only its URL is stored.
   videoUrl       String?
+  // Links to the property's videos posted elsewhere (Facebook, Instagram, YouTube, TikTok…), in display
+  // order, https only. Shown as buttons on the property page. Empty = none.
+  videoLinks     String[]    @default([])
   // Free-text selling points, separate from the canonical amenities.
   highlights     String[]
   // The admin's drag-and-drop floor plan: PlanBox[] = { id, name, area (sq.ft), x, y, w, h },
