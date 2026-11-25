@@ -188,7 +188,8 @@ export function errorResponse(request: Request, error: unknown): NextResponse {
     );
   }
 
-  console.error(error);
+  // The requestId goes in the log too, so a visitor's "error ref" can be matched to its log line.
+  console.error(`[request ${requestId}]`, error);
   return NextResponse.json(
     { error: { code: "INTERNAL", message: "Internal server error", requestId } },
     { status: 500, headers: corsHeaders(request) },

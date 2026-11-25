@@ -223,7 +223,7 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
       {photos.length + pending.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {photos.map((url, i) => (
-            <figure key={`${url}-${i}`} {...tileDrag(i)} className="border flex flex-col cursor-grab active:cursor-grabbing transition-opacity"
+            <figure key={`${url}-${i}`} {...tileDrag(i)} className="border flex flex-col min-w-0 cursor-grab active:cursor-grabbing transition-opacity"
               style={{
                 borderColor: dragOver === i && dragFrom !== i ? MAROON : i === 0 ? GOLD : BORDER_L, background: WHITE,
                 outline: dragOver === i && dragFrom !== i ? `2px dashed ${MAROON}` : "none", outlineOffset: 3,
@@ -242,7 +242,8 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
                   </span>
                 )}
               </div>
-              <figcaption className="flex items-center justify-between px-1 py-1" style={{ color: MUTED_L }}>
+              {/* Wraps on a narrow tile: the cover has four tools (arrows, Adjust, remove), which overflowed. */}
+              <figcaption className="flex flex-wrap items-center justify-between min-w-0 px-1 py-1" style={{ color: MUTED_L }}>
                 <div className="flex">
                   <button type="button" className={tool} aria-label="Move earlier" disabled={i === 0} onClick={() => move(i, -1)}><ArrowLeft size={14} /></button>
                   <button type="button" className={tool} aria-label="Move later" disabled={i === photos.length - 1} onClick={() => move(i, 1)}><ArrowRight size={14} /></button>
@@ -250,7 +251,7 @@ export function PhotoManager({ photos, onChange, max = 20, upload, onAdd, coverF
                 <div className="flex">
                   {i === 0 && onAdjustCover && isMediaLink(url) && (
                     <button type="button" onClick={onAdjustCover} title="Adjust how the cover is framed on cards"
-                      className="h-8 px-2 flex items-center gap-1.5 text-[10px] tracking-[0.18em] uppercase transition-colors hover:text-[#8a2030]" style={{ color: MAROON, ...sans }}>
+                      className="h-8 px-1.5 flex items-center gap-1 text-[10px] tracking-[0.12em] uppercase transition-colors hover:text-[#8a2030]" style={{ color: MAROON, ...sans }}>
                       <Crop size={13} />Adjust
                     </button>
                   )}

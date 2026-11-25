@@ -32,9 +32,14 @@ Last updated: 2026-11-15
 - [ ] **Google sign-in on the live site**: Google Cloud Console → APIs & Services → Credentials → the OAuth 2.0
       client → add Authorised JavaScript origin `https://www.nepalbhoomi.com` and Authorised redirect URI
       `https://www.nepalbhoomi.com/api/v1/auth/google/callback`, then Save (takes a few minutes).
-- [ ] **Schedule the daily cleanup (`CRON_SECRET`, section below) before launch**: the new Privacy Policy
-      (`/privacy-policy`) promises that unverified accounts go after 7 days and security logs after 180 days;
-      that is only true once `GET /api/cron/cleanup-tokens` runs daily.
+- [ ] **Set `CRON_SECRET` in the backend's Vercel environment before launch** (the daily schedule itself is in
+      `backend-realstate/vercel.json` since 2026-11-26; section below): the Privacy Policy (`/privacy-policy`)
+      promises that unverified accounts go after 7 days and security logs after 180 days; that is only true once
+      `GET /api/cron/cleanup-tokens` runs daily. It also removes uploads that were never saved.
+- [ ] **Switch `DATABASE_URL` to Supabase's transaction pooler (port 6543) — the top item for reliability.** Seen
+      again 2026-11-26: "(EMAXCONNSESSION) max clients reached in session mode — pool_size: 15". Today's session
+      pooler allows 15 connections in total, shared by every running copy of the backend (each may open 10), so two
+      busy copies can lock everyone out. Details under **Capacity** below.
 - [ ] **Have someone qualified read the legal pages** (`frontend-realstate/src/seo/legal.ts`, `faq.ts`): written
       in plain English for Nepal's Privacy Act, 2075, but not reviewed by a lawyer. Update `LEGAL_UPDATED` whenever the
       wording changes.
@@ -117,9 +122,14 @@ loads its own full details (also versioned).
 
 - [ ] Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
       and set `CRON_SECRET` (32+ chars) in the backend environment.
-- [ ] Schedule a daily `GET /api/cron/cleanup-tokens` with header `Authorization: Bearer <CRON_SECRET>`
-      (Vercel Cron, crontab on a VPS, cron-job.org or GitHub Actions). The endpoint answers 404 until
-      the secret is set. What it deletes: `backend-realstate/lib/cron/cleanup-tokens.ts`.
+- [x] Schedule (since 2026-11-26): `backend-realstate/vercel.json` → `crons` runs `GET /api/cron/cleanup-tokens`
+      every day at 21:15 UTC (03:00 in Nepal). Vercel sends `Authorization: Bearer <CRON_SECRET>` by itself once
+      the variable is set; until then the endpoint answers 404 and nothing runs. Check after the first night:
+      Vercel → the backend project → Settings → Cron Jobs (last run) or Logs.
+- What it deletes: expired auth rows (`backend-realstate/lib/cron/cleanup-tokens.ts`) and **uploads that were never
+  saved** (photos picked in an editor that was then cancelled, an abandoned Free Listing form…), only when older
+  than 7 days and not mentioned anywhere in the database (`backend-realstate/lib/storage/sweep.ts`). Measured
+  2026-11-26: 163 files in the bucket, all in use.
 
 ## Media storage (Cloudflare R2)
 

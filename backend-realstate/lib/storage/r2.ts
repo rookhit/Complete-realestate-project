@@ -135,9 +135,43 @@ export async function deleteMedia(urls: Iterable<string>): Promise<void> {
   // Files in the local test store (development without R2).
   await Promise.all(withCards(list.map(localKeyOf).filter((k): k is string => k !== null)).map((k) =>
     deleteLocal(k).catch((e) => console.error(`Local delete ${k} failed`, e))));
+  await deleteKeys(withCards(list.map(keyOf).filter((k): k is string => k !== null)));
+}
+
+export type StoredObject = { key: string; lastModified: Date; size: number };
+
+/**
+ * Every object in our upload folders (S3 ListObjectsV2, 1,000 per page). Throws if R2 answers an
+ * error, so a caller never mistakes a failed listing for an empty bucket. [] without R2 configured.
+ */
+export async function listMedia(): Promise<StoredObject[]> {
+  const r2 = config();
+  if (!r2) return [];
+  const out: StoredObject[] = [];
+  for (const folder of FOLDERS) {
+    let token: string | undefined;
+    do {
+      const q = new URLSearchParams({ "list-type": "2", prefix: `${folder}/`, "max-keys": "1000" });
+      if (token) q.set("continuation-token", token);
+      const res = await r2.client.fetch(`${r2.endpoint}?${q}`);
+      if (!res.ok) throw new Error(`R2 list ${folder}/ failed: ${res.status}`);
+      const xml = await res.text();
+      for (const [, body] of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+        const tag = (name: string) => body.match(new RegExp(`<${name}>([^<]*)</${name}>`))?.[1] ?? "";
+        const key = tag("Key").replace(/&amp;/g, "&");
+        if (key) out.push({ key, lastModified: new Date(tag("LastModified")), size: Number(tag("Size")) || 0 });
+      }
+      token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? xml.match(/<NextContinuationToken>([^<]*)<\/NextContinuationToken>/)?.[1] : undefined;
+    } while (token);
+  }
+  return out;
+}
+
+/** Deletes these object keys from R2 (best effort, logged). Keys outside our folders are skipped. */
+export async function deleteKeys(keyList: Iterable<string>): Promise<void> {
   const r2 = config();
   if (!r2) return;
-  const keys = [...new Set(withCards(list.map(keyOf).filter((k): k is string => k !== null)))];
+  const keys = [...new Set(keyList)].filter((k) => FOLDERS.some((f) => k.startsWith(`${f}/`)));
   await Promise.all(keys.map(async (key) => {
     try {
       const res = await r2.client.fetch(`${r2.endpoint}/${key}`, { method: "DELETE" });

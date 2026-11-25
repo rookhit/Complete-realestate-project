@@ -115,6 +115,17 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   Price and Size, and the seller's area boxes take numbers only.
 - **Mistakes in the property editor say where they are:** each problem names its section (tap to go there), that section
   gets a red border, and a refusal from the server names the field (“Not saved · 4 · Size & Rooms: Land area: …”).
+- **Uploads never saved are cleaned up:** photos picked in an editor that was then cancelled (or an abandoned Free
+  Listing form) used to stay in storage for ever. The daily cleanup now deletes them after 7 days, only if nothing
+  in the database mentions them. The daily cleanup is scheduled in `backend-realstate/vercel.json`; it runs once
+  `CRON_SECRET` is set in Vercel.
+- **Photo tiles:** the cover photo's buttons (arrows, Adjust, remove) no longer spill out of a narrow tile.
+- **Server errors** are logged with the same reference number the visitor sees, so a report can be traced.
+- **Audit 26 November** (Brave, phone 390 / tablet 768 / laptop 1366 / desktop 1920): 25 pages × 4 sizes with no
+  page errors, failed requests or sideways scrolling. Production build: first photo on screen in 1.6–2.4 s on a
+  phone on 4G, 2.5–3.2 s on slow 4G, 0.7–0.8 s on a laptop. 4 photos upload in about 4 s. 960 API requests (up to
+  40 at once, uncached) with no error. No password or key in the built website, the repository or its history.
+  **Top item before traffic grows: the transaction pooler (`PRODUCTION_CHECKLIST.md`).**
 - **Database:** migration `20261130090000_price_unit_video_links` (two optional columns) is already applied to the
   live database; the current live backend keeps working with it.
 
