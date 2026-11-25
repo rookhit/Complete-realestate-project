@@ -1927,14 +1927,15 @@ function EMICalculator() {
                 <label className="text-[12px] tracking-[0.25em] uppercase" style={{color:MUTED_L,...sans}}>{f.label}</label>
                 <span className="text-[15px] font-medium" style={{color:FG_LIGHT,...sans}}>{f.fmt(f.val)}</span>
               </div>
-              <input type="range" min={f.min} max={f.max} step={f.step} value={f.val}
-                onChange={e=>f.set(Number(e.target.value))} className="w-full h-1 appearance-none cursor-pointer"
-                style={{accentColor:MAROON,background:`linear-gradient(to right, ${MAROON} ${((f.val-f.min)/(f.max-f.min))*100}%, ${BORDER_L} ${((f.val-f.min)/(f.max-f.min))*100}%)`}}/>
-              <div className="flex justify-between text-[11px]" style={{color:MUTED_L,...sans}}><span>{f.fmt(f.min)}</span><span>{f.fmt(f.max)}</span></div>
-              <input type="number" min={f.min} max={f.max} step={f.step} value={f.val}
+              {/* The box first, right under its label, so it's easy to see and type into; the slider below. */}
+              <input type="number" min={f.min} max={f.max} step={f.step} value={f.val} aria-label={f.label}
                 onChange={e=>f.set(Math.min(f.max,Number(e.target.value)||0))}
                 onBlur={e=>f.set(Math.min(f.max,Math.max(f.min,Number(e.target.value)||f.min)))}
-                className="border px-3 py-2 text-[15px] outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,...sans}}/>
+                className="border px-3 py-2 text-[15px] outline-none transition-all focus:border-[#8a2030]" style={{borderColor:BORDER_L,color:FG_LIGHT,background:WHITE,...sans}}/>
+              <input type="range" min={f.min} max={f.max} step={f.step} value={f.val} aria-label={`${f.label} slider`}
+                onChange={e=>f.set(Number(e.target.value))} className="w-full h-1 appearance-none cursor-pointer mt-2"
+                style={{accentColor:MAROON,background:`linear-gradient(to right, ${MAROON} ${((f.val-f.min)/(f.max-f.min))*100}%, ${BORDER_L} ${((f.val-f.min)/(f.max-f.min))*100}%)`}}/>
+              <div className="flex justify-between text-[11px]" style={{color:MUTED_L,...sans}}><span>{f.fmt(f.min)}</span><span>{f.fmt(f.max)}</span></div>
             </div>
           ))}
         </div>

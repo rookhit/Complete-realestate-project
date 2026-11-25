@@ -1639,6 +1639,9 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-30 · prajjwal (with Claude) · EMI calculator: each number box now sits right under its label, above its
+  slider** (was below, easy to miss). Box, slider and result stay in step; boxes have `aria-label`s.
+
 - **2026-11-22 (A3) · prajjwal (with Claude) · Property and article pages for Google / link previews without a redeploy.**
   `vercel.json` forwards `/property/:slug`, `/blog/:slug` and `/sitemap.xml` to the backend's `/seo/*` routes
   (`backend-realstate/lib/seo/`), which fill the live `index.html`'s `seo:start` / `prerender:content` blocks per
