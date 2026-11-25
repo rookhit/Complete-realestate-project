@@ -6,6 +6,7 @@
 // a share sheet (Chrome / Brave / Firefox on a Mac) only copied the link silently, so the owner saw
 // no way to share to social media. Admin or visitor makes no difference.
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Facebook, Link2, Mail, MoreHorizontal, Share2 } from "lucide-react";
 import { BORDER_L, FG_LIGHT, MUTED_L, WHITE, sans } from "./brand";
 import { XLogo } from "./social-videos";
@@ -27,17 +28,38 @@ export function ShareButton({ title, text }: { title: string; text: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  // Where the menu goes: under the button, right edges lined up (fixed, measured when it opens).
+  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   // The page's own address without filters or anchors, so every share points to the same page.
   const url = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
   const message = `${text}\n${url}`;
 
+  const toggle = () => {
+    if (open) { setOpen(false); return; }
+    const r = box.current?.getBoundingClientRect();
+    // clientWidth, not innerWidth: a fixed box's "right" is measured from the page's edge, not the scrollbar's.
+    if (r) setAt({ top: r.bottom + 8, right: Math.max(8, document.documentElement.clientWidth - r.right) });
+    setOpen(true);
+  };
+
   useEffect(() => {
     if (!open) return;
-    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const away = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!box.current?.contains(t) && !menu.current?.contains(t)) setOpen(false);
+    };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    // The menu is pinned to the screen: scrolling or resizing would leave it behind, so it closes.
+    const close = () => setOpen(false);
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+    window.addEventListener("scroll", close, { passive: true });
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", close); window.removeEventListener("resize", close);
+    };
   }, [open]);
 
   const nativeShare = async () => {
@@ -56,27 +78,28 @@ export function ShareButton({ title, text }: { title: string; text: string }) {
   };
   const enc = encodeURIComponent;
   const links = [
-    { name: "WhatsApp", color: "#25D366", icon: <WhatsApp />, href: `https://wa.me/?text=${enc(message)}` },
-    { name: "Facebook", color: "#1877F2", icon: <Facebook size={16} />, href: `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}` },
-    { name: "X", color: "#111111", icon: <XLogo size={15} />, href: `https://twitter.com/intent/tweet?url=${enc(url)}&text=${enc(text)}` },
-    { name: "Email", color: "#8a2030", icon: <Mail size={16} />, href: `mailto:?subject=${enc(title)}&body=${enc(message)}` },
+    { name: "WhatsApp", color: "#25D366", icon: <WhatsApp size={13} />, href: `https://wa.me/?text=${enc(message)}` },
+    { name: "Facebook", color: "#1877F2", icon: <Facebook size={12} />, href: `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}` },
+    { name: "X", color: "#111111", icon: <XLogo size={11} />, href: `https://twitter.com/intent/tweet?url=${enc(url)}&text=${enc(text)}` },
+    { name: "Email", color: "#8a2030", icon: <Mail size={12} />, href: `mailto:?subject=${enc(title)}&body=${enc(message)}` },
   ];
-  const row = "w-full flex items-center gap-3 px-3 py-2.5 text-left text-[14px] font-normal transition-colors hover:bg-[#f6f2ea]";
+  const row = "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[13px] font-normal transition-colors hover:bg-[#f6f2ea]";
   const dot = (color: string, icon: React.ReactNode) => (
-    <span className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-white" style={{ background: color }}>{icon}</span>
+    <span className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-white" style={{ background: color }}>{icon}</span>
   );
 
   return (
     <div ref={box} className="relative">
       <button type="button" aria-label="Share property" aria-haspopup="menu" aria-expanded={open}
-        onClick={() => (phoneSheet() ? void nativeShare() : setOpen(o => !o))}
+        onClick={() => (phoneSheet() ? void nativeShare() : toggle())}
         className="p-2.5 border transition-all hover:border-[#8a2030]" style={{ borderColor: open ? "#8a2030" : BORDER_L, color: MUTED_L }}>
         <Share2 size={14} />
       </button>
-      {open && (
-        <div role="menu" aria-label="Share this property" className="absolute right-0 top-full mt-2 z-[70] w-60 border py-1.5 shadow-xl"
-          style={{ background: WHITE, borderColor: BORDER_L, ...sans }}>
-          <p className="px-3 pt-1 pb-2 text-[10px] tracking-[0.24em] uppercase" style={{ color: MUTED_L }}>Share this property</p>
+      {/* Drawn at the top of the page (portal), so the floating call / WhatsApp buttons can't cover it. */}
+      {open && at && createPortal(
+        <div ref={menu} role="menu" aria-label="Share this property" className="fixed z-[90] w-44 border py-1 shadow-lg"
+          style={{ top: at.top, right: at.right, background: WHITE, borderColor: BORDER_L, ...sans }}>
+          <p className="px-3 pt-1 pb-1 text-[9px] tracking-[0.22em] uppercase" style={{ color: MUTED_L }}>Share this property</p>
           {links.map(l => (
             <a key={l.name} role="menuitem" href={l.href} target={l.name === "Email" ? undefined : "_blank"} rel="noopener noreferrer"
               onClick={() => setOpen(false)} className={row} style={{ color: FG_LIGHT }}>
@@ -84,14 +107,15 @@ export function ShareButton({ title, text }: { title: string; text: string }) {
             </a>
           ))}
           <button type="button" role="menuitem" onClick={() => void copy()} className={row} style={{ color: FG_LIGHT }}>
-            {dot(copied ? "#2e7d4f" : "#6b6154", copied ? <Check size={16} /> : <Link2 size={16} />)}{copied ? "Link copied" : "Copy link"}
+            {dot(copied ? "#2e7d4f" : "#6b6154", copied ? <Check size={12} /> : <Link2 size={12} />)}{copied ? "Link copied" : "Copy link"}
           </button>
           {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
             <button type="button" role="menuitem" onClick={() => { setOpen(false); void nativeShare(); }} className={row} style={{ color: FG_LIGHT }}>
-              {dot("#b08848", <MoreHorizontal size={16} />)}More options…
+              {dot("#b08848", <MoreHorizontal size={12} />)}More options…
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

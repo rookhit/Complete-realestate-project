@@ -50,7 +50,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  */
 export async function drawWatermark(ctx: CanvasRenderingContext2D, width: number, height: number, w: Watermark): Promise<void> {
   if (!w.enabled || (!w.text && !w.logo)) return;
-  const bandH = Math.max(12, Math.round((height * w.size) / 100));
+  // A share of the photo's SHORTER side: a landscape photo is unchanged, and a portrait phone photo
+  // (sellers' Free Listing photos mostly are) no longer gets a band nearly twice as thick, which was
+  // measured from its height (2,560 px) on a photo only 1,440 px wide.
+  const bandH = Math.max(12, Math.round((Math.min(width, height) * w.size) / 100));
   const top = Math.round((height - bandH) / 2);
   // One "strength" for the whole mark: the band, its edges, the logo and the text all fade together.
   // At 50 % the band is half dark and the logo and text are near solid; at 25 % everything is half that.

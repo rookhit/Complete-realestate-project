@@ -127,6 +127,12 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   the link silently. Computers now get a menu (WhatsApp, Facebook, X, Email, Copy link, and "More options…" where
   the browser has a share sheet); phones keep their own share sheet. Same for admin and visitors. The message is
   the title and price with the clean property link.
+- **Watermark band thinner on portrait photos:** its height is now a share of the photo's shorter side, not its
+  height, so a portrait phone photo (most Free Listing photos) gets the same band as a landscape one (115 px instead
+  of 205 px at today's 8 %). Landscape photos are unchanged. Admin → Watermark → Band height now goes down to 4 %.
+  Only new uploads change: the band is part of photos already stored.
+- **Share menu smaller** (176 px wide instead of 240) and drawn above everything, so the floating call button
+  never covers it.
 - **Admin property list tidied:** the buttons sit on their own line under the details instead of beside them (which
   squeezed the details into a narrow column: the address one word per line, the price over three lines). The NB ID
   and address are one line (long addresses end with …; the full one shows on hover); on narrower screens the

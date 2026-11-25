@@ -26,8 +26,8 @@ export const watermarkSchema = z.object({
   ]),
   /** How visible the whole mark is (band, logo and text), in %. */
   opacity: z.number().int().min(10, "At least 10%").max(90, "At most 90%"),
-  /** The band's height, in % of the photo's height. */
-  size: z.number().int().min(6, "At least 6%").max(30, "At most 30%"),
+  /** The band's height, in % of the photo's shorter side (its height for a landscape photo; since 2026-11-26). */
+  size: z.number().int().min(4, "At least 4%").max(30, "At most 30%"),
 }).refine((w) => !w.enabled || w.text !== "" || w.logo !== "", { message: "Add text or a logo, or switch the watermark off", path: ["text"] });
 
 export type Watermark = z.infer<typeof watermarkSchema>;

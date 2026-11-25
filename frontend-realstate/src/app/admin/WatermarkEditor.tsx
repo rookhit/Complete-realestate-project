@@ -143,7 +143,7 @@ export function WatermarkSection({ notify }: { notify: Notify }) {
             <input ref={logoInput} type="file" accept="image/png,image/webp,image/jpeg" hidden onChange={e => { pickLogo(e.target.files?.[0]); e.target.value = ""; }} />
           </Field>
           <Field label="Strength" hint="How visible the whole mark is: band, logo and text. Lower is subtler."><Slider value={w.opacity} min={10} max={90} onChange={v => set("opacity", v)} label="Strength" /></Field>
-          <Field label="Band height" hint="As a share of the photo's height."><Slider value={w.size} min={6} max={30} onChange={v => set("size", v)} label="Band height" /></Field>
+          <Field label="Band height" hint="As a share of the photo's shorter side, so portrait phone photos get the same band as landscape ones. Lower is thinner."><Slider value={w.size} min={4} max={30} onChange={v => set("size", v)} label="Band height" /></Field>
         </div>
 
         <div className="flex flex-col gap-3 min-w-0">
