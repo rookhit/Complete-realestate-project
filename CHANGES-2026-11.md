@@ -120,6 +120,13 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   in the database mentions them. The daily cleanup is scheduled in `backend-realstate/vercel.json`; it runs once
   `CRON_SECRET` is set in Vercel.
 - **Photo tiles:** the cover photo's buttons (arrows, Adjust, remove) no longer spill out of a narrow tile.
+- **Shared links always show the photo:** WhatsApp leaves the picture out when it is larger than about 600 KB, and
+  two cover photos were 1.2–1.4 MB, so those links went as bare text. Link previews now use the photo's 800 px
+  copy (23–163 KB for all 22 live properties); the full photo is used if a copy is missing.
+- **Share button on computers:** Chrome / Brave / Firefox on a Mac have no share sheet, so the button only copied
+  the link silently. Computers now get a menu (WhatsApp, Facebook, X, Email, Copy link, and "More options…" where
+  the browser has a share sheet); phones keep their own share sheet. Same for admin and visitors. The message is
+  the title and price with the clean property link.
 - **Admin property list tidied:** the buttons sit on their own line under the details instead of beside them (which
   squeezed the details into a narrow column: the address one word per line, the price over three lines). The NB ID
   and address are one line (long addresses end with …; the full one shows on hover); on narrower screens the

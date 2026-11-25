@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } fro
 import { motion, AnimatePresence } from "motion/react";
 import {
   Menu, X, MapPin, ArrowRight, Search, ChevronDown, ChevronLeft, ChevronRight,
-  Phone, Mail, MessageCircle, Send, Bed, Bath, Square, Share2,
+  Phone, Mail, MessageCircle, Send, Bed, Bath, Square,
   Play, Grid3X3, List as ListIcon, Map, Calculator, Star,
   Home, Landmark, Layers, CheckCircle2,
   Instagram, Facebook, Youtube, Linkedin,
@@ -18,6 +18,7 @@ import { DISTRICTS } from "@/app/data/districts";
 import { clearAdminReviews, clearMyHearts, loadAdminReviews, loadMyHearts, pendingReviewCount } from "@/app/data/reviews";
 import { ALL_PROPS, PROP_TYPES, PRICE_RANGES, inPriceRange, displayRef, landSqftNote, loadProperties, loadPropertyDetail, priceUnitLabel, priceWithoutUnit, propertiesError, propertiesStatus, searchScore, type Prop } from "@/app/data/properties";
 import { SocialVideoLinks } from "@/app/components/ui/social-videos";
+import { ShareButton } from "@/app/components/ui/share-menu";
 import { approxFor, exactFor, googleMapsAt, placeLabel } from "@/app/data/maps";
 import { AreaMap, PropertiesMap, prefetchMapCode } from "@/app/components/ui/maps";
 import { clearMessages, loadMessages, unreadCount } from "@/app/data/messages";
@@ -1603,8 +1604,7 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
   const [err,setErr]=useState(false);
   const [busy,setBusy]=useState(false);
   const [serverErr,setServerErr]=useState("");
-  const [shared,setShared]=useState(false);
-  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setServerErr(""); setShared(false); },[propertyId]);
+  useEffect(()=>{ setGalIdx(0); setSent(false); setErr(false); setServerErr(""); },[propertyId]);
   // Signed in: start from the account's details (still editable).
   useEffect(()=>{ if(user) setForm(v=>({...v,name:v.name||user.name||"",email:v.email||user.email,phone:v.phone||user.phone||""})); },[user]);
   // Photos: ← / → step through them on the page and in the full-screen view (not while typing in
@@ -1635,13 +1635,6 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
       const dx=e.changedTouches[0].clientX-start;
       if(Math.abs(dx)>45){ if(dx<0) nextPhoto(); else prevPhoto(); }
     },
-  };
-  const share=async()=>{
-    const url=typeof window!=="undefined"?window.location.href:"";
-    try{
-      if(navigator.share) await navigator.share({title:p.title,text:`${p.title} — ${p.location}`,url});
-      else { await navigator.clipboard.writeText(url); setShared(true); setTimeout(()=>setShared(false),2200); }
-    }catch{ /* dismissed by the user */ }
   };
   // Same facts as the results list, so the same icons.
   const details=[
@@ -1707,10 +1700,8 @@ function PropertyDetailPage({ propertyId, go, setId, onBack, backLabel }: { prop
         <RatingLink propertyId={p.id}/>
         <div className="ml-auto flex gap-2.5">
           <ReactionButton id={p.id}/>
-          <button aria-label="Share property" onClick={share} className="relative p-2.5 border transition-all hover:border-[#8a2030]" style={{borderColor:BORDER_L,color:MUTED_L}}>
-            <Share2 size={14}/>
-            {shared&&<span className="absolute -top-8 right-0 whitespace-nowrap px-2 py-1 text-[11px]" style={{background:"#1a1611",color:WHITE,...sans}}>Link copied</span>}
-          </button>
+          {/* Phone: the phone's share sheet; computer: WhatsApp / Facebook / X / Email / Copy link (share-menu.tsx). */}
+          <ShareButton title={p.title} text={`${p.title}${p.price?` · ${p.price}`:""}`}/>
         </div>
       </div>
       {/* Content */}

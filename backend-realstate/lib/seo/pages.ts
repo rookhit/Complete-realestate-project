@@ -112,6 +112,24 @@ const preloadTag = (url: string): string => OUR_PHOTO.test(url)
   ? `<link rel="preload" as="image" href="${esc(url)}" imagesrcset="${esc(url.replace(OUR_PHOTO, "$1.w800.jpg"))} 800w, ${esc(url)} 2000w" imagesizes="100vw" fetchpriority="high" />`
   : `<link rel="preload" as="image" href="${esc(url)}" fetchpriority="high" />`;
 
+/**
+ * The picture link previews use (og:image): the photo's 800 px copy when it exists, else the photo.
+ * WhatsApp shows no picture at all when og:image is larger than about 600 KB, and a full-size phone
+ * photo often is (1.4 MB on NBS001), so those links were shared as bare text while others had a
+ * picture. The copies are 20-170 KB. Checked with a quick HEAD (the page is edge-cached), so a photo
+ * whose copy failed to upload still gets a preview.
+ */
+async function previewImage(url: string): Promise<string> {
+  if (!OUR_PHOTO.test(url)) return url;
+  const card = url.replace(OUR_PHOTO, "$1.w800.jpg");
+  try {
+    const res = await fetch(card, { method: "HEAD", signal: AbortSignal.timeout(2_000) });
+    return res.ok ? card : url;
+  } catch {
+    return url;
+  }
+}
+
 function fill(html: string, meta: PageMeta, c: SeoContact, content: string | null, { canonical = true, preload = "" } = {}): string {
   const head = headHtml(siteUrl(), meta, c, { canonical }) + (preload ? `\n    ${preloadTag(preload)}` : "");
   const out = html.replace(/<!-- seo:start[\s\S]*?<!-- seo:end -->/, () => `<!-- seo:start -->\n    ${head}\n    <!-- seo:end -->`);
@@ -150,7 +168,9 @@ export async function propertyPage(slug: string): Promise<SeoPage> {
     if (e instanceof HttpError && e.status === 404) return gone(html, c);
     throw e;
   }
-  return { status: 200, html: fill(html, propertyMeta(siteUrl(), p), c, propertyContent(p, c), { preload: p.gallery[0] || p.hero }) };
+  const meta = propertyMeta(siteUrl(), p);
+  meta.image = await previewImage(meta.image);
+  return { status: 200, html: fill(html, meta, c, propertyContent(p, c), { preload: p.gallery[0] || p.hero }) };
 }
 
 export async function articlePage(slug: string): Promise<SeoPage> {
@@ -159,5 +179,7 @@ export async function articlePage(slug: string): Promise<SeoPage> {
   const row = id === null ? null : await prisma.article.findUnique({ where: { id } });
   if (!row || !row.publishedAt) return gone(html, c);
   const a = toArticle(row);
-  return { status: 200, html: fill(html, articleMeta(siteUrl(), a), c, articleContent(a, c)) };
+  const meta = articleMeta(siteUrl(), a);
+  meta.image = await previewImage(meta.image);
+  return { status: 200, html: fill(html, meta, c, articleContent(a, c)) };
 }
