@@ -24,7 +24,7 @@ import { describeProperty } from "./suggestions";
 import { HIGHLIGHT_IDEAS, TAGLINE_IDEAS } from "@/app/data/options";
 import { FloorPlanBuilder } from "./FloorPlanBuilder";
 import { CoverFramer } from "./CoverFramer";
-import { listingToProp, type ListingSubmission } from "@/app/data/listings";
+import { knownUnitIn, listingToProp, type ListingSubmission } from "@/app/data/listings";
 import { timeAgo } from "@/app/data/messages";
 import { createProperty, updateProperty, type PropertyInput } from "@/api/properties";
 import { uploadMedia, uploadPropertyPhoto } from "@/api/uploads";
@@ -61,11 +61,20 @@ type Draft = {
 const CANONICAL = new Set(AMENITIES.map(a => a.name));
 
 /** "4,850 sq.ft" → ["4850","sq.ft"]; "—" → ["", fallbackUnit]. */
-function splitArea(s: string, fallbackUnit: string): [string, string] {
+/**
+ * "4,850 sq.ft" → ["4850", "sq.ft"]. The unit is always one from `units` (the Dropdown Options list):
+ * one named in the text, else the fallback. Before, any text after the number became the unit, so a
+ * free listing's "3 Aana Abhove plots Aana" gave the unit "Aana Abhove plots Aana", which the server
+ * refused with a bare "At most 20 characters".
+ */
+function splitArea(s: string, fallbackUnit: string, units: readonly string[]): [string, string] {
   const rapd = rapdOf(s);
   if (rapd) return [rapd, RAPD];
   const m = s.match(/^([\d,.]+)\s*(.+)$/);
-  return m ? [m[1].replace(/,/g, ""), m[2].trim()] : ["", fallbackUnit];
+  if (!m) return ["", fallbackUnit];
+  const said = m[2].trim();
+  const unit = units.find(u => u.toLowerCase() === said.toLowerCase()) ?? knownUnitIn(said, units) ?? fallbackUnit;
+  return [m[1].replace(/,/g, ""), unit];
 }
 const joinArea = (value: string, unit: string) => {
   if (isRapd(value)) return `${normalizeRapd(value)} ${RAPD}`;
@@ -100,8 +109,8 @@ function toDraft(p?: Prop): Draft {
     };
   }
   const road = p.roadAccess.match(/^(.*?)\s*(\d+)\s*ft$/i);
-  const [builtValue, builtUnit] = splitArea(p.builtArea, "sq.ft");
-  const [landValue, landUnit] = splitArea(p.landArea, "Ropani");
+  const [builtValue, builtUnit] = splitArea(p.builtArea, "sq.ft", BUILT_UNITS);
+  const [landValue, landUnit] = splitArea(p.landArea, "Ropani", LAND_UNITS);
   const [priceAmount, priceUnit] = pickPriceUnit(p.priceNum, p.listing);
   return {
     id: p.id, nbId: p.nbId, refNo: refDigits(p.nbId), isNew: false,
@@ -191,22 +200,61 @@ function draftFrame(d: Draft): CoverFrame | undefined {
   return d.coverFrame && d.coverFrame.src === d.photos[0] ? d.coverFrame : undefined;
 }
 
-function problems(d: Draft): string[] {
-  const out: string[] = [];
-  if (d.title.trim().length < 3) out.push("Give the property a title.");
-  if (d.videoLinks.some(l => l.trim() && !isVideoLink(l))) out.push("A social media video link isn't a full https:// link.");
+/** The editor's numbered sections, by the id of their <FormSection>. */
+const SECTIONS: Record<string, string> = {
+  "pe-basics": "1 · The Basics", "pe-location": "2 · Location", "pe-price": "3 · Price", "pe-size": "4 · Size & Rooms",
+  "pe-photos": "5 · Photos", "pe-amenities": "6 · Amenities", "pe-plans": "7 · Floor Plans", "pe-story": "8 · Description",
+};
+/** Something that stops the save, and the section where it is fixed (so the admin can be taken there). */
+type Issue = { msg: string; at: keyof typeof SECTIONS };
+
+/**
+ * Which section each field the API names belongs to (a 400 says e.g. { landArea: "At most 20 characters" }),
+ * with a plain name for it, so a server refusal points at the right place instead of a bare message.
+ */
+const API_FIELDS: Record<string, [label: string, at: string]> = {
+  nbId: ["NB ID", "pe-basics"], title: ["Property title", "pe-basics"], type: ["Property type", "pe-basics"],
+  badge: ["Badge", "pe-basics"], tagline: ["Tagline", "pe-basics"], featured: ["Featured", "pe-basics"], verified: ["Verified", "pe-basics"],
+  location: ["Location", "pe-location"], district: ["District", "pe-location"], facing: ["Facing", "pe-location"],
+  roadSurface: ["Road", "pe-location"], roadWidthFt: ["Road width", "pe-location"],
+  price: ["Price", "pe-price"], priceUnit: ["Price unit", "pe-price"],
+  builtArea: ["Built area", "pe-size"], landArea: ["Land area", "pe-size"], bedrooms: ["Bedrooms", "pe-size"],
+  bathrooms: ["Bathrooms", "pe-size"], floors: ["Floors", "pe-size"], buildYear: ["Build year", "pe-size"],
+  gallery: ["Photos", "pe-photos"], coverFrame: ["Cover photo", "pe-photos"], videoUrl: ["Video", "pe-photos"], videoLinks: ["Social media video links", "pe-photos"],
+  amenities: ["Amenities", "pe-amenities"], highlights: ["Highlights", "pe-amenities"],
+  floorPlan: ["Floor plan", "pe-plans"], description: ["Description", "pe-story"],
+};
+
+/** A refusal from the API as an Issue: "Land area: At most 20 characters" in 4 · Size & Rooms. */
+function issueFromError(err: unknown): Issue {
+  if (!(err instanceof ApiError)) return { msg: "Could not save. Please try again.", at: "pe-basics" };
+  const [key, msg] = Object.entries(err.fields ?? {})[0] ?? [];
+  const known = key ? API_FIELDS[key] : undefined;
+  if (err.code === "REF_TAKEN") return { msg: err.message, at: "pe-basics" };
+  return known ? { msg: `${known[0]}: ${msg ?? err.message}`, at: known[1] } : { msg: err.message, at: "pe-basics" };
+}
+
+function problems(d: Draft): Issue[] {
+  const out: Issue[] = [];
+  const add = (at: Issue["at"], msg: string) => out.push({ at, msg });
+  if (d.title.trim().length < 3) add("pe-basics", "Give the property a title.");
   const taken = refTakenBy(d);
-  if (!(Number(d.refNo) > 0)) out.push("Give the property an NB ID number.");
-  else if (taken) out.push(`${displayRef(taken.nbId)} is already used by “${taken.title}”.`);
-  if (!d.district) out.push("Choose the district.");
-  if (d.photos.length === 0) out.push("Add at least one photo.");
-  else if (d.photos.some(u => !isMediaLink(u))) out.push("Some photos weren't uploaded (marked in red). Remove them and add them again.");
-  if (d.videoUrl.trim() && !isMediaLink(d.videoUrl)) out.push("The video wasn't uploaded. Remove it and add it again.");
-  if (d.description.trim().length < 20) out.push("Write a short description (a sentence or two).");
-  if (isRapd(d.landValue)) { const p = rapdProblem(d.landValue); if (p) out.push(`Land area: ${p}`); }
-  else if (d.landValue.includes("-")) out.push("Write the land area as Ropani-Aana-Paisa-Dam, e.g. 4-4-0-1.");
-  if (d.floorPlan.some(b => !b.name.trim())) out.push("Name every box on the floor plan.");
-  if (d.floorPlan.some(b => !(b.area > 0))) out.push("Enter the area of every box on the floor plan.");
+  if (!(Number(d.refNo) > 0)) add("pe-basics", "Give the property an NB ID number.");
+  else if (taken) add("pe-basics", `${displayRef(taken.nbId)} is already used by “${taken.title}”.`);
+  if (!d.district) add("pe-location", "Choose the district.");
+  if (d.priceFor && !(d.listing === "For Rent" ? RENT_UNITS : PRICE_UNITS).includes(d.priceFor))
+    add("pe-price", `The price unit “${d.priceFor}” is no longer in the list. Choose one from the Price unit menu.`);
+  if (isRapd(d.landValue)) { const p = rapdProblem(d.landValue); if (p) add("pe-size", `Land area: ${p}`); }
+  else if (d.landValue.includes("-")) add("pe-size", "Write the land area as Ropani-Aana-Paisa-Dam, e.g. 4-4-0-1.");
+  else if (Number(d.landValue) > 0 && !LAND_UNITS.includes(d.landUnit)) add("pe-size", `Land area: choose a unit from the menu (“${d.landUnit}” isn't one).`);
+  if (d.type !== "Land" && Number(d.builtValue) > 0 && !BUILT_UNITS.includes(d.builtUnit)) add("pe-size", `Built area: choose a unit from the menu (“${d.builtUnit}” isn't one).`);
+  if (d.photos.length === 0) add("pe-photos", "Add at least one photo.");
+  else if (d.photos.some(u => !isMediaLink(u))) add("pe-photos", "Some photos weren't uploaded (marked in red). Remove them and add them again.");
+  if (d.videoUrl.trim() && !isMediaLink(d.videoUrl)) add("pe-photos", "The video wasn't uploaded. Remove it and add it again.");
+  if (d.videoLinks.some(l => l.trim() && !isVideoLink(l))) add("pe-photos", "A social media video link isn't a full https:// link.");
+  if (d.floorPlan.some(b => !b.name.trim())) add("pe-plans", "Name every box on the floor plan.");
+  if (d.floorPlan.some(b => !(b.area > 0))) add("pe-plans", "Enter the area of every box on the floor plan.");
+  if (d.description.trim().length < 20) add("pe-story", "Write a short description (a sentence or two).");
   return out;
 }
 
@@ -524,7 +572,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
   // Photos and the video upload to Cloudflare as soon as they are picked; saving waits for them.
   const [uploading, setUploading] = useState(0);
   const track = <T,>(p: Promise<T>): Promise<T> => { setUploading(n => n + 1); return p.finally(() => setUploading(n => n - 1)); };
-  const issues = [...problems(d), ...(uploading > 0 ? ["Wait for the uploads to finish."] : [])];
+  const issues: Issue[] = [...problems(d), ...(uploading > 0 ? [{ at: "pe-photos", msg: "Wait for the uploads to finish." }] : [])];
   const isLand = d.type === "Land";
   const priceNum = priceNumOf(d);
   const pricePreview = formatPrice(priceNum, d.listing, d.priceFor);
@@ -552,13 +600,18 @@ export function PropertyEditor({ property, template = null, source = null, open,
 
   const close = () => { clearDraft(keyFor(d)); onClose(); };
   const [saving, setSaving] = useState(false);
-  const [serverError, setServerError] = useState("");
+  const [serverError, setServerError] = useState<Issue | null>(null);
+  /** Scrolls the editor to the section where a problem is fixed. */
+  const goTo = (at: string) => document.getElementById(at)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  /** Sections with something to fix get a red border (after the first save attempt). */
+  const alertAt = new Set([...(tried ? issues.map(i => i.at) : []), ...(serverError && !issues.length ? [serverError.at] : [])]);
   /** Saves to the API; the local list is updated from what the server stored. */
   const save = async () => {
     setTried(true);
-    if (issues.length || saving) return;
+    if (saving) return;
+    if (issues.length) { goTo(issues[0].at); return; }
     setSaving(true);
-    setServerError("");
+    setServerError(null);
     try {
       const input = toInput(d);
       const res = d.isNew ? await createProperty(input) : await updateProperty(d.id, input);
@@ -571,8 +624,11 @@ export function PropertyEditor({ property, template = null, source = null, open,
       onSaved(warning ? `${done}. ${warning}` : done);
       onClose();
     } catch (err) {
-      // e.g. 409 REF_TAKEN: "#NBS005 is already used by “…”"; 400 with the field that is wrong.
-      setServerError(err instanceof ApiError ? err.message : "Could not save. Please try again.");
+      // e.g. 409 REF_TAKEN: "#NBS005 is already used by “…”"; 400 with the field that is wrong,
+      // shown with that field's name and section, and the editor scrolls there.
+      const issue = issueFromError(err);
+      setServerError(issue);
+      goTo(issue.at);
     } finally {
       setSaving(false);
     }
@@ -588,11 +644,16 @@ export function PropertyEditor({ property, template = null, source = null, open,
 
   const footer = (
     <>
+      {/* The problem, where it is (tap to go there), and how many more. */}
       {tried && issues.length > 0 && (
-        <p className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{issues[0]}{issues.length > 1 ? ` (+${issues.length - 1} more)` : ""}</p>
+        <button type="button" onClick={() => goTo(issues[0].at)} className="sm:mr-auto text-left text-[13px] normal-case tracking-normal underline-offset-4 hover:underline" style={{ color: MAROON, ...sans }}>
+          <b className="font-semibold">{SECTIONS[issues[0].at]}:</b> {issues[0].msg}{issues.length > 1 ? ` (+${issues.length - 1} more)` : ""}
+        </button>
       )}
       {issues.length === 0 && serverError && (
-        <p role="alert" className="sm:mr-auto text-[13px]" style={{ color: MAROON, ...sans }}>{serverError}</p>
+        <button type="button" role="alert" onClick={() => goTo(serverError.at)} className="sm:mr-auto text-left text-[13px] normal-case tracking-normal underline-offset-4 hover:underline" style={{ color: MAROON, ...sans }}>
+          <b className="font-semibold">Not saved · {SECTIONS[serverError.at]}:</b> {serverError.msg}
+        </button>
       )}
       {!d.isNew && !property?.closedAt && <Button variant="quiet" onClick={() => onViewOnSite(d.id)}><Eye size={14} />View on Site</Button>}
       {source && <Button variant="quiet" onClick={() => { clearDraft(keyFor(d)); source.onReject(); }}><X size={14} />Reject</Button>}
@@ -628,11 +689,27 @@ export function PropertyEditor({ property, template = null, source = null, open,
         {tried && issues.length > 0 && (
           <div className="border px-5 py-4" style={{ borderColor: "rgba(138,32,48,0.35)", background: "rgba(138,32,48,0.05)" }}>
             <p className="text-[12px] tracking-[0.2em] uppercase mb-2" style={{ color: MAROON, ...sans }}>Almost there</p>
-            <ul className="list-disc pl-5 text-[14px] leading-relaxed" style={{ color: FG_LIGHT, ...sans }}>{issues.map(i => <li key={i}>{i}</li>)}</ul>
+            <ul className="flex flex-col gap-1.5 text-[14px] leading-relaxed" style={{ color: FG_LIGHT, ...sans }}>
+              {issues.map(i => (
+                <li key={i.msg} className="flex flex-wrap items-baseline gap-x-2">
+                  <button type="button" onClick={() => goTo(i.at)} className="shrink-0 text-[12px] tracking-[0.08em] uppercase underline underline-offset-4" style={{ color: MAROON }}>{SECTIONS[i.at]}</button>
+                  <span>{i.msg}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {issues.length === 0 && serverError && (
+          <div role="alert" className="border px-5 py-4" style={{ borderColor: "rgba(138,32,48,0.35)", background: "rgba(138,32,48,0.05)" }}>
+            <p className="text-[12px] tracking-[0.2em] uppercase mb-2" style={{ color: MAROON, ...sans }}>Not saved yet</p>
+            <p className="text-[14px] leading-relaxed" style={{ color: FG_LIGHT, ...sans }}>
+              <button type="button" onClick={() => goTo(serverError.at)} className="mr-2 text-[12px] tracking-[0.08em] uppercase underline underline-offset-4" style={{ color: MAROON }}>{SECTIONS[serverError.at]}</button>
+              {serverError.msg}
+            </p>
           </div>
         )}
 
-        <FormSection id="pe-basics" n={1} title="The Basics" subtitle="What it is and how it is marked on the site.">
+        <FormSection alert={alertAt.has("pe-basics")} id="pe-basics" n={1} title="The Basics" subtitle="What it is and how it is marked on the site.">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="Property Title" className="md:col-span-2"><TextInput value={d.title} onChange={v => set("title", v)} placeholder="e.g. The Patan Residence" maxLength={90} /></Field>
             <PropertyIdField className="md:col-span-2" propertyId={d.id} listing={d.listing} refNo={d.refNo} taken={refTakenBy(d)}
@@ -648,7 +725,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-location" n={2} title="Location" subtitle="Where it is and how you reach it.">
+        <FormSection alert={alertAt.has("pe-location")} id="pe-location" n={2} title="Location" subtitle="Where it is and how you reach it.">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Field label="District" hint="Type to search all 77 districts.">
               <DistrictCombobox value={d.district} onChange={v => setD(o => ({ ...o, district: v, location: o.location || v }))} placeholder="e.g. Lalitpur" />
@@ -665,12 +742,13 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-price" n={3} title="Price" subtitle={`${d.listing === "For Rent" ? "Monthly rent." : "Asking price."} Leave it empty to show “Negotiable”.`}>
+        <FormSection alert={alertAt.has("pe-price")} id="pe-price" n={3} title="Price" subtitle={`${d.listing === "For Rent" ? "Monthly rent." : "Asking price."} Leave it empty to show “Negotiable”.`}>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_9rem_13rem] gap-5 items-start">
             <Field label="Amount"><TextInput value={d.priceAmount} onChange={v => set("priceAmount", v.replace(/[^\d.]/g, ""))} placeholder={d.priceUnit === "Crore" ? "e.g. 8.5" : "e.g. 85000"} /></Field>
             <Field label="In"><Select value={d.priceUnit} onChange={v => set("priceUnit", v as PriceUnit)} options={["Crore", "Lakh", "Rupees"]} /></Field>
             <Field label="Price unit"><Select value={d.priceFor} onChange={v => set("priceFor", v)} options={unitOptions} /></Field>
           </div>
+          {source && <SellerSaid text={source.submission.price} what="the amount, “In” and the price unit" />}
           <div className="mt-5 grid grid-cols-1 md:grid-cols-[1fr_22rem] gap-5 items-start">
             <p className="text-[13px] leading-relaxed" style={{ color: MUTED_L, ...sans }}>
               The unit is shown after the price, like “per month” for rent. Filters and sorting still use the amount as entered. Add or rename units in Dropdown Options.
@@ -681,7 +759,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-size" n={4} title="Size & Rooms" subtitle={isLand ? "Land only needs its area. Rooms are hidden for land." : "Zero hides a figure on the site."}>
+        <FormSection alert={alertAt.has("pe-size")} id="pe-size" n={4} title="Size & Rooms" subtitle={isLand ? "Land only needs its area. Rooms are hidden for land." : "Zero hides a figure on the site."}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {!isLand && (
               <div className="grid grid-cols-[1fr_7rem] gap-3">
@@ -697,9 +775,11 @@ export function PropertyEditor({ property, template = null, source = null, open,
               <Field label="Build Year"><Select value={String(d.buildYear)} onChange={v => set("buildYear", Number(v))} options={YEARS} /></Field>
             </>}
           </div>
+          {source && <SellerSaid text={source.submission.landArea} what="the land area and its unit" label="land area" />}
+          {source && !isLand && <SellerSaid text={source.submission.builtArea} what="the built area and its unit" label="built area" />}
         </FormSection>
 
-        <FormSection id="pe-photos" n={5} title="Photos" subtitle="The first photo is the cover shown on cards and at the top of the page.">
+        <FormSection alert={alertAt.has("pe-photos")} id="pe-photos" n={5} title="Photos" subtitle="The first photo is the cover shown on cards and at the top of the page.">
           <PhotoManager photos={d.photos} onChange={v => set("photos", v)}
             upload={(file, progress) => track(uploadPropertyPhoto(file, progress))}
             onAdd={url => setD(o => ({ ...o, photos: [...o.photos, url] }))}
@@ -716,7 +796,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-amenities" n={6} title="Amenities" subtitle="Tap every amenity the property has. Icons appear on the property page.">
+        <FormSection alert={alertAt.has("pe-amenities")} id="pe-amenities" n={6} title="Amenities" subtitle="Tap every amenity the property has. Icons appear on the property page.">
           <AmenityPicker type={d.type} selected={d.amenities} onChange={v => set("amenities", v)} />
           <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
             <HighlightsInput values={d.highlights} onChange={v => set("highlights", v)} />
@@ -724,11 +804,11 @@ export function PropertyEditor({ property, template = null, source = null, open,
           </div>
         </FormSection>
 
-        <FormSection id="pe-plans" n={7} title="Floor Plans" subtitle="Optional. Drag boxes onto the plan and give each a floor name and area. Visitors see them when they hover.">
+        <FormSection alert={alertAt.has("pe-plans")} id="pe-plans" n={7} title="Floor Plans" subtitle="Optional. Drag boxes onto the plan and give each a floor name and area. Visitors see them when they hover.">
           <FloorPlanBuilder boxes={d.floorPlan} onChange={v => set("floorPlan", v)} />
         </FormSection>
 
-        <FormSection id="pe-story" n={8} title="Description & Engagement">
+        <FormSection alert={alertAt.has("pe-story")} id="pe-story" n={8} title="Description & Engagement">
           <div className="flex flex-col gap-6">
             <Field label="Description" hint="Two or three sentences work best. Use “Write it for me” for a first draft, then adjust.">
               <TextArea rows={5} value={d.description} onChange={v => set("description", v)} placeholder="What makes this property special?" />
@@ -874,6 +954,21 @@ function VideoField({ value, onChange, upload }: {
 // ─── Free listing: the seller's private details ──────────────────────────────
 
 /** What the seller sent, for reference while editing. None of it is published as is. */
+/**
+ * Free listings: the seller's own words beside a field the editor filled in from them. Sellers write
+ * freely ("30 - 35 lakh per aana", "3 aana plots"); the editor keeps only the first number and a unit
+ * from the list, so the admin compares and corrects here instead of hunting for a refused field.
+ */
+function SellerSaid({ text, what, label = "price" }: { text: string; what: string; label?: string }) {
+  if (!text.trim()) return null;
+  return (
+    <p className="mt-4 flex items-start gap-2 border px-4 py-3 text-[13px] leading-relaxed" style={{ borderColor: "rgba(176,136,72,0.45)", background: "rgba(176,136,72,0.07)", color: FG_LIGHT, ...sans }}>
+      <Lock size={13} className="mt-1 shrink-0" style={{ color: GOLD }} />
+      <span>The seller wrote the {label} as <b className="font-semibold">“{text.trim()}”</b>. Check {what} match it.</span>
+    </p>
+  );
+}
+
 function SellerPanel({ s }: { s: ListingSubmission }) {
   const row = (label: string, value: string) => value.trim() ? (
     <div className="flex gap-3 text-[13px]"><span className="w-28 shrink-0" style={{ color: MUTED_L, ...sans }}>{label}</span><span style={{ color: FG_LIGHT, ...sans }}>{value}</span></div>

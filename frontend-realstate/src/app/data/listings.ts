@@ -8,7 +8,7 @@
 import { fetchListings, patchListing, type ListingDetails } from "@/api/listings";
 import { ApiError } from "@/app/auth";
 import { emitChange } from "./store";
-import { nextPropRef, nextPropertyId, formatPrice, type Listing, type Prop } from "./properties";
+import { LAND_UNITS, PRICE_UNITS, RENT_UNITS, nextPropRef, nextPropertyId, formatPrice, type Listing, type Prop } from "./properties";
 
 export type ListingStatus = "new" | "draft" | "published" | "rejected";
 export const LISTING_STATUS: Record<ListingStatus, string> = { new: "New", draft: "Saved for later", published: "Published", rejected: "Rejected" };
@@ -107,21 +107,57 @@ export function updateListing(id: number, patch: Partial<ListingSubmission>): vo
   });
 }
 
-/** "5,00,00,000" → 50000000; "85 lakh" and "1.2 crore" are understood too. */
+/**
+ * The price a seller typed, as rupees: "5,00,00,000" → 50000000, "85 lakh", "1.2 crore". Sellers write
+ * freely, so only the FIRST number counts: "30 - 35 lakh per aana" is 30 lakh (it used to read every
+ * digit as one number, "3035" lakh = 30.35 Cr). The admin sees the seller's own words beside the field.
+ */
 export function priceFromText(text: string): number {
   const t = text.toLowerCase().replace(/,/g, "");
-  const n = parseFloat(t.replace(/[^\d.]/g, "")) || 0;
+  const n = parseFloat(t.match(/\d+(?:\.\d+)?/)?.[0] ?? "") || 0;
   if (/cr/.test(t)) return Math.round(n * 10_000_000);
   if (/lakh|lac|\bl\b/.test(t)) return Math.round(n * 100_000);
   return Math.round(n);
 }
 
-/** "8 Ropani", "4-4-0-1", "2400" → the site's landArea format. */
+/**
+ * What the price is for, if the seller said it: "30 lakh per aana" / "20,00,000/Ropani" → "per Aana" /
+ * "per Ropani", spelled as in the admin's list (Dropdown Options). "" when none is named or the unit isn't
+ * in the list; "per month" for a rent is the default, so also "".
+ */
+export function priceUnitFromText(text: string, listing: Listing): string {
+  const m = text.toLowerCase().match(/(?:\bper\b|\/)\s*([a-z.]+(?:\s*[a-z.]+)?)/);
+  if (!m) return "";
+  const said = m[1].replace(/\s+/g, " ").trim();
+  const list = listing === "For Rent" ? RENT_UNITS : PRICE_UNITS;
+  const unit = list.find(u => { const w = u.replace(/^per\s+/i, "").toLowerCase(); return said === w || said.startsWith(`${w} `) || said === `${w}s`; });
+  return !unit || /^per\s+months?$/i.test(unit) ? "" : unit;
+}
+
+/** The unit from `units` named first in the text ("3 aana plots ropani" → "Aana"), as spelled in the list. */
+export function knownUnitIn(text: string, units: readonly string[]): string | undefined {
+  const t = ` ${text.toLowerCase().replace(/[^a-z.]+/g, " ")} `;
+  let best: { unit: string; at: number } | undefined;
+  for (const unit of units) {
+    const at = t.indexOf(` ${unit.toLowerCase()} `);
+    if (at >= 0 && (!best || at < best.at)) best = { unit, at };
+  }
+  return best?.unit;
+}
+
+/**
+ * "8 Ropani", "4-4-0-1", "2400" → the site's landArea format. Free text keeps only the first number and a
+ * unit from the land units list: "3 Aana Abhove plots Aana" → "3 Aana". Before, everything after the number
+ * became the unit, which the editor could not save ("At most 20 characters"). No number → "—" (the admin
+ * fills it in from the seller's words, shown beside the field).
+ */
 function landFromText(text: string): string {
-  const t = text.trim();
+  const t = text.trim().replace(/,/g, "");
   if (!t) return "—";
   if (/^\d+(-\d+){1,3}$/.test(t)) { const p = t.split("-").map(Number); while (p.length < 4) p.push(0); return `${p.join("-")} R-A-P-D`; }
-  return /^\d[\d,.]*$/.test(t) ? `${t} Ropani` : t;
+  const n = t.match(/\d+(?:\.\d+)?/)?.[0];
+  if (!n) return "—";
+  return `${n} ${knownUnitIn(t, LAND_UNITS) ?? "Ropani"}`;
 }
 
 /**
@@ -132,6 +168,7 @@ function landFromText(text: string): string {
 export function listingToProp(l: ListingSubmission): Prop {
   if (l.draft) return l.draft;
   const priceNum = priceFromText(l.price);
+  const priceUnit = priceUnitFromText(l.price, l.listing);
   const isLand = l.type === "Land";
   // Listings loaded before the backend sent `details` have none.
   const d: Partial<ListingDetails> = l.details ?? {};
@@ -141,7 +178,8 @@ export function listingToProp(l: ListingSubmission): Prop {
   const roadAccess = d.roadSurface && d.roadWidthFt ? `${d.roadSurface} ${d.roadWidthFt}ft` : d.roadSurface ?? "";
   return {
     id: nextPropertyId(), nbId, badge: "New", title: l.title, tagline: "",
-    location: d.address?.trim() || l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing) : "", priceNum,
+    location: d.address?.trim() || l.district, district: l.district, price: priceNum ? formatPrice(priceNum, l.listing, priceUnit) : "", priceNum,
+    ...(priceUnit ? { priceUnit } : {}),
     listing: l.listing, type: l.type || "House/Bungalow",
     beds: d.bedrooms ?? 0, baths: d.bathrooms ?? 0, builtArea: isLand || !l.builtArea.trim() ? "—" : l.builtArea.trim(), landArea: landFromText(l.landArea),
     roadAccess, facing: d.facing || "North", buildYear: Number(l.buildYear) || 0, floors: d.floors ?? 0,

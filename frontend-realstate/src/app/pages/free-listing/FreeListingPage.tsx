@@ -138,7 +138,9 @@ function AreaField({ id, label, value, unit, units, onValue, onUnit, placeholder
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex">
-        <input id={id} value={value} onChange={e => onValue(e.target.value)} placeholder={placeholder} aria-invalid={bad || undefined}
+        {/* Numbers only (dashes for Ropani-Aana-Paisa-Dam): the unit comes from the menu beside it.
+            Free text here ("3 Aana Abhove plots") reached the admin's editor as an impossible unit. */}
+        <input id={id} value={value} onChange={e => onValue(e.target.value.replace(/[^\d.,-]/g, ""))} inputMode="decimal" placeholder={placeholder} aria-invalid={bad || undefined}
           className={`${inputCls} min-w-0`} style={{ borderColor: borderFor(!!bad), color: FG_LIGHT, ...sans }} />
         <div className="relative shrink-0">
           <select aria-label={`${label} unit`} value={unit} onChange={e => onUnit(e.target.value)} className="h-full border border-l-0 pl-3 pr-8 text-[14px] outline-none appearance-none cursor-pointer" style={{ borderColor: BORDER_L, color: FG_LIGHT, background: CREAM, ...sans }}>

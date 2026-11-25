@@ -131,18 +131,21 @@ export function Toggle({ checked, onChange, label, description }: {
 }
 
 /** A small numbered card that groups related fields inside an editor. */
-export function FormSection({ n, title, subtitle, children, id }: {
-  n: number; title: string; subtitle?: string; children: ReactNode; id?: string;
+/** `alert`: this section has something to fix (red border and a "Fix this section" note). */
+export function FormSection({ n, title, subtitle, children, id, alert = false }: {
+  n: number; title: string; subtitle?: string; children: ReactNode; id?: string; alert?: boolean;
 }) {
+  const RED = "#8a2030";
   return (
-    <section id={id} className="border scroll-mt-6" style={{ borderColor: BORDER_L, background: WHITE }}>
+    <section id={id} className="border scroll-mt-6" style={{ borderColor: alert ? RED : BORDER_L, boxShadow: alert ? `0 0 0 1px ${RED}` : "none", background: WHITE }}>
       <header className="flex items-start gap-4 px-6 md:px-8 pt-6 md:pt-7 pb-5 border-b" style={{ borderColor: BORDER_L }}>
         <span className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[12px] tabular-nums"
-          style={{ border: `1px solid ${GOLD}`, color: GOLD, ...sans }}>{String(n).padStart(2, "0")}</span>
-        <div className="min-w-0">
+          style={{ border: `1px solid ${alert ? RED : GOLD}`, color: alert ? RED : GOLD, ...sans }}>{String(n).padStart(2, "0")}</span>
+        <div className="min-w-0 flex-1">
           <h3 className="text-[19px] leading-tight" style={{ color: FG_LIGHT, fontFamily: "'Gloock', Georgia, serif" }}>{title}</h3>
           {subtitle && <p className="mt-1 text-[13px] leading-snug" style={{ color: MUTED_L, ...sans }}>{subtitle}</p>}
         </div>
+        {alert && <span className="shrink-0 text-[11px] tracking-[0.16em] uppercase" style={{ color: RED, ...sans }}>Fix this section</span>}
       </header>
       <div className="px-6 md:px-8 py-6 md:py-7">{children}</div>
     </section>

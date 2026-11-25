@@ -1639,6 +1639,18 @@ Add a row instead of editing the other person's files. Delete the row when resol
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
 
+- **2026-11-25 · prajjwal (with Claude) · Free listing price / area read correctly; editor errors point at their section.**
+  - Bug seen live: a seller wrote “30 - 35 LAKH PER AANA” and “3 Aana Abhove plots Aana”. `priceFromText` joined every digit
+    (“3035” lakh = 30.35 Cr) and `splitArea` made “Aana Abhove plots Aana” the land unit, which the API refused with a bare
+    “At most 20 characters”.
+  - `data/listings.ts`: `priceFromText` takes the first number; `priceUnitFromText` reads “per Aana” / “/ropani” into the price
+    unit (from the Dropdown Options list); `knownUnitIn` picks the listed unit named first; `landFromText` keeps number + known
+    unit. `PropertyEditor` `splitArea` only ever returns a unit from the list. Free Listing area boxes take numbers only.
+  - Editor: `SellerSaid` shows the seller's own words under Price and Size. `problems()` returns `{ msg, at }` (section id): the
+    red box lists each problem with its section as a link, the bottom bar names the section, Publish scrolls to the first one,
+    and that `FormSection` gets `alert` (red border, “Fix this section”). API refusals go through `issueFromError` (`API_FIELDS`
+    maps the field the API names to a label and section): “Not saved · 4 · Size & Rooms: Land area: At most 20 characters”.
+
 - **2026-11-25 · prajjwal (with Claude) · Amenities by property type in the admin editor; 19 new amenities.**
   - `data/listing-fields.ts` (moved from `pages/free-listing/`) is shared by the Free Listing form and the admin
     `PropertyEditor`'s `AmenityPicker`: land shows Land Type / Land Features / Nearby, a commercial space office

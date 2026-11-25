@@ -110,6 +110,11 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   Electricity, Water Supply, Boundary Wall, Street Lights, Temple / School / College / Hospital / Police Station /
   Mart / Market / Bank Nearby, Public Transport, each with an icon. Already added to the live database
   (`npm run db:seed-amenities`, no migration).
+- **Free listing prices and areas read correctly:** “30 - 35 lakh per aana” becomes 30 Lakh, per Aana (it became 30.35
+  Crore); “3 Aana plots” becomes 3 Aana (an impossible unit used to block publishing). The seller's own words show under
+  Price and Size, and the seller's area boxes take numbers only.
+- **Mistakes in the property editor say where they are:** each problem names its section (tap to go there), that section
+  gets a red border, and a refusal from the server names the field (“Not saved · 4 · Size & Rooms: Land area: …”).
 - **Database:** migration `20261130090000_price_unit_video_links` (two optional columns) is already applied to the
   live database; the current live backend keeps working with it.
 
