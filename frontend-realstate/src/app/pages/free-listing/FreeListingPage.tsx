@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import { GoldLine, Tag } from "@/app/components/ui/typography";
 import { sendError } from "@/app/components/ui/send-error";
 import { LegalConsent } from "@/app/components/ui/legal-consent";
-import { SIZE_FIELDS, amenityFits, amenityGroupsFor, kindOf } from "./listing-fields";
+import { SIZE_FIELDS, amenityFits, amenityGroupsFor, kindOf } from "@/app/data/listing-fields";
 import { clearDraft, loadDraftFields, loadDraftPhotos, saveDraftFields, saveDraftPhotos } from "./listing-draft";
 
 /** Everything on the form, as typed (numbers stay text until sending, so a field can be empty). */
@@ -367,10 +367,10 @@ export function FreeListingPage({ onCreateAccount }: { onCreateAccount: () => vo
               </div>
             </Section>
 
-            <Section title={kind === "land" ? "Land Features" : "Amenities"} note={`${form.amenities.length} selected`}>
+            <Section title={kind === "land" ? "Land Type & Features" : "Amenities"} note={`${form.amenities.length} selected`}>
               {amenityGroupsFor(kind).map(({ group, label, items }) => (
                 <div key={group} className="mb-6 last:mb-0">
-                  {!(kind === "land") && <p className="text-[10px] tracking-[0.24em] uppercase mb-3" style={{ color: MUTED_L, ...sans }}>{label}</p>}
+                  <p className="text-[10px] tracking-[0.24em] uppercase mb-3" style={{ color: MUTED_L, ...sans }}>{label}</p>
                   <div className="flex flex-wrap gap-2">
                     {items.map(({ name, Icon }) => {
                       const on = form.amenities.includes(name);

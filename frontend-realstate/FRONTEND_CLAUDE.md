@@ -97,7 +97,7 @@ All under `/api/v1`, error envelope as in §7.1.
 | POST | `/auth/2fa/setup`, `/enable`, `/disable` | **No frontend screen yet** (built on the backend only) |
 | GET / PUT | `/site/watermark`, `/admin/site/watermark` | **Added 2026-11-14.** `api/site.ts` `fetchWatermark()` / `saveSiteWatermark()`; Admin → Watermark (`admin/WatermarkEditor.tsx`). `{ enabled, text, logo: data-URL\|null, opacity, size }`; the browser stamps photos before upload (`media/watermark.ts`) |
 | POST | `/admin/uploads`, `/listings/uploads` with `cardSize` | **2026-11-14.** For images the answer also has `card: { uploadUrl, headers }`: `api/uploads.ts` PUTs the 800 px card copy (`<uuid>.w800.jpg`) beside the photo; `components/ui/card-photo.ts` `cardSrc()` points cards at it, `fullPhotoOnError()` falls back to the full photo |
-| POST / GET | `/listings` with `details` | **2026-11-14.** Free listings send and return `details` (`ListingDetails` in `api/listings.ts`: beds, baths, floors, facing, road, address, map link…, by property type: `pages/free-listing/listing-fields.ts`) |
+| POST / GET | `/listings` with `details` | **2026-11-14.** Free listings send and return `details` (`ListingDetails` in `api/listings.ts`: beds, baths, floors, facing, road, address, map link…, by property type: `data/listing-fields.ts`, moved from `pages/free-listing/` on 2026-11-25) |
 | GET | `/properties` (and `/admin/properties` for the admin) | **Wired 2026-09-30.** `loadProperties()` in `data/properties.ts` fills `ALL_PROPS` from the API once the sign-in check is done (`PropertySync` in `App.tsx`); pages still filter that list client-side. `/properties/:id` and `/:id/related` exist but aren't called yet |
 | POST / PATCH / DELETE | `/admin/properties[/:id]`, `POST /admin/properties/:id/restore` | **Wired 2026-09-30.** Editor save (`toInput()` → create / update), list delete + Undo, featured / verified toggles, heart counts, free-listing publish (`propToInput()`). Client: `src/api/properties.ts`. `next-ref` exists; the editor still computes the lowest free NB ID locally from `ALL_PROPS` (the server re-checks: 409) |
 
@@ -1638,6 +1638,21 @@ Add a row instead of editing the other person's files. Delete the row when resol
 ## 13. Change log (append newest first, one line each)
 
 <!-- Format: YYYY-MM-DD · who · what changed · why it matters to the other side -->
+
+- **2026-11-25 · prajjwal (with Claude) · Amenities by property type in the admin editor; 19 new amenities.**
+  - `data/listing-fields.ts` (moved from `pages/free-listing/`) is shared by the Free Listing form and the admin
+    `PropertyEditor`'s `AmenityPicker`: land shows Land Type / Land Features / Nearby, a commercial space office
+    features, a flat no plot items (`amenityFits`, `amenityGroupsFor`, `amenityGroupLabel`). In the editor an amenity
+    already ticked that doesn't fit the type (older property, or the type was changed) shows in its own
+    "Ticked earlier, not usual for …" group instead of being dropped. Free listings reach the editor through
+    "Copy to Add Property", so they get the same picker.
+  - `icons/amenities.tsx`: groups "Land Type" and "Nearby" added. New names: Residential / Commercial / Agricultural
+    Land, Plotted Land, Individual Plot, Flat Land, Electricity, Water Supply, Boundary Wall, Street Lights, Temple /
+    School / College / Hospital / Police Station / Mart / Market / Bank Nearby, Public Transport (lucide icons, two
+    drawn). Land also gets Garden (property 32 had it). Aliases for highlights ("near temple", "bus stop"…; no bare
+    "mart" / "bank", they sit inside "smart home" / "riverbank"). Backend: same names in `prisma/amenities.ts`,
+    added to the live database with `npm run db:seed-amenities`.
+  - Free Listing: group headings now show for land too; its section is "Land Type & Features".
 
 - **2026-11-30 · prajjwal (with Claude) · Price units and social media video links.**
   - **Price unit** (`Prop.priceUnit`, API `priceUnit`): the editor's Price section has "Price unit" (sale: per Ropani /

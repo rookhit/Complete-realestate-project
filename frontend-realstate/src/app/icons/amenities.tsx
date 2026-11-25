@@ -1,8 +1,10 @@
 import type { SVGProps } from "react";
 import {
-  Accessibility, AirVent, Archive, BedSingle, Blinds, BookOpen, Cctv, Droplets, Fan, Fence,
-  FireExtinguisher, Flame, GlassWater, LandPlot, Microwave, PawPrint, Plug, Refrigerator,
-  ShowerHead, ThermometerSun, ToyBrick, Tv, WashingMachine,
+  Accessibility, AirVent, Archive, BedSingle, Blinds, BookOpen, BrickWall, Building2, Bus, Cctv,
+  Droplet, Droplets, Fan, Fence, FireExtinguisher, Flame, GlassWater, GraduationCap, Grid3x3,
+  Hospital, House, Landmark, LandPlot, Lightbulb, MapPinned, Microwave, PawPrint, Plug,
+  Refrigerator, School, ShoppingCart, ShowerHead, Siren, Store, ThermometerSun, ToyBrick, Tv,
+  WashingMachine, Wheat, Zap,
   type LucideIcon, type LucideProps,
 } from "lucide-react";
 
@@ -562,9 +564,54 @@ export const WaterPurifier   = fromLucide(GlassWater);
 export const CurtainsBlinds  = fromLucide(Blinds);
 export const CeilingFans     = fromLucide(Fan);
 
+/* ─── Land and surroundings ──────────────────────────────────────────────── */
+//
+// Added 2026-11-25: what a land listing in Nepal advertises (the kind of land, services on site,
+// what is nearby). Nearby places fit every property type.
+
+export const ResidentialLand = fromLucide(House);
+export const CommercialLand  = fromLucide(Building2);
+export const AgriculturalLand = fromLucide(Wheat);
+export const PlottedLand     = fromLucide(Grid3x3);
+export const IndividualPlot  = fromLucide(MapPinned);
+export const Electricity     = fromLucide(Zap);
+export const WaterSupply     = fromLucide(Droplet);
+export const BoundaryWall    = fromLucide(BrickWall);
+export const StreetLights    = fromLucide(Lightbulb);
+export const SchoolNearby    = fromLucide(School);
+export const CollegeNearby   = fromLucide(GraduationCap);
+export const HospitalNearby  = fromLucide(Hospital);
+export const PoliceNearby    = fromLucide(Siren);
+export const MartNearby      = fromLucide(ShoppingCart);
+export const MarketNearby    = fromLucide(Store);
+export const BankNearby      = fromLucide(Landmark);
+export const PublicTransport = fromLucide(Bus);
+
+/** A spirit level resting on flat ground: flat land. */
+export const FlatLand = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="4" y="8" width="16" height="6" rx="3" />
+    <circle cx="12" cy="11" r="1.2" />
+    <path d="M9.5 9.5v3m5-3v3" />
+    <path d="M2 18h20" />
+  </Svg>
+);
+
+/** Shikhara temple: a tall spire with a flag on a stepped base. */
+export const TempleNearby = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 2v3" />
+    <path d="M12 2.4h3l-1 1 1 1h-3" />
+    <path d="M12 5 7.5 15h9z" />
+    <path d="M6 15h12v3H6z" />
+    <path d="M4 21h16v-3H4z" />
+    <path d="M11 21v-3h2v3" />
+  </Svg>
+);
+
 /* ─── Registry ───────────────────────────────────────────────────────────── */
 
-export type AmenityGroup = "Main Features" | "Rooms" | "Furnished";
+export type AmenityGroup = "Land Type" | "Main Features" | "Rooms" | "Furnished" | "Nearby";
 
 export type Amenity = {
   name: string;
@@ -581,6 +628,13 @@ export type Amenity = {
  * guaranteed, filterable and translatable.
  */
 export const AMENITIES: Amenity[] = [
+  // Land type — what kind of land it is (land listings only).
+  { name: "Residential Land",     group: "Land Type", Icon: ResidentialLand },
+  { name: "Commercial Land",      group: "Land Type", Icon: CommercialLand },
+  { name: "Agricultural Land",    group: "Land Type", Icon: AgriculturalLand },
+  { name: "Plotted Land",         group: "Land Type", Icon: PlottedLand },
+  { name: "Individual Plot",      group: "Land Type", Icon: IndividualPlot },
+
   // Main features — structure, grounds, building services.
   { name: "Earthquake Resistant", group: "Main Features", Icon: EarthquakeResistant },
   { name: "Marble",               group: "Main Features", Icon: Marble },
@@ -615,6 +669,11 @@ export const AMENITIES: Amenity[] = [
   { name: "Wheelchair Access",    group: "Main Features", Icon: WheelchairAccess },
   { name: "EV Charging",          group: "Main Features", Icon: EvCharging },
   { name: "Corner Plot",          group: "Main Features", Icon: CornerPlot },
+  { name: "Flat Land",            group: "Main Features", Icon: FlatLand },
+  { name: "Electricity",          group: "Main Features", Icon: Electricity },
+  { name: "Water Supply",         group: "Main Features", Icon: WaterSupply },
+  { name: "Boundary Wall",        group: "Main Features", Icon: BoundaryWall },
+  { name: "Street Lights",        group: "Main Features", Icon: StreetLights },
 
   // Rooms — what the building contains.
   { name: "Bedroom",              group: "Rooms", Icon: Bedroom },
@@ -655,9 +714,20 @@ export const AMENITIES: Amenity[] = [
   { name: "Water Purifier",       group: "Furnished", Icon: WaterPurifier },
   { name: "Curtains & Blinds",    group: "Furnished", Icon: CurtainsBlinds },
   { name: "Ceiling Fans",         group: "Furnished", Icon: CeilingFans },
+
+  // Nearby — what is close to the property (every type).
+  { name: "Temple Nearby",        group: "Nearby", Icon: TempleNearby },
+  { name: "School Nearby",        group: "Nearby", Icon: SchoolNearby },
+  { name: "College Nearby",       group: "Nearby", Icon: CollegeNearby },
+  { name: "Hospital Nearby",      group: "Nearby", Icon: HospitalNearby },
+  { name: "Police Station Nearby",group: "Nearby", Icon: PoliceNearby },
+  { name: "Mart Nearby",          group: "Nearby", Icon: MartNearby },
+  { name: "Market Nearby",        group: "Nearby", Icon: MarketNearby },
+  { name: "Bank Nearby",          group: "Nearby", Icon: BankNearby },
+  { name: "Public Transport",     group: "Nearby", Icon: PublicTransport },
 ];
 
-export const AMENITY_GROUPS: AmenityGroup[] = ["Main Features", "Rooms", "Furnished"];
+export const AMENITY_GROUPS: AmenityGroup[] = ["Land Type", "Main Features", "Rooms", "Furnished", "Nearby"];
 
 /**
  * Keyword → canonical name.
@@ -765,6 +835,32 @@ const ALIASES: Record<string, string> = {
   "water purifier": "Water Purifier",
   "curtains": "Curtains & Blinds",
   "ceiling fan": "Ceiling Fans",
+
+  // Land and surroundings (free-text highlights such as "Near temple"). No bare "mart" or
+  // "bank": they sit inside "smart home" and "riverbank".
+  "residential land": "Residential Land",
+  "commercial land": "Commercial Land",
+  "agricultural land": "Agricultural Land",
+  "plotting": "Plotted Land",
+  "plotted": "Plotted Land",
+  "flat land": "Flat Land",
+  "electricity": "Electricity",
+  "water supply": "Water Supply",
+  "boundary wall": "Boundary Wall",
+  "compound wall": "Boundary Wall",
+  "street light": "Street Lights",
+  "temple": "Temple Nearby",
+  "mandir": "Temple Nearby",
+  "school": "School Nearby",
+  "college": "College Nearby",
+  "hospital": "Hospital Nearby",
+  "police": "Police Station Nearby",
+  "supermarket": "Mart Nearby",
+  "department store": "Mart Nearby",
+  "marketplace": "Market Nearby",
+  "bus stop": "Public Transport",
+  "bus park": "Public Transport",
+  "public transport": "Public Transport",
 };
 
 const BY_NAME = new Map(AMENITIES.map((a) => [a.name.toLowerCase(), a]));

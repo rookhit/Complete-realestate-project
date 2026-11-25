@@ -103,6 +103,13 @@ and `backend-realstate/CLAUDE.md` (dated entries).
   Facebook, Instagram, YouTube, TikTok…; the property page shows a button with the platform's icon for each, opening
   the post in a new tab.
 - **EMI calculator:** the number boxes now sit above the sliders.
+- **Amenities by property type in the admin editor too:** like the Free Listing form, the editor shows only what
+  fits the type (land: Land Type, Land Features, Nearby; no bedrooms or furniture). Free listings copied into the
+  editor get the same. Anything ticked earlier that doesn't fit stays ticked in its own group, never dropped.
+- **19 new amenities:** Residential / Commercial / Agricultural Land, Plotted Land, Individual Plot, Flat Land,
+  Electricity, Water Supply, Boundary Wall, Street Lights, Temple / School / College / Hospital / Police Station /
+  Mart / Market / Bank Nearby, Public Transport, each with an icon. Already added to the live database
+  (`npm run db:seed-amenities`, no migration).
 - **Database:** migration `20261130090000_price_unit_video_links` (two optional columns) is already applied to the
   live database; the current live backend keeps working with it.
 

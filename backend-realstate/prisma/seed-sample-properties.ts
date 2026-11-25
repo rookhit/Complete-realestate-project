@@ -8,7 +8,7 @@
 import { AMENITY_SEED } from "./amenities";
 import { SAMPLE_PROPERTIES, SAMPLE_REACTIONS, type SampleProp } from "./sample-properties";
 
-const CANONICAL = new Set(Object.values(AMENITY_SEED).flat());
+const CANONICAL = new Set(AMENITY_SEED.flatMap((s) => s.names));
 
 function areaParts(s: string): { value: number; unit: string } | null {
   const m = s.match(/^([\d,.]+)\s*(.+)$/);

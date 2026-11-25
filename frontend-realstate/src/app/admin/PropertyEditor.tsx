@@ -10,6 +10,7 @@ import { isVideoLink, platformOf } from "@/app/components/ui/social-videos";
 import { approxFor, gridFromCoords, inNepal, isShortMapLink, placeLabel, resolveMap } from "@/app/data/maps";
 import { AreaMap } from "@/app/components/ui/maps";
 import { AMENITIES, AMENITY_GROUPS, amenityIcon } from "@/app/icons/amenities";
+import { amenityFits, amenityGroupLabel, kindOf } from "@/app/data/listing-fields";
 import { BORDER_L, FG_LIGHT, GOLD, MAROON, MUTED_L, WHITE, sans, serif } from "@/app/components/ui/brand";
 import { DistrictCombobox } from "@/app/components/ui/district-combobox";
 import { PhotoManager, isMediaLink } from "@/app/components/ui/photo-picker";
@@ -716,7 +717,7 @@ export function PropertyEditor({ property, template = null, source = null, open,
         </FormSection>
 
         <FormSection id="pe-amenities" n={6} title="Amenities" subtitle="Tap every amenity the property has. Icons appear on the property page.">
-          <AmenityPicker selected={d.amenities} onChange={v => set("amenities", v)} />
+          <AmenityPicker type={d.type} selected={d.amenities} onChange={v => set("amenities", v)} />
           <div className="mt-8 pt-7 border-t" style={{ borderColor: BORDER_L }}>
             <HighlightsInput values={d.highlights} onChange={v => set("highlights", v)} />
             <IdeaChips label="Ideas" ideas={HIGHLIGHT_IDEAS.filter(i => !d.highlights.includes(i) && !CANONICAL.has(i)).slice(0, 6)} onPick={v => set("highlights", [...d.highlights, v])} />
@@ -933,10 +934,24 @@ function LandAreaField({ value, unit, onValue, onUnit }: { value: string; unit: 
 
 // ─── Amenity tiles ────────────────────────────────────────────────────────────
 
-function AmenityPicker({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+/**
+ * The amenity tiles, limited to what fits the property type (the same rules as the Free Listing
+ * form: land shows land features, a commercial space shows office features…). An amenity ticked
+ * before that doesn't fit the type (an older listing, or the type was changed) is never dropped
+ * silently: it shows in its own group so the admin can keep or untick it.
+ */
+function AmenityPicker({ type, selected, onChange }: { type: string; selected: string[]; onChange: (v: string[]) => void }) {
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
+  const kind = kindOf(type);
+  const matches = (name: string) => !query || name.toLowerCase().includes(query);
   const toggle = (name: string) => onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name]);
+  const groups = AMENITY_GROUPS.map(group => ({
+    key: group, label: amenityGroupLabel(kind, group), note: "",
+    items: AMENITIES.filter(a => a.group === group && amenityFits(kind, a.name) && matches(a.name)),
+  }));
+  const misfits = AMENITIES.filter(a => selected.includes(a.name) && !amenityFits(kind, a.name) && matches(a.name));
+  if (misfits.length) groups.push({ key: "Main Features", label: `Ticked earlier, not usual for ${type}`, note: "Untick any that don't apply.", items: misfits });
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -946,12 +961,19 @@ function AmenityPicker({ selected, onChange }: { selected: string[]; onChange: (
           {selected.length > 0 && <button type="button" onClick={() => onChange([])} className="ml-3 underline underline-offset-4 transition-colors hover:text-[#8a2030]">Clear</button>}
         </p>
       </div>
-      {AMENITY_GROUPS.map(group => {
-        const items = AMENITIES.filter(a => a.group === group && (!query || a.name.toLowerCase().includes(query)));
+      <p className="text-[12px] -mt-3" style={{ color: MUTED_L, ...sans }}>
+        Showing the amenities that suit <span style={{ color: FG_LIGHT }}>{type}</span>. Change the Property Type in step 1 to see others.
+      </p>
+      {groups.every(g => !g.items.length) && (
+        <p className="text-[13px]" style={{ color: MUTED_L, ...sans }}>No amenity matches “{q.trim()}” for {type}.</p>
+      )}
+      {groups.map(({ key, label, note, items }) => {
         if (!items.length) return null;
         return (
-          <div key={group}>
-            <p className="text-[10px] tracking-[0.28em] uppercase mb-3" style={{ color: GOLD, ...sans }}>{group}</p>
+          <div key={label} data-group={key}>
+            <p className="text-[10px] tracking-[0.28em] uppercase mb-3" style={{ color: note ? MAROON : GOLD, ...sans }}>
+              {label}{note && <span className="ml-2 normal-case tracking-normal text-[12px]" style={{ color: MUTED_L }}>{note}</span>}
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
               {items.map(({ name, Icon }) => {
                 const on = selected.includes(name);
